@@ -1,0 +1,17 @@
+# Runtime artifacts (generated during execution)
+workspaces/*/
+archive/
+
+# Keep workspaces dir structure
+!workspaces/.gitkeep
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
