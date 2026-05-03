@@ -40,7 +40,7 @@ Run exactly two rounds of independent council review using the standalone wrappe
 Round 1:
 
 ```bash
-./ralph-v2/scripts/council-review.sh --only {{REVIEWER}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
+./ralph-v2/scripts/council-review.sh --only {{REVIEWERS}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
 
 Review the draft vertical slices for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on:
 1. HORIZONTAL SLICING — Are any slices horizontal (single layer) rather than vertical (end-to-end demoable)?
@@ -58,7 +58,7 @@ Incorporate the Round 1 feedback into the slice list. Keep major feedback that c
 Round 2:
 
 ```bash
-./ralph-v2/scripts/council-review.sh --only {{REVIEWER}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
+./ralph-v2/scripts/council-review.sh --only {{REVIEWERS}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
 
 Review the revised vertical slices for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on remaining blockers, duplicate or overlapping slices, missing AFK criteria, unresolved dependencies, merge conflict risk between parallel slices, and contradictions introduced while incorporating Round 1 feedback."
 ```

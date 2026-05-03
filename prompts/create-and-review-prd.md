@@ -73,7 +73,7 @@ Run exactly two rounds of independent council review using the standalone wrappe
 Round 1:
 
 ```bash
-./ralph-v2/scripts/council-review.sh --only {{REVIEWER}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
+./ralph-v2/scripts/council-review.sh --only {{REVIEWERS}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
 
 Review the draft PRD for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on:
 1. MISSING REQUIREMENTS — Are any decisions or modules missing?
@@ -91,7 +91,7 @@ Incorporate the Round 1 feedback into the PRD. Keep major feedback that changes 
 Round 2:
 
 ```bash
-./ralph-v2/scripts/council-review.sh --only {{REVIEWER}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
+./ralph-v2/scripts/council-review.sh --only {{REVIEWERS}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
 
 Review the revised PRD for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on remaining blockers, unresolved ambiguities, acceptance-risk gaps, interface design quality, and contradictions introduced while incorporating Round 1 feedback. Would you restructure anything that remains?"
 ```

@@ -61,7 +61,7 @@ Each implementation step must use this shape:
   "type": "implement-slice",
   "status": "pending",
   "agent": "codex",
-  "reviewer": null,
+  "reviewers": [],
   "hitl": false,
   "sub_issue": <sub-issue-number>,
   "metrics": null,
@@ -78,7 +78,7 @@ Append the final steps after all implementation steps:
   "type": "final-review",
   "status": "pending",
   "agent": "claude",
-  "reviewer": null,
+  "reviewers": [],
   "hitl": false,
   "metrics": null,
   "notes": ""
@@ -92,7 +92,7 @@ Append the final steps after all implementation steps:
   "type": "pr-review",
   "status": "pending",
   "agent": "claude",
-  "reviewer": null,
+  "reviewers": ["codex", "gemini", "kimi", "deepseek"],
   "hitl": false,
   "metrics": null,
   "notes": ""
@@ -106,7 +106,7 @@ Append the final steps after all implementation steps:
   "type": "review-fixes",
   "status": "pending",
   "agent": "claude",
-  "reviewer": null,
+  "reviewers": [],
   "hitl": false,
   "metrics": null,
   "notes": ""

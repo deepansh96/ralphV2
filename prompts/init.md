@@ -40,7 +40,7 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "type": "review-decisions",
       "status": "pending",
       "agent": "claude",
-      "reviewer": "codex",
+      "reviewers": ["codex", "gemini", "kimi", "deepseek"],
       "hitl": true,
       "metrics": null,
       "notes": ""
@@ -51,7 +51,7 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "type": "create-and-review-prd",
       "status": "pending",
       "agent": "claude",
-      "reviewer": "codex",
+      "reviewers": ["codex", "gemini", "kimi", "deepseek"],
       "hitl": false,
       "metrics": null,
       "notes": ""
@@ -62,7 +62,7 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "type": "create-and-review-slices",
       "status": "pending",
       "agent": "claude",
-      "reviewer": "codex",
+      "reviewers": ["codex", "gemini", "kimi", "deepseek"],
       "hitl": false,
       "metrics": null,
       "notes": ""
@@ -73,7 +73,7 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "type": "preflight",
       "status": "pending",
       "agent": "claude",
-      "reviewer": null,
+      "reviewers": [],
       "hitl": false,
       "metrics": null,
       "notes": ""

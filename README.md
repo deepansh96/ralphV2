@@ -73,7 +73,7 @@ Each step has this shape:
   "type": "implement-slice",
   "status": "pending",
   "agent": "codex",
-  "reviewer": null,
+  "reviewers": [],
   "hitl": false,
   "sub_issue": 14,
   "metrics": null,

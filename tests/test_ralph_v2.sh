@@ -785,12 +785,12 @@ done
 prompt="$(cat)"
 [[ "$prompt" == *"Issue: 9020"* ]] || exit 101
 [[ "$prompt" == *"Repo: deepansh96/ralph"* ]] || exit 102
-[[ "$prompt" == *"Workspace: "*"/ralph-v2/workspaces/9020"* ]] || exit 103
+[[ "$prompt" == *"Workspace: "*"/workspaces/9020"* ]] || exit 103
 [[ "$prompt" == *"Branch: feat/issue-9020-implementation-workflow"* ]] || exit 104
 [[ "$prompt" == *"Base branch: main"* ]] || exit 105
 [[ "$prompt" == *"Step: implement-slice-9111"* ]] || exit 106
 [[ "$prompt" == *"Sub-issue: 9111"* ]] || exit 107
-[[ "$prompt" == *"Skills: "*"/ralph-v2/skills"* ]] || exit 108
+[[ "$prompt" == *"Skills: "*"/skills"* ]] || exit 108
 [[ "$prompt" == *"CONTEXT.md"* ]] || exit 109
 [[ "$prompt" == *"CLAUDE.md"* ]] || exit 110
 [[ "$prompt" == *"docs/adr"* ]] || exit 111
@@ -1696,7 +1696,7 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   assert_contains "$prompt" '"status": "initialized"'
   assert_contains "$prompt" '"phase": "fixed"'
   assert_contains "$prompt" '"metrics": null'
-  assert_contains "$prompt" '"reviewer": null'
+  assert_contains "$prompt" '"reviewers": []'
   assert_contains "$prompt" "review-decisions"
   assert_contains "$prompt" "create-and-review-prd"
   assert_contains "$prompt" "create-and-review-slices"
@@ -1726,7 +1726,7 @@ test_initialized_workspace_status_shows_four_pending_fixed_steps() {
           type: "review-decisions",
           status: "pending",
           agent: "claude",
-          reviewer: "codex",
+          reviewers: ["codex", "gemini", "kimi", "deepseek"],
           hitl: true,
           metrics: null,
           notes: ""
@@ -1737,7 +1737,7 @@ test_initialized_workspace_status_shows_four_pending_fixed_steps() {
           type: "create-and-review-prd",
           status: "pending",
           agent: "claude",
-          reviewer: "codex",
+          reviewers: ["codex", "gemini", "kimi", "deepseek"],
           hitl: false,
           metrics: null,
           notes: ""
@@ -1748,7 +1748,7 @@ test_initialized_workspace_status_shows_four_pending_fixed_steps() {
           type: "create-and-review-slices",
           status: "pending",
           agent: "claude",
-          reviewer: "codex",
+          reviewers: ["codex", "gemini", "kimi", "deepseek"],
           hitl: false,
           metrics: null,
           notes: ""
@@ -1759,7 +1759,7 @@ test_initialized_workspace_status_shows_four_pending_fixed_steps() {
           type: "preflight",
           status: "pending",
           agent: "claude",
-          reviewer: null,
+          reviewers: [],
           hitl: false,
           metrics: null,
           notes: ""
@@ -2143,7 +2143,7 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
           phase: "fixed",
           type: "preflight",
           agent: "claude",
-          reviewer: null,
+          reviewers: [],
           hitl: false,
           status: "completed",
           metrics: {},
@@ -2160,7 +2160,7 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
       "phase": "dynamic",
       "type": "implement-slice",
       "agent": "codex",
-      "reviewer": null,
+      "reviewers": [],
       "hitl": false,
       "status": "pending",
       "sub_issue": 9101,
@@ -2172,7 +2172,7 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
       "phase": "dynamic",
       "type": "implement-slice",
       "agent": "codex",
-      "reviewer": null,
+      "reviewers": [],
       "hitl": false,
       "status": "pending",
       "sub_issue": 9102,
@@ -2184,7 +2184,7 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
       "phase": "dynamic",
       "type": "final-review",
       "agent": "claude",
-      "reviewer": null,
+      "reviewers": [],
       "hitl": false,
       "status": "pending",
       "metrics": null,
@@ -2195,7 +2195,7 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
       "phase": "dynamic",
       "type": "pr-review",
       "agent": "claude",
-      "reviewer": null,
+      "reviewers": ["codex", "gemini", "kimi", "deepseek"],
       "hitl": false,
       "status": "pending",
       "metrics": null,
@@ -2206,7 +2206,7 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
       "phase": "dynamic",
       "type": "review-fixes",
       "agent": "claude",
-      "reviewer": null,
+      "reviewers": [],
       "hitl": false,
       "status": "pending",
       "metrics": null,
@@ -2265,7 +2265,7 @@ test_review_decisions_runs_after_context_check_and_blocks_then_resumes() {
           phase: "fixed",
           type: "review-decisions",
           agent: "claude",
-          reviewer: "codex",
+          reviewers: ["codex", "gemini", "kimi", "deepseek"],
           hitl: true,
           status: "pending",
           metrics: {},
@@ -2323,7 +2323,7 @@ test_create_prd_pipeline_preserves_original_and_updates_single_prd_body() {
           phase: "fixed",
           type: "review-decisions",
           agent: "claude",
-          reviewer: "codex",
+          reviewers: ["codex", "gemini", "kimi", "deepseek"],
           hitl: true,
           status: "completed",
           metrics: {},
@@ -2334,7 +2334,7 @@ test_create_prd_pipeline_preserves_original_and_updates_single_prd_body() {
           phase: "fixed",
           type: "create-and-review-prd",
           agent: "claude",
-          reviewer: "codex",
+          reviewers: ["codex", "gemini", "kimi", "deepseek"],
           hitl: false,
           status: "pending",
           metrics: {},
@@ -2394,7 +2394,7 @@ test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently() {
           phase: "fixed",
           type: "review-decisions",
           agent: "claude",
-          reviewer: "codex",
+          reviewers: ["codex", "gemini", "kimi", "deepseek"],
           hitl: true,
           status: "completed",
           metrics: {},
@@ -2405,7 +2405,7 @@ test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently() {
           phase: "fixed",
           type: "create-and-review-prd",
           agent: "claude",
-          reviewer: "codex",
+          reviewers: ["codex", "gemini", "kimi", "deepseek"],
           hitl: false,
           status: "completed",
           metrics: {},
@@ -2416,7 +2416,7 @@ test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently() {
           phase: "fixed",
           type: "create-and-review-slices",
           agent: "claude",
-          reviewer: "codex",
+          reviewers: ["codex", "gemini", "kimi", "deepseek"],
           hitl: false,
           status: "pending",
           metrics: {},
@@ -2471,7 +2471,7 @@ test_implement_slice_pipeline_runs_codex_with_sub_issue_context() {
           phase: "dynamic",
           type: "implement-slice",
           agent: "codex",
-          reviewer: null,
+          reviewers: [],
           hitl: false,
           status: "pending",
           sub_issue: 9111,
@@ -2520,7 +2520,7 @@ test_final_and_pr_review_pipeline_completes_with_idempotent_pr() {
           phase: "dynamic",
           type: "implement-slice",
           agent: "codex",
-          reviewer: null,
+          reviewers: [],
           hitl: false,
           status: "completed",
           sub_issue: 9111,
@@ -2532,7 +2532,7 @@ test_final_and_pr_review_pipeline_completes_with_idempotent_pr() {
           phase: "dynamic",
           type: "final-review",
           agent: "claude",
-          reviewer: null,
+          reviewers: [],
           hitl: false,
           status: "pending",
           metrics: {},
@@ -2543,7 +2543,7 @@ test_final_and_pr_review_pipeline_completes_with_idempotent_pr() {
           phase: "dynamic",
           type: "pr-review",
           agent: "claude",
-          reviewer: null,
+          reviewers: ["codex", "gemini", "kimi", "deepseek"],
           hitl: false,
           status: "pending",
           metrics: {},
@@ -2554,7 +2554,7 @@ test_final_and_pr_review_pipeline_completes_with_idempotent_pr() {
           phase: "dynamic",
           type: "review-fixes",
           agent: "claude",
-          reviewer: null,
+          reviewers: [],
           hitl: false,
           status: "pending",
           metrics: {},
