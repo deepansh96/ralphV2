@@ -45,7 +45,7 @@ Review the decisions in GitHub issue {{ISSUE}} (repo {{REPO}}). Evaluate each de
 For each issue found, state the severity (critical / major / minor), the specific decision it applies to, and a concrete recommendation."
 ```
 
-After the council returns, run `git status --porcelain` and compare against the state before the call. If the council made any changes to the working tree, discard them with `git checkout .` before proceeding.
+Before calling council, capture the working tree state with `git status --porcelain`. After council returns, run `git status --porcelain` again. If any files changed during the council run (new entries or different status compared to the before snapshot), revert only those files: `git checkout -- <file>` for modified tracked files, `rm <file>` for newly created untracked files.
 
 Use the council feedback as an independent review of the issue's decisions.
 

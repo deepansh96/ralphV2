@@ -129,7 +129,7 @@ You are reviewing PR #<pr-number> for GitHub issue {{ISSUE}} in repo {{REPO}}. Y
 Review the full change from the perspective of a senior engineer. Focus on real issues that would block a merge — correctness bugs, architectural concerns, security issues, missing edge cases. Ignore style, nitpicks, and anything a linter would catch. For each issue found, state severity (critical/major/minor) and a concrete recommendation."
 ```
 
-After the council returns, run `git status --porcelain` and compare against the state before the call. If the council made any changes to the working tree, discard them with `git checkout .` before proceeding.
+Before calling council, capture the working tree state with `git status --porcelain`. After council returns, run `git status --porcelain` again. If any files changed during the council run (new entries or different status compared to the before snapshot), revert only those files: `git checkout -- <file>` for modified tracked files, `rm <file>` for newly created untracked files.
 
 Save the council output to `{{WORKSPACE}}/council-pr-review.md`.
 
