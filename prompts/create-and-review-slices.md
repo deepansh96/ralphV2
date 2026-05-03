@@ -53,6 +53,8 @@ Review the draft vertical slices for GitHub issue {{ISSUE}} in repo {{REPO}}. Fo
 For each issue found, state severity (critical/major/minor) and a concrete recommendation."
 ```
 
+After the council returns, run `git status --porcelain` and compare against the state before the call. If the council made any changes to the working tree, discard them with `git checkout .` before proceeding.
+
 Incorporate the Round 1 feedback into the slice list. Keep major feedback that changes slice boundaries, sequencing, correctness, or testing. Drop nitpicks and style-only comments.
 
 Round 2:
@@ -62,6 +64,8 @@ Round 2:
 
 Review the revised vertical slices for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on remaining blockers, duplicate or overlapping slices, missing AFK criteria, unresolved dependencies, merge conflict risk between parallel slices, and contradictions introduced while incorporating Round 1 feedback."
 ```
+
+After the council returns, run `git status --porcelain` and compare against the state before the call. If the council made any changes to the working tree, discard them with `git checkout .` before proceeding.
 
 Incorporate the Round 2 feedback into the final slice list using the same filtering rules. Do not run additional review rounds.
 

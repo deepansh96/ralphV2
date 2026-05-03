@@ -86,6 +86,8 @@ Review the draft PRD for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on:
 For each issue found, state severity (critical/major/minor) and a concrete recommendation."
 ```
 
+After the council returns, run `git status --porcelain` and compare against the state before the call. If the council made any changes to the working tree, discard them with `git checkout .` before proceeding.
+
 Incorporate the Round 1 feedback into the PRD. Keep major feedback that changes scope, architecture, correctness, sequencing, or testing. Drop nitpicks and style-only comments.
 
 Round 2:
@@ -95,6 +97,8 @@ Round 2:
 
 Review the revised PRD for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on remaining blockers, unresolved ambiguities, acceptance-risk gaps, interface design quality, and contradictions introduced while incorporating Round 1 feedback. Would you restructure anything that remains?"
 ```
+
+After the council returns, run `git status --porcelain` and compare against the state before the call. If the council made any changes to the working tree, discard them with `git checkout .` before proceeding.
 
 Incorporate the Round 2 feedback into the final PRD using the same filtering rules. Do not run additional review rounds.
 

@@ -129,6 +129,8 @@ You are reviewing PR #<pr-number> for GitHub issue {{ISSUE}} in repo {{REPO}}. Y
 Review the full change from the perspective of a senior engineer. Focus on real issues that would block a merge — correctness bugs, architectural concerns, security issues, missing edge cases. Ignore style, nitpicks, and anything a linter would catch. For each issue found, state severity (critical/major/minor) and a concrete recommendation."
 ```
 
+After the council returns, run `git status --porcelain` and compare against the state before the call. If the council made any changes to the working tree, discard them with `git checkout .` before proceeding.
+
 Save the council output to `{{WORKSPACE}}/council-pr-review.md`.
 
 ## Automated Code Review

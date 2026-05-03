@@ -45,6 +45,8 @@ Review the decisions in GitHub issue {{ISSUE}} (repo {{REPO}}). Evaluate each de
 For each issue found, state the severity (critical / major / minor), the specific decision it applies to, and a concrete recommendation."
 ```
 
+After the council returns, run `git status --porcelain` and compare against the state before the call. If the council made any changes to the working tree, discard them with `git checkout .` before proceeding.
+
 Use the council feedback as an independent review of the issue's decisions.
 
 ## Filtering
