@@ -22,7 +22,7 @@ If this prompt includes a `## HITL Resume` section, use the human answers in tha
 On HITL resume:
 
 1. Read `{{WORKSPACE}}/review-decisions.md`.
-2. Update the GitHub issue with the findings and the human answers where useful.
+2. Append the findings and human answers to the **issue body** (not as a comment) — see "Update the GitHub Issue Body" section below.
 3. Do not call `scripts/council-review.sh`.
 4. Do not repeat any council or review phase.
 5. Do not delete the HITL flag file — it serves as an audit trail.
@@ -107,6 +107,20 @@ Structure:
 
 ### 2. ...
 ```
+
+## Update the GitHub Issue Body
+
+After writing the output file, append the review findings to the **issue body** (not as a comment). Downstream steps read the issue body with `gh issue view` and do not see comments.
+
+1. Read the current issue body into a temp file:
+   ```bash
+   gh issue view {{ISSUE}} --repo {{REPO}} --json body -q .body > /tmp/issue-body-{{ISSUE}}.md
+   ```
+2. Append a summary of the major findings and recommendations to the temp file.
+3. Update the issue body:
+   ```bash
+   gh issue edit {{ISSUE}} --repo {{REPO}} --body-file /tmp/issue-body-{{ISSUE}}.md
+   ```
 
 ## Blocking Protocol
 
