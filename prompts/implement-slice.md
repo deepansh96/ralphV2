@@ -41,6 +41,16 @@ Read the project context, parent issue, and assigned sub-issue; implement only t
 - Read the current workspace state:
   `{{WORKSPACE}}/state.json`
 
+## Blocker Verification
+
+Before starting implementation, check whether sub-issue `#{{SUB_ISSUE}}` lists any blocked-by issues. If it does, verify each blocker is closed:
+
+```bash
+gh issue view <blocker-number> --repo {{REPO}} --json state -q '.state'
+```
+
+If any blocker is still open, set this step's status to `failed` with a note listing the open blockers, then stop.
+
 ## Scope Rules
 
 - Implement only sub-issue `#{{SUB_ISSUE}}`.
@@ -114,6 +124,16 @@ gh issue close {{SUB_ISSUE}} --repo {{REPO}} --comment "Implemented in {{BRANCH}
 
 Do not close the parent issue.
 
+## Post-Implementation Audit
+
+After pushing and before closing the sub-issue, run a self-review:
+
+1. **Acceptance criteria audit** — read the diff against `{{BASE_BRANCH}}` and check each acceptance criterion from the sub-issue. Every criterion must be addressed.
+2. **Scope creep check** — flag any changes that implement work belonging to other issues or beyond the stated acceptance criteria. Revert scope creep before closing.
+3. **File scope check** — verify that changed files fall within the module or file scope stated in the sub-issue. Flag unexpected file changes.
+
+If the audit finds unmet acceptance criteria, fix them before closing. If scope creep or file scope violations are found, revert the offending changes and re-run quality checks.
+
 ## Completion
 
 Complete normally only after:
@@ -121,6 +141,7 @@ Complete normally only after:
 - The sub-issue acceptance criteria are implemented.
 - Tests were written first and pass.
 - Quality checks from CLAUDE.md pass.
+- The post-implementation audit passes with no unmet criteria, scope creep, or file scope violations.
 - Changes are committed with a `#{{SUB_ISSUE}}` reference.
 - The feature branch is pushed.
 - Sub-issue `#{{SUB_ISSUE}}` is closed on GitHub.

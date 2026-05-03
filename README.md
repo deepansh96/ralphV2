@@ -37,7 +37,7 @@ grill -> init -> run -> cleanup
 During `run`, Ralph executes:
 
 ```text
-review-decisions -> create-prd -> create-slices -> preflight -> implement-slice... -> final-review -> pr-review -> review-fixes
+review-decisions -> create-and-review-prd -> create-and-review-slices -> preflight -> implement-slice... -> final-review -> pr-review -> review-fixes
 ```
 
 ## State
@@ -94,8 +94,8 @@ Failed steps stop the pipeline until the user explicitly resets the step to `pen
 ## Step Types
 
 - `review-decisions`: reviews issue decisions against `CONTEXT.md`, `CLAUDE.md`, and ADRs; may block for human input.
-- `create-prd`: preserves the original issue body, drafts the PRD, runs two council reviews, and updates the parent issue.
-- `create-slices`: drafts vertical AFK slices, reviews them, creates GitHub sub-issues, and links them under the parent.
+- `create-and-review-prd`: preserves the original issue body, drafts the PRD, runs two council reviews, and updates the parent issue.
+- `create-and-review-slices`: drafts vertical AFK slices, reviews them, creates GitHub sub-issues, and links them under the parent.
 - `preflight`: checks the working tree and `baseBranch`, creates/pushes the feature branch, and appends dynamic steps.
 - `implement-slice`: reads the assigned sub-issue, follows TDD, commits, pushes, and closes the sub-issue.
 - `final-review`: reviews branch changes, runs quality checks, verifies acceptance criteria, and writes `final-review.md`.
@@ -108,10 +108,8 @@ Failed steps stop the pipeline until the user explicitly resets the step to `pen
 
 - `to-prd/`
 - `to-issues/`
-- `codex-review-prd/`
-- `codex-review-slices/`
-- `codex-implement-slice/`
 - `tdd/`
 - `domain/`
+- `grill-with-docs/`
 
 The bundle is self-contained. Skill references point at files inside `ralph-v2/skills/`, not at the user's global skill directory.

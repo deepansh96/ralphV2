@@ -535,7 +535,7 @@ fi
 cat > "$issue_body_file" <<'PRD'
 ## Decision Summary
 
-- Workflow: create-prd preserves original issue body and updates the issue with one PRD.
+- Workflow: create-and-review-prd preserves original issue body and updates the issue with one PRD.
 
 ## Problem Statement
 
@@ -547,7 +547,7 @@ Create a reviewed PRD from the grilled issue decisions.
 
 ## User Stories
 
-1. As a developer, I want the create-prd step to update the existing issue, so that the issue remains the source of truth.
+1. As a developer, I want the create-and-review-prd step to update the existing issue, so that the issue remains the source of truth.
 
 ## Implementation Decisions
 
@@ -567,7 +567,7 @@ Create a reviewed PRD from the grilled issue decisions.
 PRD
 
 jq -n '{
-  result: "create-prd preserved original and updated issue body",
+  result: "create-and-review-prd preserved original and updated issue body",
   duration_ms: 333,
   usage: {
     input_tokens: 5,
@@ -649,7 +649,7 @@ cat > "$slices_file" <<'SLICES'
 SLICES
 
 jq -n '{
-  result: "create-slices created AFK sub-issues and linked them under parent",
+  result: "create-and-review-slices created AFK sub-issues and linked them under parent",
   duration_ms: 444,
   usage: {
     input_tokens: 6,
@@ -1698,8 +1698,8 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   assert_contains "$prompt" '"metrics": null'
   assert_contains "$prompt" '"reviewer": null'
   assert_contains "$prompt" "review-decisions"
-  assert_contains "$prompt" "create-prd"
-  assert_contains "$prompt" "create-slices"
+  assert_contains "$prompt" "create-and-review-prd"
+  assert_contains "$prompt" "create-and-review-slices"
   assert_contains "$prompt" "preflight"
   assert_contains "$prompt" "ralph.sh status --issue {{ISSUE}}"
 }
@@ -1732,9 +1732,9 @@ test_initialized_workspace_status_shows_four_pending_fixed_steps() {
           notes: ""
         },
         {
-          id: "create-prd",
+          id: "create-and-review-prd",
           phase: "fixed",
-          type: "create-prd",
+          type: "create-and-review-prd",
           status: "pending",
           agent: "claude",
           reviewer: "codex",
@@ -1743,9 +1743,9 @@ test_initialized_workspace_status_shows_four_pending_fixed_steps() {
           notes: ""
         },
         {
-          id: "create-slices",
+          id: "create-and-review-slices",
           phase: "fixed",
-          type: "create-slices",
+          type: "create-and-review-slices",
           status: "pending",
           agent: "claude",
           reviewer: "codex",
@@ -1772,8 +1772,8 @@ test_initialized_workspace_status_shows_four_pending_fixed_steps() {
 
   [[ "$pending_count" == "4" ]] || fail "expected 4 pending steps in status output, got $pending_count: $output"
   assert_contains "$output" "review-decisions"
-  assert_contains "$output" "create-prd"
-  assert_contains "$output" "create-slices"
+  assert_contains "$output" "create-and-review-prd"
+  assert_contains "$output" "create-and-review-slices"
   assert_contains "$output" "preflight"
 }
 
@@ -1853,8 +1853,8 @@ test_review_decisions_prompt_defines_council_filtering_and_hitl_contract() {
 test_create_prd_prompt_defines_full_prd_workflow_contract() {
   local prompt_file prompt
 
-  prompt_file="$ROOT_DIR/prompts/create-prd.md"
-  [[ -f "$prompt_file" ]] || fail "expected create-prd prompt template at $prompt_file"
+  prompt_file="$ROOT_DIR/prompts/create-and-review-prd.md"
+  [[ -f "$prompt_file" ]] || fail "expected create-and-review-prd prompt template at $prompt_file"
 
   prompt="$(<"$prompt_file")"
 
@@ -1882,8 +1882,8 @@ test_create_prd_prompt_defines_full_prd_workflow_contract() {
 test_create_slices_prompt_defines_full_slice_creation_contract() {
   local prompt_file prompt
 
-  prompt_file="$ROOT_DIR/prompts/create-slices.md"
-  [[ -f "$prompt_file" ]] || fail "expected create-slices prompt template at $prompt_file"
+  prompt_file="$ROOT_DIR/prompts/create-and-review-slices.md"
+  [[ -f "$prompt_file" ]] || fail "expected create-and-review-slices prompt template at $prompt_file"
 
   prompt="$(<"$prompt_file")"
 
@@ -2066,9 +2066,7 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   required_files=(
     "$ROOT_DIR/skills/to-prd/SKILL.md"
     "$ROOT_DIR/skills/to-issues/SKILL.md"
-    "$ROOT_DIR/skills/codex-review-prd/SKILL.md"
-    "$ROOT_DIR/skills/codex-review-slices/SKILL.md"
-    "$ROOT_DIR/skills/codex-implement-slice/SKILL.md"
+    "$ROOT_DIR/skills/grill-with-docs/SKILL.md"
     "$ROOT_DIR/skills/tdd/SKILL.md"
     "$ROOT_DIR/skills/tdd/tests.md"
     "$ROOT_DIR/skills/tdd/mocking.md"
@@ -2332,9 +2330,9 @@ test_create_prd_pipeline_preserves_original_and_updates_single_prd_body() {
           notes: ""
         },
         {
-          id: "create-prd",
+          id: "create-and-review-prd",
           phase: "fixed",
-          type: "create-prd",
+          type: "create-and-review-prd",
           agent: "claude",
           reviewer: "codex",
           hitl: false,
@@ -2349,16 +2347,16 @@ test_create_prd_pipeline_preserves_original_and_updates_single_prd_body() {
 
   original_file="$WORKSPACES_DIR/$issue/original-issue.md"
   issue_body_file="$WORKSPACES_DIR/$issue/github-issue-body.md"
-  log_file="$WORKSPACES_DIR/$issue/logs/create-prd.log"
+  log_file="$WORKSPACES_DIR/$issue/logs/create-and-review-prd.log"
   status_value="$(jq -r '.steps[1].status' "$WORKSPACES_DIR/$issue/state.json")"
 
-  [[ "$status_value" == "completed" ]] || fail "expected create-prd to complete, got $status_value"
+  [[ "$status_value" == "completed" ]] || fail "expected create-and-review-prd to complete, got $status_value"
   [[ -f "$original_file" ]] || fail "expected original issue body to be preserved"
   [[ -f "$issue_body_file" ]] || fail "expected issue body fixture to be updated"
   assert_contains "$(<"$original_file")" "Original grilled issue body"
   assert_contains "$(<"$issue_body_file")" "## Decision Summary"
   assert_contains "$(<"$issue_body_file")" "## Problem Statement"
-  assert_contains "$(tr '\n' ' ' < "$log_file")" "create-prd preserved original"
+  assert_contains "$(tr '\n' ' ' < "$log_file")" "create-and-review-prd preserved original"
 
   jq '.steps[1].status = "pending"' "$WORKSPACES_DIR/$issue/state.json" > "$WORKSPACES_DIR/$issue/state.json.tmp"
   mv "$WORKSPACES_DIR/$issue/state.json.tmp" "$WORKSPACES_DIR/$issue/state.json"
@@ -2403,9 +2401,9 @@ test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently() {
           notes: ""
         },
         {
-          id: "create-prd",
+          id: "create-and-review-prd",
           phase: "fixed",
-          type: "create-prd",
+          type: "create-and-review-prd",
           agent: "claude",
           reviewer: "codex",
           hitl: false,
@@ -2414,9 +2412,9 @@ test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently() {
           notes: ""
         },
         {
-          id: "create-slices",
+          id: "create-and-review-slices",
           phase: "fixed",
-          type: "create-slices",
+          type: "create-and-review-slices",
           agent: "claude",
           reviewer: "codex",
           hitl: false,
@@ -2431,15 +2429,15 @@ test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently() {
 
   slices_file="$WORKSPACES_DIR/$issue/slices.md"
   sub_issues_file="$WORKSPACES_DIR/$issue/github-sub-issues.md"
-  log_file="$WORKSPACES_DIR/$issue/logs/create-slices.log"
+  log_file="$WORKSPACES_DIR/$issue/logs/create-and-review-slices.log"
   status_value="$(jq -r '.steps[2].status' "$WORKSPACES_DIR/$issue/state.json")"
 
-  [[ "$status_value" == "completed" ]] || fail "expected create-slices to complete, got $status_value"
+  [[ "$status_value" == "completed" ]] || fail "expected create-and-review-slices to complete, got $status_value"
   [[ -f "$slices_file" ]] || fail "expected final slices file"
   [[ -f "$sub_issues_file" ]] || fail "expected sub-issue fixture file"
   assert_contains "$(<"$sub_issues_file")" "AFK: true"
   assert_contains "$(<"$sub_issues_file")" "addSubIssue"
-  assert_contains "$(tr '\n' ' ' < "$log_file")" "create-slices created AFK sub-issues"
+  assert_contains "$(tr '\n' ' ' < "$log_file")" "create-and-review-slices created AFK sub-issues"
 
   jq '.steps[2].status = "pending"' "$WORKSPACES_DIR/$issue/state.json" > "$WORKSPACES_DIR/$issue/state.json.tmp"
   mv "$WORKSPACES_DIR/$issue/state.json.tmp" "$WORKSPACES_DIR/$issue/state.json"

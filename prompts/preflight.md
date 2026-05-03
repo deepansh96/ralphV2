@@ -50,7 +50,7 @@ Create the feature branch from `baseBranch`.
 
 ## Dynamic Steps
 
-Read the implementation sub-issues created by the `create-slices` step and append one implementation step per sub-issue, followed by final review, PR review, and review-fixes.
+Read the implementation sub-issues created by the `create-and-review-slices` step and append one implementation step per sub-issue, followed by final review, PR review, and review-fixes.
 
 Each implementation step must use this shape:
 

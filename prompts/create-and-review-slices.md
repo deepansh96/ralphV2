@@ -1,4 +1,4 @@
-# Create Slices
+# Create and Review Slices
 
 Create or refresh implementation sub-issues for GitHub issue `{{ISSUE}}` in repo `{{REPO}}`.
 
@@ -42,7 +42,15 @@ Round 1:
 ```bash
 ./ralph-v2/scripts/council-review.sh --only {{REVIEWER}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
 
-Review the draft vertical slices for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on horizontal slicing, missing acceptance criteria, dependency problems, test gaps, and conflicts with CONTEXT.md, CLAUDE.md, or ADRs."
+Review the draft vertical slices for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on:
+1. HORIZONTAL SLICING — Are any slices horizontal (single layer) rather than vertical (end-to-end demoable)?
+2. MISSING WORK — Is there work that no slice covers?
+3. DEPENDENCY PROBLEMS — Wrong dependency relationships or implicit ordering constraints.
+4. AGENT COMPLETABILITY — Could anything block an agent from completing a slice independently in AFK mode?
+5. MERGE CONFLICT RISK — Do multiple slices touch the same files? Are write boundaries between parallel slices clear?
+6. TEST GAPS — Missing acceptance criteria or test guidance.
+7. CONFLICTS — Contradictions with CONTEXT.md, CLAUDE.md, or existing ADRs.
+For each issue found, state severity (critical/major/minor) and a concrete recommendation."
 ```
 
 Incorporate the Round 1 feedback into the slice list. Keep major feedback that changes slice boundaries, sequencing, correctness, or testing. Drop nitpicks and style-only comments.
@@ -52,7 +60,7 @@ Round 2:
 ```bash
 ./ralph-v2/scripts/council-review.sh --only {{REVIEWER}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
 
-Review the revised vertical slices for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on remaining blockers, duplicate or overlapping slices, missing AFK criteria, unresolved dependencies, and contradictions introduced while incorporating Round 1 feedback."
+Review the revised vertical slices for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on remaining blockers, duplicate or overlapping slices, missing AFK criteria, unresolved dependencies, merge conflict risk between parallel slices, and contradictions introduced while incorporating Round 1 feedback."
 ```
 
 Incorporate the Round 2 feedback into the final slice list using the same filtering rules. Do not run additional review rounds.

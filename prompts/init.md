@@ -46,9 +46,9 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "notes": ""
     },
     {
-      "id": "create-prd",
+      "id": "create-and-review-prd",
       "phase": "fixed",
-      "type": "create-prd",
+      "type": "create-and-review-prd",
       "status": "pending",
       "agent": "claude",
       "reviewer": "codex",
@@ -57,9 +57,9 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "notes": ""
     },
     {
-      "id": "create-slices",
+      "id": "create-and-review-slices",
       "phase": "fixed",
-      "type": "create-slices",
+      "type": "create-and-review-slices",
       "status": "pending",
       "agent": "claude",
       "reviewer": "codex",

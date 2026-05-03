@@ -1,4 +1,4 @@
-# Create PRD
+# Create and Review PRD
 
 Create or refresh the PRD for GitHub issue `{{ISSUE}}` in repo `{{REPO}}`.
 
@@ -75,7 +75,15 @@ Round 1:
 ```bash
 ./ralph-v2/scripts/council-review.sh --only {{REVIEWER}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
 
-Review the draft PRD for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on missing requirements, unclear decisions, architecture risks, testing gaps, and conflicts with CONTEXT.md, CLAUDE.md, or ADRs."
+Review the draft PRD for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on:
+1. MISSING REQUIREMENTS — Are any decisions or modules missing?
+2. UNCLEAR DECISIONS — Are decisions specific enough to implement without guessing?
+3. ARCHITECTURE RISKS — Module boundary cleanliness, coupling between modules, scaling or security concerns.
+4. EDGE CASES — Race conditions, error paths, or boundary conditions not addressed.
+5. INTERFACE DESIGN — Are public interfaces well-defined? Would you restructure any module boundaries?
+6. TESTING GAPS — Is the test plan sufficient? Are edge cases covered?
+7. CONFLICTS — Contradictions with CONTEXT.md, CLAUDE.md, or existing ADRs.
+For each issue found, state severity (critical/major/minor) and a concrete recommendation."
 ```
 
 Incorporate the Round 1 feedback into the PRD. Keep major feedback that changes scope, architecture, correctness, sequencing, or testing. Drop nitpicks and style-only comments.
@@ -85,7 +93,7 @@ Round 2:
 ```bash
 ./ralph-v2/scripts/council-review.sh --only {{REVIEWER}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
 
-Review the revised PRD for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on remaining blockers, unresolved ambiguities, acceptance-risk gaps, and contradictions introduced while incorporating Round 1 feedback."
+Review the revised PRD for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on remaining blockers, unresolved ambiguities, acceptance-risk gaps, interface design quality, and contradictions introduced while incorporating Round 1 feedback. Would you restructure anything that remains?"
 ```
 
 Incorporate the Round 2 feedback into the final PRD using the same filtering rules. Do not run additional review rounds.
