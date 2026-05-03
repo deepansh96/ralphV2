@@ -56,6 +56,11 @@ Draft the PRD following the `to-prd` skill template. The final issue body must c
 ## Out of Scope
 
 ## Further Notes
+
+## Council Attribution
+
+Round 1 — Reviewed by: <agents> · Failed: <agents or "none">
+Round 2 — Reviewed by: <agents> · Failed: <agents or "none">
 ```
 
 Requirements:
@@ -87,6 +92,8 @@ For each issue found, state severity (critical/major/minor) and a concrete recom
 ```
 
 Before calling council, capture the working tree state with `git status --porcelain`. After council returns, run `git status --porcelain` again. If any files changed during the council run (new entries or different status compared to the before snapshot), revert only those files: `git checkout -- <file>` for modified tracked files, `rm <file>` for newly created untracked files.
+
+The council output includes an `=== COUNCIL ATTRIBUTION ===` block at the end listing which agents succeeded (`Reviewed by:`) and which failed (`Failed:`). Track attribution from each round for inclusion in the final PRD.
 
 Incorporate the Round 1 feedback into the PRD. Keep major feedback that changes scope, architecture, correctness, sequencing, or testing. Drop nitpicks and style-only comments.
 

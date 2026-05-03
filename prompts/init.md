@@ -19,7 +19,7 @@ Initialize a Ralph v2 workspace for GitHub issue `{{ISSUE}}` in repo `{{REPO}}`.
 - Running init on an already-initialized workspace must not overwrite existing state. If `ralph-v2/workspaces/{{ISSUE}}/state.json` already exists, stop with a clear warning or error.
 - Set both `"baseBranch": null` and `"branch": null`. Do not infer defaults.
 - Hardcode the agent defaults shown below. Do not use runtime agent detection.
-- After writing state, verify it with `jq` and confirm that `./ralph-v2/ralph.sh status --issue {{ISSUE}}` shows four pending steps.
+- After writing state, verify it with `jq` and confirm that `./ralph-v2/ralph.sh status --issue {{ISSUE}}` shows five pending steps.
 
 ## State Schema
 
@@ -35,7 +35,18 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
   "createdAt": "<ISO-8601 UTC timestamp>",
   "steps": [
     {
-      "id": "review-decisions",
+      "id": "review-decisions-1",
+      "phase": "fixed",
+      "type": "review-decisions",
+      "status": "pending",
+      "agent": "claude",
+      "reviewers": ["codex", "gemini", "kimi", "deepseek"],
+      "hitl": false,
+      "metrics": null,
+      "notes": ""
+    },
+    {
+      "id": "review-decisions-2",
       "phase": "fixed",
       "type": "review-decisions",
       "status": "pending",
@@ -90,6 +101,6 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
 4. Create `ralph-v2/workspaces/{{ISSUE}}/`.
 5. Write `state.json` using the schema above. Use a current UTC ISO-8601 timestamp for `createdAt`.
 6. Validate the file with `jq`.
-7. Run `./ralph-v2/ralph.sh status --issue {{ISSUE}}` and confirm it prints all four fixed steps with `pending` status.
+7. Run `./ralph-v2/ralph.sh status --issue {{ISSUE}}` and confirm it prints all five fixed steps with `pending` status.
 
 Do not run any pipeline step. This prompt only initializes the workspace state.

@@ -21,7 +21,7 @@ If this prompt includes a `## HITL Resume` section, use the human answers in tha
 
 On HITL resume:
 
-1. Read `{{WORKSPACE}}/review-decisions.md`.
+1. Read `{{WORKSPACE}}/{{STEP_ID}}.md`.
 2. Append the findings and human answers to the **issue body** (not as a comment) — see "Update the GitHub Issue Body" section below.
 3. Do not call `scripts/council-review.sh`.
 4. Do not repeat any council or review phase.
@@ -30,7 +30,7 @@ On HITL resume:
 
 ## Council Review
 
-For a first run, call the standalone wrapper:
+Call the standalone wrapper:
 
 ```bash
 ./ralph-v2/scripts/council-review.sh --only {{REVIEWERS}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
@@ -46,6 +46,8 @@ For each issue found, state the severity (critical / major / minor), the specifi
 ```
 
 Before calling council, capture the working tree state with `git status --porcelain`. After council returns, run `git status --porcelain` again. If any files changed during the council run (new entries or different status compared to the before snapshot), revert only those files: `git checkout -- <file>` for modified tracked files, `rm <file>` for newly created untracked files.
+
+The council output includes an `=== COUNCIL ATTRIBUTION ===` block at the end listing which agents succeeded (`Reviewed by:`) and which failed (`Failed:`). Preserve this attribution for use in the output file and the GitHub issue body.
 
 Use the council feedback as an independent review of the issue's decisions.
 
@@ -66,12 +68,12 @@ Drop:
 
 ## Output File
 
-Write findings to `{{WORKSPACE}}/review-decisions.md`. For every point (kept or dropped), include the council's original point, your analysis, and your recommendation.
+Write findings to `{{WORKSPACE}}/{{STEP_ID}}.md`. For every point (kept or dropped), include the council's original point, your analysis, and your recommendation.
 
 Structure:
 
 ```md
-# Review Decisions
+# Review Decisions — {{STEP_ID}}
 
 ## Major feedback
 
@@ -97,6 +99,11 @@ Structure:
 
 ### 2. ...
 
+## Council Attribution
+
+Reviewed by: <comma-separated list of agents that succeeded>
+Failed: <comma-separated list of agents that failed, or "none">
+
 ## Dropped feedback
 
 ### 1. <short title>
@@ -116,7 +123,7 @@ After writing the output file, append the review findings to the **issue body** 
    ```bash
    gh issue view {{ISSUE}} --repo {{REPO}} --json body -q .body > /tmp/issue-body-{{ISSUE}}.md
    ```
-2. Append a summary of the major findings and recommendations to the temp file.
+2. Append a summary of the major findings, recommendations, and council attribution to the temp file.
 3. Update the issue body:
    ```bash
    gh issue edit {{ISSUE}} --repo {{REPO}} --body-file /tmp/issue-body-{{ISSUE}}.md
@@ -124,7 +131,9 @@ After writing the output file, append the review findings to the **issue body** 
 
 ## Blocking Protocol
 
-If there are open questions requiring human judgment:
+Read the `hitl` field for step `{{STEP_ID}}` from `{{WORKSPACE}}/state.json`. Only apply the blocking protocol below if `hitl` is `true`. If `hitl` is `false`, complete normally regardless of open questions.
+
+If `hitl` is `true` and there are open questions requiring human judgment:
 
 1. Set this step status to `blocked` in `{{WORKSPACE}}/state.json`.
 2. Create `{{WORKSPACE}}/hitl-{{STEP_ID}}.md`.

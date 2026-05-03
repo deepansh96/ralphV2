@@ -131,6 +131,8 @@ Review the full change from the perspective of a senior engineer. Focus on real 
 
 Before calling council, capture the working tree state with `git status --porcelain`. After council returns, run `git status --porcelain` again. If any files changed during the council run (new entries or different status compared to the before snapshot), revert only those files: `git checkout -- <file>` for modified tracked files, `rm <file>` for newly created untracked files.
 
+The council output includes an `=== COUNCIL ATTRIBUTION ===` block at the end listing which agents succeeded (`Reviewed by:`) and which failed (`Failed:`). Preserve this attribution for inclusion in the combined review PR comment.
+
 Save the council output to `{{WORKSPACE}}/council-pr-review.md`.
 
 ## Automated Code Review
@@ -143,7 +145,7 @@ If the `code-review:code-review` plugin skill is unavailable or fails, stop and 
 
 ## Combined Review
 
-After both reviews complete, synthesize the council findings and the `code-review:code-review` findings into a single combined review. Filter the council findings using the same rules as other review steps: keep critical and major issues, drop nitpicks and style-only comments. Post the combined review as a PR comment using `gh pr comment`.
+After both reviews complete, synthesize the council findings and the `code-review:code-review` findings into a single combined review. Filter the council findings using the same rules as other review steps: keep critical and major issues, drop nitpicks and style-only comments. Include a council attribution line at the end of the comment (e.g., `Reviewed by: codex, gemini, kimi · Failed: deepseek` or `Reviewed by: codex, gemini, kimi, deepseek` if none failed). Post the combined review as a PR comment using `gh pr comment`.
 
 ## Output
 

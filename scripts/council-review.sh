@@ -79,9 +79,16 @@ while true; do
   sleep "$POLL_INTERVAL"
 done
 
-if jq -e '.members[]? | select(.status == "failed" or .status == "not_running")' <<<"$STATUS_JSON" >/dev/null; then
+SUCCEEDED="$(jq -r '[.members | to_entries[] | select(.value.status == "done") | .key] | join(",")' <<<"$STATUS_JSON")"
+FAILED="$(jq -r '[.members | to_entries[] | select(.value.status == "failed" or .value.status == "not_running") | .key] | join(",")' <<<"$STATUS_JSON")"
+
+if [[ -z "$SUCCEEDED" ]]; then
   council_cleanup_run "$RUN_ID"
-  die "council member failed for run $RUN_ID"
+  die "all council members failed for run $RUN_ID"
+fi
+
+if [[ -n "$FAILED" ]]; then
+  echo "Warning: council members failed: $FAILED" >&2
 fi
 
 READ_JSON="$(council read --run "$RUN_ID" --json)" || {
@@ -93,8 +100,14 @@ jq -r '
   .members
   | to_entries[]
   | select(.value.status == "done")
-  | .value.output
-  | select(. != null and . != "")
+  | select(.value.output != null and .value.output != "")
+  | "=== REVIEWER: \(.key) ===\n\(.value.output)"
 ' <<<"$READ_JSON"
+
+printf '\n=== COUNCIL ATTRIBUTION ===\n'
+printf 'Reviewed by: %s\n' "$SUCCEEDED"
+if [[ -n "$FAILED" ]]; then
+  printf 'Failed: %s\n' "$FAILED"
+fi
 
 council_cleanup_run "$RUN_ID"
