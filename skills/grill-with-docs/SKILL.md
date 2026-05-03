@@ -8,9 +8,15 @@ Interview me relentlessly about every aspect of this plan until we reach a share
 
 Ask the questions one at a time, waiting for feedback on each question before continuing.
 
+## User inputs
+
+Before starting the grilling, ask the user for an **issue number** (optional). If the user provides an existing issue number, read it with `gh issue view <number>` and use its content as the starting point for the grilling. If no issue number is provided, a new issue will be created at the end.
+
 ## Before starting
 
 Explore the codebase to understand the current state of the code and existing domain terminology. Read `CONTEXT.md` and relevant ADRs if they exist. This grounds the grilling in what's actually built, not just what the user says.
+
+If an existing issue was provided, read it and use it to inform your questions — challenge what's already written, identify gaps, and build on what's there rather than starting from scratch.
 
 Many grilling questions can be answered — or at least informed — by reading the code. Before asking the user a question, check whether the codebase already has the answer. If it does, present what you found as your recommendation. If the code is ambiguous, show both what the code suggests and what's unclear, then ask.
 
@@ -85,3 +91,28 @@ When a decision surfaces that meets all three criteria below, **ask the user bef
 3. **The result of a real trade-off** — there were genuine alternatives and you picked one for specific reasons
 
 If any of the three is missing, skip the ADR. If all three are true, ask: _"This feels like a decision worth recording as an ADR — want me to create one?"_ Use the format in [ADR-FORMAT.md](../domain/ADR-FORMAT.md).
+
+## Wrap-up
+
+Once all questions are resolved and the grilling is complete, synthesize the resolved decisions into a GitHub issue.
+
+The issue body must include:
+
+- A clear summary of the feature
+- Decisions made during grilling (with rationale)
+- Scope boundaries — what's in and what's explicitly out
+- Acceptance criteria
+
+**If an existing issue was provided**, update it:
+
+```bash
+gh issue edit <number> --title "<title>" --body-file <temp-file>
+```
+
+**If no existing issue was provided**, create a new one:
+
+```bash
+gh issue create --title "<title>" --body-file <temp-file>
+```
+
+Print the issue number and URL at the end — the user needs it to run `init`.
