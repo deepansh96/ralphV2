@@ -92,7 +92,7 @@ Append the final steps after all implementation steps:
   "type": "pr-review",
   "status": "pending",
   "agent": "claude",
-  "reviewers": ["codex", "gemini", "kimi", "deepseek"],
+  "reviewers": ["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"],
   "hitl": false,
   "metrics": null,
   "notes": ""

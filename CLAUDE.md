@@ -69,7 +69,7 @@ Archive the workspace after the PR is merged.
 
 - All commands run from the **project root**, not from inside `ralph-v2/`.
 - `state.json` is the single source of truth. Agents read it, update it, and ralph.sh dispatches based on it.
-- Review steps use a `reviewers` array (e.g. `["codex", "gemini", "kimi", "deepseek"]`). Edit it per-step to add/remove council agents.
+- Review steps use a `reviewers` array (e.g. `["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"]`). Edit it per-step to add/remove council agents.
 - Non-review steps have `"reviewers": []`.
 - Implementation steps run on `codex`. Review and planning steps run on `claude`.
 - `CONTEXT.md`, `CLAUDE.md`, and `docs/adr/` are read from the project root — not from inside `ralph-v2/`.

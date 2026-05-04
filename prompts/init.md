@@ -40,7 +40,7 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "type": "review-decisions",
       "status": "pending",
       "agent": "claude",
-      "reviewers": ["codex", "gemini", "kimi", "deepseek"],
+      "reviewers": ["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"],
       "hitl": false,
       "metrics": null,
       "notes": ""
@@ -51,7 +51,7 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "type": "review-decisions",
       "status": "pending",
       "agent": "claude",
-      "reviewers": ["codex", "gemini", "kimi", "deepseek"],
+      "reviewers": ["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"],
       "hitl": true,
       "metrics": null,
       "notes": ""
@@ -62,7 +62,7 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "type": "create-and-review-prd",
       "status": "pending",
       "agent": "claude",
-      "reviewers": ["codex", "gemini", "kimi", "deepseek"],
+      "reviewers": ["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"],
       "hitl": false,
       "metrics": null,
       "notes": ""
@@ -73,7 +73,7 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "type": "create-and-review-slices",
       "status": "pending",
       "agent": "claude",
-      "reviewers": ["codex", "gemini", "kimi", "deepseek"],
+      "reviewers": ["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"],
       "hitl": false,
       "metrics": null,
       "notes": ""
