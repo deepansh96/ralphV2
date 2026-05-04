@@ -28,13 +28,13 @@ run_codex() {
   project_root="$(git -C "$SCRIPT_DIR/.." rev-parse --show-toplevel)"
   last_message_file="$(mktemp)"
   start_ms="$(current_time_ms)"
-  printf '%s' "$prompt" | codex -a never exec \
+  printf '%s' "$prompt" | (cd "$project_root" && codex -a never exec \
     --skip-git-repo-check \
     --sandbox danger-full-access \
     -C "$project_root" \
     --json \
     --output-last-message "$last_message_file" \
-    - > "$log_file"
+    -) > "$log_file"
   status=$?
   end_ms="$(current_time_ms)"
   duration_ms=$((end_ms - start_ms))
