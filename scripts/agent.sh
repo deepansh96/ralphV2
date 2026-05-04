@@ -23,13 +23,15 @@ run_claude() {
 run_codex() {
   local prompt="$1"
   local log_file="$2"
-  local last_message_file start_ms end_ms duration_ms status
+  local last_message_file start_ms end_ms duration_ms status project_root
 
+  project_root="$(git -C "$SCRIPT_DIR/.." rev-parse --show-toplevel)"
   last_message_file="$(mktemp)"
   start_ms="$(current_time_ms)"
   printf '%s' "$prompt" | codex -a never exec \
     --skip-git-repo-check \
     --sandbox danger-full-access \
+    -C "$project_root" \
     --json \
     --output-last-message "$last_message_file" \
     - > "$log_file"
