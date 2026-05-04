@@ -68,6 +68,7 @@ Archive the workspace after the PR is merged.
 ## Key rules
 
 - All commands run from the **project root**, not from inside `ralph-v2/`.
+- **Never pipe ralph commands through `head`, `tail`, or similar** — ralph spawns long-running subprocesses that produce output slowly. Piping causes buffering deadlocks. Run ralph commands directly or in background mode.
 - `state.json` is the single source of truth. Agents read it, update it, and ralph.sh dispatches based on it.
 - Review steps use a `reviewers` array (e.g. `["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"]`). Edit it per-step to add/remove council agents.
 - Non-review steps have `"reviewers": []`.
