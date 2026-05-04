@@ -145,7 +145,9 @@ If the `code-review:code-review` plugin skill is unavailable or fails, stop and 
 
 ## Combined Review
 
-After both reviews complete, synthesize the council findings and the `code-review:code-review` findings into a single combined review. Filter the council findings using the same rules as other review steps: keep critical and major issues, drop nitpicks and style-only comments. Include a council attribution line at the end of the comment (e.g., `Reviewed by: codex, gemini, kimi · Failed: deepseek` or `Reviewed by: codex, gemini, kimi, deepseek` if none failed). Post the combined review as a PR comment using `gh pr comment`.
+Before synthesizing, verify each council finding against the actual code. For each point: read the relevant files and diffs the council references. State whether the point is valid, partially valid, or invalid, citing what you found. If invalid, drop it with evidence. Do not accept or reject council feedback based on reasoning alone.
+
+After verification, synthesize the verified council findings and the `code-review:code-review` findings into a single combined review. Filter the council findings using the same rules as other review steps: keep critical and major issues, drop nitpicks, style-only comments, and points invalidated by codebase verification. Include a council attribution line at the end of the comment (e.g., `Reviewed by: codex, gemini, kimi · Failed: deepseek` or `Reviewed by: codex, gemini, kimi, deepseek` if none failed). Post the combined review as a PR comment using `gh pr comment`.
 
 ## Output
 

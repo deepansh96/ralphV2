@@ -95,7 +95,9 @@ Before calling council, capture the working tree state with `git status --porcel
 
 The council output includes an `=== COUNCIL ATTRIBUTION ===` block at the end listing which agents succeeded (`Reviewed by:`) and which failed (`Failed:`). Track attribution from each round for inclusion in the final PRD.
 
-Incorporate the Round 1 feedback into the PRD. Keep major feedback that changes scope, architecture, correctness, sequencing, or testing. Drop nitpicks and style-only comments.
+Before incorporating feedback, verify each council point against the codebase. For each point: read the relevant files, modules, or docs the council references. State whether the point is valid, partially valid, or invalid, citing what you found. If valid, determine the concrete PRD change needed. If invalid, drop it with evidence. Do not accept or reject council feedback based on reasoning alone.
+
+Incorporate verified Round 1 feedback into the PRD. Keep major feedback that changes scope, architecture, correctness, sequencing, or testing. Drop nitpicks, style-only comments, and points invalidated by codebase verification.
 
 Round 2:
 
@@ -107,7 +109,7 @@ Review the revised PRD for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on rem
 
 Before calling council, capture the working tree state with `git status --porcelain`. After council returns, run `git status --porcelain` again. If any files changed during the council run (new entries or different status compared to the before snapshot), revert only those files: `git checkout -- <file>` for modified tracked files, `rm <file>` for newly created untracked files.
 
-Incorporate the Round 2 feedback into the final PRD using the same filtering rules. Do not run additional review rounds.
+Verify Round 2 feedback against the codebase using the same process. Incorporate verified feedback into the final PRD using the same filtering rules. Do not run additional review rounds.
 
 ## Compacting
 

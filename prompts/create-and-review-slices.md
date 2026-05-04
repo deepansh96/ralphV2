@@ -57,7 +57,9 @@ Before calling council, capture the working tree state with `git status --porcel
 
 The council output includes an `=== COUNCIL ATTRIBUTION ===` block at the end listing which agents succeeded (`Reviewed by:`) and which failed (`Failed:`). Track attribution from each round for inclusion in the output file and sub-issue bodies.
 
-Incorporate the Round 1 feedback into the slice list. Keep major feedback that changes slice boundaries, sequencing, correctness, or testing. Drop nitpicks and style-only comments.
+Before incorporating feedback, verify each council point against the codebase. For each point: read the relevant files, modules, or docs the council references. State whether the point is valid, partially valid, or invalid, citing what you found. If valid, determine the concrete slice change needed. If invalid, drop it with evidence. Do not accept or reject council feedback based on reasoning alone.
+
+Incorporate verified Round 1 feedback into the slice list. Keep major feedback that changes slice boundaries, sequencing, correctness, or testing. Drop nitpicks, style-only comments, and points invalidated by codebase verification.
 
 Round 2:
 
@@ -69,7 +71,7 @@ Review the revised vertical slices for GitHub issue {{ISSUE}} in repo {{REPO}}. 
 
 Before calling council, capture the working tree state with `git status --porcelain`. After council returns, run `git status --porcelain` again. If any files changed during the council run (new entries or different status compared to the before snapshot), revert only those files: `git checkout -- <file>` for modified tracked files, `rm <file>` for newly created untracked files.
 
-Incorporate the Round 2 feedback into the final slice list using the same filtering rules. Do not run additional review rounds.
+Verify Round 2 feedback against the codebase using the same process. Incorporate verified feedback into the final slice list using the same filtering rules. Do not run additional review rounds.
 
 ## GitHub Sub-Issue Creation
 

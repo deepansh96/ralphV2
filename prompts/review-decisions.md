@@ -49,7 +49,15 @@ Before calling council, capture the working tree state with `git status --porcel
 
 The council output includes an `=== COUNCIL ATTRIBUTION ===` block at the end listing which agents succeeded (`Reviewed by:`) and which failed (`Failed:`). Preserve this attribution for use in the output file and the GitHub issue body.
 
-Use the council feedback as an independent review of the issue's decisions.
+## Codebase Verification
+
+For each point raised by the council, verify it against the codebase before accepting or rejecting it:
+
+1. **Read the relevant files** — if the council claims a conflict, missing edge case, or architectural risk, open the actual code, config, `CONTEXT.md`, `CLAUDE.md`, or ADRs it references.
+2. **Verdict** — state whether the point is **valid**, **partially valid**, or **invalid**, citing what you found in the codebase as evidence.
+3. **Concrete change** — if valid, specify exactly what should change: which decision in the issue should be updated, what wording should be added or removed, or what constraint should be documented. If invalid, explain why with evidence from the code.
+
+Do not accept or reject council feedback based on reasoning alone. Every verdict must reference something you actually read in the codebase or project docs.
 
 ## Filtering
 
@@ -81,9 +89,13 @@ Structure:
 
 **Council:** <what the council said>
 
-**Analysis:** <your take — why this matters, how it affects implementation, whether you agree/disagree and why>
+**Verified against:** <file(s) or doc(s) you read to check this>
 
-**Recommendation:** <concrete action — what should change, or why no change is needed>
+**Verdict:** Valid | Partially valid | Invalid
+
+**Analysis:** <what you found in the codebase — why this matters or why the council is wrong>
+
+**Recommended change:** <exact change to the issue decisions, or why no change is needed>
 
 ### 2. ...
 
@@ -92,6 +104,8 @@ Structure:
 ### 1. <short title>
 
 **Council:** <what the council raised>
+
+**Verified against:** <file(s) or doc(s) you checked>
 
 **Analysis:** <why this can't be resolved from the codebase alone>
 
