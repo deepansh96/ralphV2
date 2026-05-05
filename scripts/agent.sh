@@ -7,6 +7,7 @@ current_time_ms() {
 run_claude() {
   local prompt="$1"
   local log_file="$2"
+  local project_root="${3:-}"  # accepted for forward-compatibility, currently unused
   local start_ms end_ms duration_ms status
 
   start_ms="$(current_time_ms)"
@@ -23,9 +24,12 @@ run_claude() {
 run_codex() {
   local prompt="$1"
   local log_file="$2"
-  local last_message_file start_ms end_ms duration_ms status project_root
+  local project_root="${3:-}"
+  local last_message_file start_ms end_ms duration_ms status
 
-  project_root="$(git -C "$SCRIPT_DIR/.." rev-parse --show-toplevel)"
+  if [[ -z "$project_root" ]]; then
+    project_root="$(git -C "$SCRIPT_DIR/.." rev-parse --show-toplevel)"
+  fi
   last_message_file="$(mktemp)"
   start_ms="$(current_time_ms)"
   printf '%s' "$prompt" | (cd "$project_root" && codex -a never exec \
@@ -49,15 +53,16 @@ agent_run_step() {
   local step_json="$1"
   local prompt="$2"
   local log_file="$3"
+  local project_root="${4:-}"
   local agent
 
   agent="$(jq -r '.agent // empty' <<<"$step_json")"
   case "$agent" in
     claude)
-      run_claude "$prompt" "$log_file"
+      run_claude "$prompt" "$log_file" "$project_root"
       ;;
     codex)
-      run_codex "$prompt" "$log_file"
+      run_codex "$prompt" "$log_file" "$project_root"
       ;;
     *)
       echo "Error: unsupported agent '$agent'" >&2

@@ -115,6 +115,8 @@ run_pipeline() {
   local step step_id step_type log_file template_file prompt metrics_json agent_status metrics_file current_status
   local is_hitl_resume flag_file answers
   local steps_run=0
+  local project_root
+  project_root="$(jq -r '.projectRoot // empty' "$state_file")"
 
   mkdir -p "$workspace/logs"
 
@@ -157,7 +159,7 @@ run_pipeline() {
     trap handle_sigint INT
 
     set +e
-    agent_run_step "$step" "$prompt" "$log_file" > "$metrics_file"
+    agent_run_step "$step" "$prompt" "$log_file" "$project_root" > "$metrics_file"
     agent_status=$?
     set -e
 

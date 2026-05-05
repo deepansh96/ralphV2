@@ -10,7 +10,7 @@ ARCHIVE_DIR="$ROOT_DIR/archive"
 CONTEXT_FILE="$PROJECT_ROOT/CONTEXT.md"
 INITIAL_CONTEXT_BACKUP="$(mktemp)"
 INITIAL_CONTEXT_PRESENT="false"
-TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024)
+TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025)
 
 if [[ -f "$CONTEXT_FILE" ]]; then
   cp "$CONTEXT_FILE" "$INITIAL_CONTEXT_BACKUP"
@@ -1702,6 +1702,8 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   assert_contains "$prompt" "create-and-review-slices"
   assert_contains "$prompt" "preflight"
   assert_contains "$prompt" "ralph.sh status --issue {{ISSUE}}"
+  assert_contains "$prompt" '"projectRoot"'
+  assert_contains "$prompt" "git rev-parse --show-toplevel"
 }
 
 test_initialized_workspace_status_shows_four_pending_fixed_steps() {
@@ -1808,7 +1810,7 @@ test_council_review_handles_member_failure_and_cleans_up() {
   calls="$(<"$fake_bin/council-calls")"
 
   [[ "$status" -ne 0 ]] || fail "expected failed council member to fail"
-  assert_contains "$output" "council member failed"
+  assert_contains "$output" "all council members failed"
   assert_contains "$calls" "cleanup"
 }
 
@@ -1845,7 +1847,7 @@ test_review_decisions_prompt_defines_council_filtering_and_hitl_contract() {
   assert_contains "$prompt" "scripts/council-review.sh"
   assert_contains "$prompt" "Major feedback"
   assert_contains "$prompt" "nitpick"
-  assert_contains "$prompt" "review-decisions.md"
+  assert_contains "$prompt" "{{STEP_ID}}.md"
   assert_contains "$prompt" "hitl-{{STEP_ID}}.md"
   assert_contains "$prompt" "complete WITHOUT re-running council review"
 }
@@ -2607,6 +2609,70 @@ test_final_and_pr_review_pipeline_completes_with_idempotent_pr() {
   assert_contains "$(<"$pr_review_file")" "Action: updated"
 }
 
+test_codex_step_uses_project_root_from_state_json() {
+  local issue fake_bin status_value log_file cwd_file
+
+  issue="9025"
+  write_valid_context
+  fake_bin="$WORKSPACES_DIR/fake-bin"
+  rm -rf "${WORKSPACES_DIR:?}/$issue" "$fake_bin"
+
+  mkdir -p "$fake_bin"
+  cwd_file="$fake_bin/codex-cwd"
+  cat > "$fake_bin/codex" <<FAKE_CODEX
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "\$(pwd)" > "$cwd_file"
+while [[ \$# -gt 0 ]]; do shift; done
+cat >/dev/null
+printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
+FAKE_CODEX
+  chmod +x "$fake_bin/codex"
+
+  cat > "$fake_bin/claude" <<'FAKE_CLAUDE'
+#!/usr/bin/env bash
+jq -n '{
+  result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
+  duration_ms: 100,
+  usage: { input_tokens: 1, output_tokens: 1 },
+  total_cost_usd: 0.01
+}'
+FAKE_CLAUDE
+  chmod +x "$fake_bin/claude"
+
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  jq -n \
+    --arg issue "$issue" \
+    --arg project_root "$PROJECT_ROOT" \
+    '{
+      issue: ($issue | tonumber),
+      repo: "deepansh96/ralph",
+      baseBranch: "main",
+      branch: "feat/issue-9025-fixture",
+      projectRoot: $project_root,
+      steps: [
+        {
+          id: "codex-step",
+          type: "test-fixture",
+          agent: "codex",
+          status: "pending",
+          metrics: {},
+          notes: ""
+        }
+      ]
+    }' > "$WORKSPACES_DIR/$issue/state.json"
+
+  PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" >/dev/null
+
+  status_value="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
+  [[ "$status_value" == "completed" ]] || fail "expected codex step to complete, got $status_value"
+  [[ -f "$cwd_file" ]] || fail "expected codex cwd file to exist"
+
+  local actual_cwd
+  actual_cwd="$(<"$cwd_file")"
+  [[ "$actual_cwd" == "$PROJECT_ROOT" ]] || fail "expected codex to run in $PROJECT_ROOT, got $actual_cwd"
+}
+
 test_issue_must_be_positive_integer
 test_cleanup_archives_workspace_by_issue_number
 test_cleanup_errors_when_workspace_is_missing
@@ -2646,5 +2712,6 @@ test_create_prd_pipeline_preserves_original_and_updates_single_prd_body
 test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently
 test_implement_slice_pipeline_runs_codex_with_sub_issue_context
 test_final_and_pr_review_pipeline_completes_with_idempotent_pr
+test_codex_step_uses_project_root_from_state_json
 
 echo "All ralph-v2 tests passed"

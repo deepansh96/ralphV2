@@ -18,6 +18,7 @@ Initialize a Ralph v2 workspace for GitHub issue `{{ISSUE}}` in repo `{{REPO}}`.
 - Write exactly one state file at `ralph-v2/workspaces/{{ISSUE}}/state.json`.
 - Running init on an already-initialized workspace must not overwrite existing state. If `ralph-v2/workspaces/{{ISSUE}}/state.json` already exists, stop with a clear warning or error.
 - Set both `"baseBranch": null` and `"branch": null`. Do not infer defaults.
+- Capture `"projectRoot"` by running `git rev-parse --show-toplevel` from the project root (not from inside `ralph-v2/`). Store the absolute path.
 - Hardcode the agent defaults shown below. Do not use runtime agent detection.
 - After writing state, verify it with `jq` and confirm that `./ralph-v2/ralph.sh status --issue {{ISSUE}}` shows five pending steps.
 
@@ -31,6 +32,7 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
   "repo": "{{REPO}}",
   "baseBranch": null,
   "branch": null,
+  "projectRoot": "<absolute path from git rev-parse --show-toplevel>",
   "status": "initialized",
   "createdAt": "<ISO-8601 UTC timestamp>",
   "steps": [
