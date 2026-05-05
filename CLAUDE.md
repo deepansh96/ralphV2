@@ -65,6 +65,12 @@ Archive the workspace after the PR is merged.
 ./ralph-v2/ralph.sh logs --issue N --step X    # read a specific step's log
 ```
 
+To monitor a running pipeline, poll with sleep intervals rather than continuously:
+
+```bash
+sleep 120 && ./ralph-v2/ralph.sh status --issue N 2>&1
+```
+
 ## Key rules
 
 - All commands run from the **project root**, not from inside `ralph-v2/`.

@@ -32,6 +32,7 @@ _format_duration_ms() {
 
 status_print() {
   local state_file="$1"
+  local workspace="${2:-}"
   local now_epoch
 
   now_epoch="$(date +%s)"
@@ -70,4 +71,24 @@ status_print() {
 
     printf "%-4s %-24s %-18s %-10s %-12s %-10s\n" "$number" "$id" "$type" "$agent" "$status" "$display_duration"
   done
+
+  if [[ -n "$workspace" ]]; then
+    local ip_step ip_id ip_agent ip_started_at elapsed_str log_file snippet
+    ip_step="$(jq -r '.steps[] | select(.status == "in_progress") | @json' "$state_file" 2>/dev/null | head -1)"
+    if [[ -n "$ip_step" ]]; then
+      ip_id="$(jq -r '.id' <<<"$ip_step")"
+      ip_agent="$(jq -r '.agent // "-"' <<<"$ip_step")"
+      ip_started_at="$(jq -r '.started_at // "-"' <<<"$ip_step")"
+
+      if [[ "$ip_started_at" != "-" && "$ip_started_at" != "null" && -n "$ip_started_at" ]]; then
+        elapsed_str="$(_format_duration_seconds $(( now_epoch - ip_started_at )))"
+      else
+        elapsed_str="-"
+      fi
+
+      log_file="$workspace/logs/$ip_id.log"
+      printf '\n--- Current activity (%s · %s · %s) ---\n' "$ip_id" "$ip_agent" "$elapsed_str"
+      parse_log "$log_file" "$ip_agent" 10
+    fi
+  fi
 }

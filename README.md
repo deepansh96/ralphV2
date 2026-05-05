@@ -19,6 +19,14 @@ Run commands from the repository root:
 - `ralph.sh logs --issue N` tails the active step log. Use `--step <step-id>` to read a specific step.
 - `cleanup.sh <issue-number>` archives `workspaces/<issue-number>/` into `archive/<date>-<issue-number>/`.
 
+## Monitoring
+
+To monitor a running pipeline, poll with sleep intervals rather than continuously:
+
+```bash
+sleep 120 && ./ralph-v2/ralph.sh status --issue N 2>&1
+```
+
 ## Workflow
 
 1. Grill the feature into a GitHub issue using the project context and decision workflow.

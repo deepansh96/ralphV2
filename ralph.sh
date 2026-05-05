@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=ralph-v2/scripts/state.sh
 source "$SCRIPT_DIR/scripts/state.sh"
+# shellcheck source=ralph-v2/scripts/parse-log.sh
+source "$SCRIPT_DIR/scripts/parse-log.sh"
 # shellcheck source=ralph-v2/scripts/status.sh
 source "$SCRIPT_DIR/scripts/status.sh"
 # shellcheck source=ralph-v2/scripts/logs.sh
@@ -255,7 +257,7 @@ case "$COMMAND" in
     STATE_FILE="$SCRIPT_DIR/workspaces/$ISSUE/state.json"
     state_validate "$STATE_FILE"
     if [[ "$COMMAND" == "status" ]]; then
-      status_print "$STATE_FILE"
+      status_print "$STATE_FILE" "$SCRIPT_DIR/workspaces/$ISSUE"
     else
       logs_tail "$STATE_FILE" "$SCRIPT_DIR/workspaces/$ISSUE" "$STEP_ID"
     fi

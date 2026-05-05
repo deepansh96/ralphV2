@@ -10,7 +10,7 @@ ARCHIVE_DIR="$ROOT_DIR/archive"
 CONTEXT_FILE="$PROJECT_ROOT/CONTEXT.md"
 INITIAL_CONTEXT_BACKUP="$(mktemp)"
 INITIAL_CONTEXT_PRESENT="false"
-TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028)
+TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033)
 
 if [[ -f "$CONTEXT_FILE" ]]; then
   cp "$CONTEXT_FILE" "$INITIAL_CONTEXT_BACKUP"
@@ -2837,6 +2837,134 @@ test_status_shows_elapsed_time_for_in_progress_step() {
   assert_contains "$pending_line" "-"
 }
 
+test_parse_log_claude_extracts_text_and_tool_use() {
+  local log_file output
+
+  log_file="$(mktemp)"
+  cat > "$log_file" <<'JSONL'
+{"type":"system","subtype":"init","session_id":"fake"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Reading the file now to understand the structure."}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/foo.sh"}}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"The file looks correct. I will make the changes."}]}}
+{"type":"result","subtype":"success","result":"done"}
+JSONL
+
+  source "$ROOT_DIR/scripts/parse-log.sh"
+  output="$(parse_log "$log_file" "claude" 10)"
+  rm -f "$log_file"
+
+  assert_contains "$output" "[text] Reading the file now"
+  assert_contains "$output" "[tool] Read: file_path=/tmp/foo.sh"
+  assert_contains "$output" "[text] The file looks correct"
+  [[ "$output" != *"system"* ]] || fail "expected system events to be filtered out"
+  [[ "$output" != *"result"* ]] || fail "expected result events to be filtered out"
+}
+
+test_parse_log_codex_extracts_messages_and_commands() {
+  local log_file output
+
+  log_file="$(mktemp)"
+  cat > "$log_file" <<'JSONL'
+{"type":"turn.started"}
+{"type":"item.started","item":{"type":"command_execution"}}
+{"type":"item.completed","item":{"type":"command_execution","command":"npm test"}}
+{"type":"item.completed","item":{"type":"agent_message","text":"All tests pass. Committing now."}}
+{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}
+JSONL
+
+  source "$ROOT_DIR/scripts/parse-log.sh"
+  output="$(parse_log "$log_file" "codex" 10)"
+  rm -f "$log_file"
+
+  assert_contains "$output" "[cmd] npm test"
+  assert_contains "$output" "[text] All tests pass. Committing now."
+  [[ "$output" != *"turn.started"* ]] || fail "expected turn.started to be filtered out"
+  [[ "$output" != *"turn.completed"* ]] || fail "expected turn.completed to be filtered out"
+  [[ "$output" != *"item.started"* ]] || fail "expected item.started to be filtered out"
+}
+
+test_parse_log_empty_file_shows_starting() {
+  local log_file output
+
+  log_file="$(mktemp)"
+  : > "$log_file"
+
+  source "$ROOT_DIR/scripts/parse-log.sh"
+  output="$(parse_log "$log_file" "claude" 10)"
+  rm -f "$log_file"
+
+  assert_contains "$output" "Starting..."
+
+  output="$(parse_log "/nonexistent/file/does/not/exist" "claude" 10)"
+  assert_contains "$output" "Starting..."
+}
+
+test_parse_log_partial_write_skips_truncated_lines() {
+  local log_file output
+
+  log_file="$(mktemp)"
+  cat > "$log_file" <<'JSONL'
+{"type":"assistant","message":{"content":[{"type":"text","text":"Valid line before truncation."}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Trun
+JSONL
+
+  source "$ROOT_DIR/scripts/parse-log.sh"
+  output="$(parse_log "$log_file" "claude" 10)"
+  rm -f "$log_file"
+
+  assert_contains "$output" "[text] Valid line before truncation."
+  [[ "$output" != *"Trun"* ]] || fail "expected truncated line to be skipped"
+}
+
+test_status_shows_activity_snippet_for_in_progress_step() {
+  local issue state_file workspace log_file output
+
+  issue="9033"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  workspace="$WORKSPACES_DIR/$issue"
+  mkdir -p "$workspace/logs"
+  state_file="$workspace/state.json"
+
+  local now_epoch started_at
+  now_epoch="$(date +%s)"
+  started_at=$(( now_epoch - 222 ))
+
+  jq -n \
+    --arg issue "$issue" \
+    --argjson started_at "$started_at" \
+    '{
+      issue: ($issue | tonumber),
+      steps: [
+        {
+          id: "implement-slice-42",
+          type: "implement-slice",
+          agent: "codex",
+          status: "in_progress",
+          started_at: $started_at,
+          metrics: {},
+          notes: ""
+        }
+      ]
+    }' > "$state_file"
+
+  log_file="$workspace/logs/implement-slice-42.log"
+  cat > "$log_file" <<'JSONL'
+{"type":"item.completed","item":{"type":"command_execution","command":"npm test"}}
+{"type":"item.completed","item":{"type":"agent_message","text":"All tests pass. I will commit the changes now."}}
+JSONL
+
+  source "$ROOT_DIR/scripts/parse-log.sh"
+  source "$ROOT_DIR/scripts/status.sh"
+  output="$(status_print "$state_file" "$workspace")"
+
+  assert_contains "$output" "Current activity"
+  assert_contains "$output" "implement-slice-42"
+  assert_contains "$output" "codex"
+  assert_contains "$output" "3m"
+  assert_contains "$output" "[cmd] npm test"
+  assert_contains "$output" "[text] All tests pass"
+}
+
 test_status_shows_dash_for_in_progress_without_started_at() {
   local issue state_file output
 
@@ -2867,7 +2995,7 @@ test_status_shows_dash_for_in_progress_without_started_at() {
   assert_contains "$output" "in_progress"
 
   local step_line
-  step_line="$(echo "$output" | grep "old-running-step")"
+  step_line="$(echo "$output" | grep "^[0-9].*old-running-step")"
   local duration_field
   duration_field="$(echo "$step_line" | awk '{print $NF}')"
   [[ "$duration_field" == "-" ]] || fail "expected dash for in_progress step without started_at, got: $duration_field"
@@ -2916,6 +3044,11 @@ test_codex_step_uses_project_root_from_state_json
 test_state_update_step_sets_started_at_on_in_progress
 test_state_update_step_clears_started_at_on_pending
 test_status_shows_elapsed_time_for_in_progress_step
+test_parse_log_claude_extracts_text_and_tool_use
+test_parse_log_codex_extracts_messages_and_commands
+test_parse_log_empty_file_shows_starting
+test_parse_log_partial_write_skips_truncated_lines
+test_status_shows_activity_snippet_for_in_progress_step
 test_status_shows_dash_for_in_progress_without_started_at
 
 echo "All ralph-v2 tests passed"
