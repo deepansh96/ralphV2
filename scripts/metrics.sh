@@ -20,8 +20,8 @@ metrics_from_claude_log() {
   local log_file="$1"
   local fallback_duration_ms="$2"
 
-  if jq -e '.' "$log_file" >/dev/null 2>&1; then
-    jq \
+  if [[ -s "$log_file" ]] && tail -1 "$log_file" | jq -e '.' >/dev/null 2>&1; then
+    tail -1 "$log_file" | jq \
       --arg provider "claude" \
       --argjson fallback_duration "$fallback_duration_ms" \
       '{
@@ -30,7 +30,7 @@ metrics_from_claude_log() {
         input_tokens: (.usage.input_tokens // 0),
         output_tokens: (.usage.output_tokens // 0),
         cost_usd: (.total_cost_usd // null)
-      }' "$log_file"
+      }'
   else
     metrics_empty_json "claude" "$fallback_duration_ms"
   fi

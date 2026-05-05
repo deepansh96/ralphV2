@@ -180,7 +180,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-jq -n --arg prompt "$prompt" '{
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+jq -n -c --arg prompt "$prompt" '{
+  type: "result",
+  subtype: "success",
   result: (
     if ($prompt | contains("CONTEXT_CHECK_REQUIRED")) then
       "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format."
@@ -220,8 +223,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
 if [[ "$prompt" == *"Intentionally incomplete fixture"* ]]; then
-  jq -n '{
+  jq -n -c '{
+    type: "result",
+    subtype: "success",
     result: "CONTEXT_CHECK: FAIL\nMissing required sections: Language, Relationships, Example dialogue, Flagged ambiguities.",
     duration_ms: 100,
     usage: {
@@ -231,7 +237,9 @@ if [[ "$prompt" == *"Intentionally incomplete fixture"* ]]; then
     total_cost_usd: 0.01
   }'
 else
-  jq -n '{
+  jq -n -c '{
+    type: "result",
+    subtype: "success",
     result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
     duration_ms: 100,
     usage: {
@@ -268,7 +276,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
-  jq -n '{
+  printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+  jq -n -c '{
+    type: "result",
+    subtype: "success",
     result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
     duration_ms: 100,
     usage: {
@@ -287,7 +298,10 @@ if [[ ! -f "$marker" ]]; then
   exit 130
 fi
 
-jq -n '{
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+jq -n -c '{
+  type: "result",
+  subtype: "success",
   result: "completed after interrupt",
   duration_ms: 100,
   usage: {
@@ -322,7 +336,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
-  jq -n '{
+  printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+  jq -n -c '{
+    type: "result",
+    subtype: "success",
     result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
     duration_ms: 100,
     usage: {
@@ -342,7 +359,10 @@ flag_file="$workspace/hitl-$step_id.md"
 if [[ "$prompt" == *"This step was previously blocked for human input"* ]]; then
   [[ "$prompt" == *"Use the reviewed option"* ]] || exit 41
   [[ "$prompt" == *"Do not repeat any council or review phase"* ]] || exit 42
-  jq -n --arg prompt "$prompt" '{
+  printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+  jq -n -c --arg prompt "$prompt" '{
+    type: "result",
+    subtype: "success",
     result: ("resumed with: " + $prompt),
     duration_ms: 222,
     usage: {
@@ -367,7 +387,10 @@ Which option should the review continue with?
 ## Answers
 FLAG
 
-jq -n '{
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+jq -n -c '{
+  type: "result",
+  subtype: "success",
   result: "blocked for human input",
   duration_ms: 111,
   usage: {
@@ -402,7 +425,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
-  jq -n '{
+  printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+  jq -n -c '{
+    type: "result",
+    subtype: "success",
     result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
     duration_ms: 100,
     usage: {
@@ -423,7 +449,10 @@ findings_file="$workspace/review-decisions.md"
 if [[ "$prompt" == *"This step was previously blocked for human input"* ]]; then
   [[ "$prompt" == *"complete WITHOUT re-running council review"* ]] || exit 51
   [[ "$prompt" == *"Use the architecture option"* ]] || exit 52
-  jq -n --arg prompt "$prompt" '{
+  printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+  jq -n -c --arg prompt "$prompt" '{
+    type: "result",
+    subtype: "success",
     result: ("completed without rerunning council: " + $prompt),
     duration_ms: 222,
     usage: {
@@ -465,7 +494,10 @@ Which architecture option should Ralph use?
 ## Answers
 FLAG
 
-jq -n '{
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+jq -n -c '{
+  type: "result",
+  subtype: "success",
   result: "blocked after review-decisions council feedback",
   duration_ms: 111,
   usage: {
@@ -500,7 +532,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
-  jq -n '{
+  printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+  jq -n -c '{
+    type: "result",
+    subtype: "success",
     result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
     duration_ms: 100,
     usage: {
@@ -566,7 +601,10 @@ Create a reviewed PRD from the grilled issue decisions.
 - Re-runs replace this body instead of appending another PRD.
 PRD
 
-jq -n '{
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+jq -n -c '{
+  type: "result",
+  subtype: "success",
   result: "create-and-review-prd preserved original and updated issue body",
   duration_ms: 333,
   usage: {
@@ -601,7 +639,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
-  jq -n '{
+  printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+  jq -n -c '{
+    type: "result",
+    subtype: "success",
     result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
     duration_ms: 100,
     usage: {
@@ -648,7 +689,10 @@ cat > "$slices_file" <<'SLICES'
 - #9102 newly created and linked
 SLICES
 
-jq -n '{
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+jq -n -c '{
+  type: "result",
+  subtype: "success",
   result: "create-and-review-slices created AFK sub-issues and linked them under parent",
   duration_ms: 444,
   usage: {
@@ -683,7 +727,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
-  jq -n '{
+  printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+  jq -n -c '{
+    type: "result",
+    subtype: "success",
     result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
     duration_ms: 100,
     usage: {
@@ -748,7 +795,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-jq -n '{
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+jq -n -c '{
+  type: "result",
+  subtype: "success",
   result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
   duration_ms: 100,
   usage: {
@@ -837,7 +887,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-jq -n '{
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+jq -n -c '{
+  type: "result",
+  subtype: "success",
   result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
   duration_ms: 100,
   usage: {
@@ -872,7 +925,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
-  jq -n '{
+  printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+  jq -n -c '{
+    type: "result",
+    subtype: "success",
     result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
     duration_ms: 100,
     usage: {
@@ -887,6 +943,7 @@ fi
 workspace="$(awk '/^Workspace:/ { print $2; exit }' <<<"$prompt")"
 step_id="$(awk '/^Step:/ { print $2; exit }' <<<"$prompt")"
 
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
 case "$step_id" in
   final-review)
     [[ "$prompt" == *"Issue: 9021"* ]] || exit 131
@@ -929,7 +986,9 @@ case "$step_id" in
 
 Pass.
 FINAL_REVIEW
-    jq -n '{
+    jq -n -c '{
+      type: "result",
+      subtype: "success",
       result: "final review verified changed files, checks, acceptance criteria, and docs",
       duration_ms: 555,
       usage: {
@@ -983,7 +1042,9 @@ PR_BODY
 - Linked sub-issues: #9111
 - code-review:code-review invoked and review comments posted.
 PR_REVIEW
-    jq -n --arg action "$action" '{
+    jq -n -c --arg action "$action" '{
+      type: "result",
+      subtype: "success",
       result: ("pr-review " + $action + " PR and invoked code-review:code-review"),
       duration_ms: 666,
       usage: {
@@ -1044,7 +1105,9 @@ COMMENT
 - Commit: abc1234
 - Quality checks: passed
 REVIEW_FIXES
-    jq -n '{
+    jq -n -c '{
+      type: "result",
+      subtype: "success",
       result: "review-fixes evaluated 1 finding, fixed 1, dismissed 0",
       duration_ms: 444,
       usage: {
@@ -2631,7 +2694,10 @@ FAKE_CODEX
 
   cat > "$fake_bin/claude" <<'FAKE_CLAUDE'
 #!/usr/bin/env bash
-jq -n '{
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+jq -n -c '{
+  type: "result",
+  subtype: "success",
   result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
   duration_ms: 100,
   usage: { input_tokens: 1, output_tokens: 1 },

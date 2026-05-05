@@ -11,7 +11,7 @@ run_claude() {
   local start_ms end_ms duration_ms status
 
   start_ms="$(current_time_ms)"
-  claude -p "$prompt" --dangerously-skip-permissions --output-format json > "$log_file"
+  claude -p "$prompt" --dangerously-skip-permissions --output-format stream-json --verbose > "$log_file"
   status=$?
   end_ms="$(current_time_ms)"
   duration_ms=$((end_ms - start_ms))
