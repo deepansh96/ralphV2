@@ -52,7 +52,9 @@ state_update_step() {
   local metrics_json="${4:-null}"
   local notes_json="${5:-null}"
   local tmp_file
+  local now_epoch
 
+  now_epoch="$(date +%s)"
   tmp_file="$(mktemp "${state_file}.tmp.XXXXXX")"
 
   jq \
@@ -60,12 +62,17 @@ state_update_step() {
     --arg status "$status" \
     --argjson metrics "$metrics_json" \
     --argjson notes "$notes_json" \
+    --argjson now_epoch "$now_epoch" \
     '
       .steps |= map(
         if .id == $id then
           .status = $status
           | if $metrics == null then . else .metrics = ((.metrics // {}) + $metrics) end
           | if $notes == null then . else .notes = $notes end
+          | if $status == "in_progress" then .started_at = $now_epoch
+            elif $status == "pending" then .started_at = null
+            else .
+            end
         else
           .
         end

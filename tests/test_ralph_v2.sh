@@ -10,7 +10,7 @@ ARCHIVE_DIR="$ROOT_DIR/archive"
 CONTEXT_FILE="$PROJECT_ROOT/CONTEXT.md"
 INITIAL_CONTEXT_BACKUP="$(mktemp)"
 INITIAL_CONTEXT_PRESENT="false"
-TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025)
+TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028)
 
 if [[ -f "$CONTEXT_FILE" ]]; then
   cp "$CONTEXT_FILE" "$INITIAL_CONTEXT_BACKUP"
@@ -2739,6 +2739,140 @@ FAKE_CLAUDE
   [[ "$actual_cwd" == "$PROJECT_ROOT" ]] || fail "expected codex to run in $PROJECT_ROOT, got $actual_cwd"
 }
 
+test_state_update_step_sets_started_at_on_in_progress() {
+  local issue state_file started_at
+
+  issue="9026"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_single_step_state "$issue" "timing-step" "pending"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+
+  source "$ROOT_DIR/scripts/state.sh"
+
+  state_update_step "$state_file" "timing-step" "in_progress"
+
+  started_at="$(jq -r '.steps[0].started_at // empty' "$state_file")"
+  [[ -n "$started_at" ]] || fail "expected started_at to be set when status is in_progress"
+  [[ "$started_at" =~ ^[0-9]+$ ]] || fail "expected started_at to be epoch seconds, got: $started_at"
+
+  local now_epoch
+  now_epoch="$(date +%s)"
+  local diff=$(( now_epoch - started_at ))
+  [[ "$diff" -ge 0 && "$diff" -lt 5 ]] || fail "expected started_at to be close to now, diff=$diff"
+}
+
+test_state_update_step_clears_started_at_on_pending() {
+  local issue state_file started_at
+
+  issue="9027"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_single_step_state "$issue" "reset-step" "pending"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+
+  source "$ROOT_DIR/scripts/state.sh"
+
+  state_update_step "$state_file" "reset-step" "in_progress"
+  started_at="$(jq -r '.steps[0].started_at // empty' "$state_file")"
+  [[ -n "$started_at" ]] || fail "expected started_at to be set after in_progress"
+
+  state_update_step "$state_file" "reset-step" "pending"
+  started_at="$(jq '.steps[0].started_at' "$state_file")"
+  [[ "$started_at" == "null" ]] || fail "expected started_at to be null after reset to pending, got: $started_at"
+}
+
+test_status_shows_elapsed_time_for_in_progress_step() {
+  local issue state_file output now_epoch started_at
+
+  issue="9028"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+
+  now_epoch="$(date +%s)"
+  started_at=$(( now_epoch - 125 ))
+
+  jq -n \
+    --arg issue "$issue" \
+    --argjson started_at "$started_at" \
+    '{
+      issue: ($issue | tonumber),
+      steps: [
+        {
+          id: "completed-step",
+          type: "stub",
+          agent: "stub",
+          status: "completed",
+          metrics: { duration_ms: 65000 },
+          notes: ""
+        },
+        {
+          id: "running-step",
+          type: "stub",
+          agent: "stub",
+          status: "in_progress",
+          started_at: $started_at,
+          metrics: {},
+          notes: ""
+        },
+        {
+          id: "waiting-step",
+          type: "stub",
+          agent: "stub",
+          status: "pending",
+          metrics: {},
+          notes: ""
+        }
+      ]
+    }' > "$state_file"
+
+  output="$("$RALPH" status --issue "$issue")"
+
+  assert_contains "$output" "1m 5s"
+  assert_contains "$output" "2m"
+  assert_contains "$output" "running-step"
+  assert_contains "$output" "completed-step"
+
+  local pending_line
+  pending_line="$(echo "$output" | grep "waiting-step")"
+  assert_contains "$pending_line" "-"
+}
+
+test_status_shows_dash_for_in_progress_without_started_at() {
+  local issue state_file output
+
+  issue="9028"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+
+  jq -n \
+    --arg issue "$issue" \
+    '{
+      issue: ($issue | tonumber),
+      steps: [
+        {
+          id: "old-running-step",
+          type: "stub",
+          agent: "stub",
+          status: "in_progress",
+          metrics: {},
+          notes: ""
+        }
+      ]
+    }' > "$state_file"
+
+  output="$("$RALPH" status --issue "$issue")"
+
+  assert_contains "$output" "old-running-step"
+  assert_contains "$output" "in_progress"
+
+  local step_line
+  step_line="$(echo "$output" | grep "old-running-step")"
+  local duration_field
+  duration_field="$(echo "$step_line" | awk '{print $NF}')"
+  [[ "$duration_field" == "-" ]] || fail "expected dash for in_progress step without started_at, got: $duration_field"
+}
+
 test_issue_must_be_positive_integer
 test_cleanup_archives_workspace_by_issue_number
 test_cleanup_errors_when_workspace_is_missing
@@ -2779,5 +2913,9 @@ test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently
 test_implement_slice_pipeline_runs_codex_with_sub_issue_context
 test_final_and_pr_review_pipeline_completes_with_idempotent_pr
 test_codex_step_uses_project_root_from_state_json
+test_state_update_step_sets_started_at_on_in_progress
+test_state_update_step_clears_started_at_on_pending
+test_status_shows_elapsed_time_for_in_progress_step
+test_status_shows_dash_for_in_progress_without_started_at
 
 echo "All ralph-v2 tests passed"
