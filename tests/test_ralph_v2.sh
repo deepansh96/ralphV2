@@ -11,6 +11,7 @@ CONTEXT_FILE="$PROJECT_ROOT/CONTEXT.md"
 INITIAL_CONTEXT_BACKUP="$(mktemp)"
 INITIAL_CONTEXT_PRESENT="false"
 TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033)
+export RALPH_RETRY_DELAYS="${RALPH_RETRY_DELAYS:-0 0 0}"
 
 if [[ -f "$CONTEXT_FILE" ]]; then
   cp "$CONTEXT_FILE" "$INITIAL_CONTEXT_BACKUP"
@@ -1566,6 +1567,244 @@ test_claude_agent_step_renders_prompt_logs_metrics_and_summary() {
   assert_contains "$output" "1234"
 }
 
+test_run_claude_retries_transient_error_and_preserves_attempt_logs() {
+  local log_file metrics_file output
+
+  log_file="$(mktemp)"
+  metrics_file="$(mktemp)"
+  rm -f "$log_file" "$log_file".attempt-* "$metrics_file"
+
+  (
+    source "$ROOT_DIR/scripts/metrics.sh"
+    source "$ROOT_DIR/scripts/agent.sh"
+
+    CLAUDE_CALLS=0
+    claude() {
+      CLAUDE_CALLS=$((CLAUDE_CALLS + 1))
+      if [[ "$CLAUDE_CALLS" -eq 1 ]]; then
+        printf '%s\n' 'Error: 529 overloaded'
+        return 1
+      fi
+
+      printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+      jq -n -c '{
+        type: "result",
+        subtype: "success",
+        result: "retried successfully",
+        duration_ms: 2345,
+        usage: {
+          input_tokens: 12,
+          output_tokens: 9
+        },
+        total_cost_usd: 0.03
+      }'
+    }
+
+    RALPH_RETRY_DELAYS="0 0 0" run_claude "retry prompt" "$log_file" "$PROJECT_ROOT" > "$metrics_file"
+    [[ "$CLAUDE_CALLS" -eq 2 ]] || fail "expected claude to be called twice, got $CLAUDE_CALLS"
+  )
+
+  [[ -f "$log_file.attempt-1" ]] || fail "expected first failed attempt log to be preserved"
+  assert_contains "$(<"$log_file.attempt-1")" "529 overloaded"
+  assert_contains "$(<"$log_file")" "retried successfully"
+  output="$(<"$metrics_file")"
+  assert_contains "$output" '"provider": "claude"'
+  assert_contains "$output" '"duration_ms": 2345'
+
+  rm -f "$log_file" "$log_file".attempt-* "$metrics_file"
+}
+
+test_run_codex_retries_transient_errors_and_preserves_attempt_logs() {
+  local log_file metrics_file output count_file
+
+  log_file="$(mktemp)"
+  metrics_file="$(mktemp)"
+  count_file="$(mktemp)"
+  rm -f "$log_file" "$log_file".attempt-* "$metrics_file"
+  printf '0\n' > "$count_file"
+
+  (
+    source "$ROOT_DIR/scripts/metrics.sh"
+    source "$ROOT_DIR/scripts/agent.sh"
+
+    codex() {
+      local last_message_file calls
+
+      last_message_file=""
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --output-last-message)
+            last_message_file="$2"
+            shift 2
+            ;;
+          *)
+            shift
+            ;;
+        esac
+      done
+      cat >/dev/null
+
+      calls="$(<"$count_file")"
+      calls=$((calls + 1))
+      printf '%s\n' "$calls" > "$count_file"
+      case "$calls" in
+        1)
+          printf '%s\n' 'request failed: ETIMEDOUT'
+          return 1
+          ;;
+        2)
+          printf '%s\n' 'request failed: rate limit exceeded'
+          return 1
+          ;;
+      esac
+
+      if [[ -n "$last_message_file" ]]; then
+        printf 'codex retried successfully\n' > "$last_message_file"
+      fi
+      printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":17,"output_tokens":19}}'
+    }
+
+    run_codex "retry prompt" "$log_file" "$PROJECT_ROOT" > "$metrics_file"
+    [[ "$(<"$count_file")" -eq 3 ]] || fail "expected codex to be called three times, got $(<"$count_file")"
+  )
+
+  [[ -f "$log_file.attempt-1" ]] || fail "expected first failed codex attempt log"
+  [[ -f "$log_file.attempt-2" ]] || fail "expected second failed codex attempt log"
+  assert_contains "$(<"$log_file.attempt-1")" "ETIMEDOUT"
+  assert_contains "$(<"$log_file.attempt-2")" "rate limit"
+  assert_contains "$(<"$log_file")" "turn.completed"
+  output="$(<"$metrics_file")"
+  assert_contains "$output" '"provider": "codex"'
+  assert_contains "$output" '"input_tokens": 17'
+  assert_contains "$output" '"output_tokens": 19'
+
+  rm -f "$log_file" "$log_file".attempt-* "$metrics_file" "$count_file"
+}
+
+test_run_claude_fails_clean_json_error_without_retrying() {
+  local log_file metrics_file status
+
+  log_file="$(mktemp)"
+  metrics_file="$(mktemp)"
+  rm -f "$log_file" "$log_file".attempt-* "$metrics_file"
+
+  (
+    source "$ROOT_DIR/scripts/metrics.sh"
+    source "$ROOT_DIR/scripts/agent.sh"
+
+    CLAUDE_CALLS=0
+    claude() {
+      CLAUDE_CALLS=$((CLAUDE_CALLS + 1))
+      jq -n -c '{
+        type: "error",
+        error: {
+          type: "authentication_error",
+          message: "invalid api key"
+        }
+      }'
+      return 2
+    }
+
+    set +e
+    run_claude "auth prompt" "$log_file" "$PROJECT_ROOT" > "$metrics_file"
+    status=$?
+    set -e
+
+    [[ "$status" -eq 2 ]] || fail "expected clean JSON auth error status 2, got $status"
+    [[ "$CLAUDE_CALLS" -eq 1 ]] || fail "expected claude to be called once, got $CLAUDE_CALLS"
+  )
+
+  [[ ! -f "$log_file.attempt-1" ]] || fail "expected non-retryable claude error not to preserve retry attempt"
+  assert_contains "$(<"$log_file")" "authentication_error"
+
+  rm -f "$log_file" "$log_file".attempt-* "$metrics_file"
+}
+
+test_run_claude_retries_empty_crash_log() {
+  local log_file metrics_file
+
+  log_file="$(mktemp)"
+  metrics_file="$(mktemp)"
+  rm -f "$log_file" "$log_file".attempt-* "$metrics_file"
+
+  (
+    source "$ROOT_DIR/scripts/metrics.sh"
+    source "$ROOT_DIR/scripts/agent.sh"
+
+    CLAUDE_CALLS=0
+    claude() {
+      CLAUDE_CALLS=$((CLAUDE_CALLS + 1))
+      if [[ "$CLAUDE_CALLS" -eq 1 ]]; then
+        return 1
+      fi
+
+      jq -n -c '{
+        type: "result",
+        subtype: "success",
+        result: "retried after empty crash log",
+        duration_ms: 3456,
+        usage: {
+          input_tokens: 3,
+          output_tokens: 4
+        },
+        total_cost_usd: 0.04
+      }'
+    }
+
+    run_claude "empty crash prompt" "$log_file" "$PROJECT_ROOT" > "$metrics_file"
+    [[ "$CLAUDE_CALLS" -eq 2 ]] || fail "expected claude to retry empty crash log, got $CLAUDE_CALLS calls"
+  )
+
+  [[ -f "$log_file.attempt-1" ]] || fail "expected empty failed attempt log to be preserved"
+  [[ ! -s "$log_file.attempt-1" ]] || fail "expected first attempt log to be empty"
+  assert_contains "$(<"$log_file")" "retried after empty crash log"
+
+  rm -f "$log_file" "$log_file".attempt-* "$metrics_file"
+}
+
+test_run_claude_retries_truncated_crash_log() {
+  local log_file metrics_file
+
+  log_file="$(mktemp)"
+  metrics_file="$(mktemp)"
+  rm -f "$log_file" "$log_file".attempt-* "$metrics_file"
+
+  (
+    source "$ROOT_DIR/scripts/metrics.sh"
+    source "$ROOT_DIR/scripts/agent.sh"
+
+    CLAUDE_CALLS=0
+    claude() {
+      CLAUDE_CALLS=$((CLAUDE_CALLS + 1))
+      if [[ "$CLAUDE_CALLS" -eq 1 ]]; then
+        printf '%s\n' '{"type":"result"'
+        return 1
+      fi
+
+      jq -n -c '{
+        type: "result",
+        subtype: "success",
+        result: "retried after truncated crash log",
+        duration_ms: 4567,
+        usage: {
+          input_tokens: 5,
+          output_tokens: 6
+        },
+        total_cost_usd: 0.05
+      }'
+    }
+
+    run_claude "truncated crash prompt" "$log_file" "$PROJECT_ROOT" > "$metrics_file"
+    [[ "$CLAUDE_CALLS" -eq 2 ]] || fail "expected claude to retry truncated crash log, got $CLAUDE_CALLS calls"
+  )
+
+  [[ -f "$log_file.attempt-1" ]] || fail "expected truncated failed attempt log to be preserved"
+  assert_contains "$(<"$log_file.attempt-1")" '{"type":"result"'
+  assert_contains "$(<"$log_file")" "retried after truncated crash log"
+
+  rm -f "$log_file" "$log_file".attempt-* "$metrics_file"
+}
+
 test_codex_agent_step_logs_jsonl_and_records_metrics() {
   local issue output fake_bin log_file status_value input_tokens output_tokens cost_value
 
@@ -3016,6 +3255,11 @@ test_status_prints_step_table
 test_logs_tails_active_step_log
 test_logs_tails_specific_step_log
 test_claude_agent_step_renders_prompt_logs_metrics_and_summary
+test_run_claude_retries_transient_error_and_preserves_attempt_logs
+test_run_codex_retries_transient_errors_and_preserves_attempt_logs
+test_run_claude_fails_clean_json_error_without_retrying
+test_run_claude_retries_empty_crash_log
+test_run_claude_retries_truncated_crash_log
 test_codex_agent_step_logs_jsonl_and_records_metrics
 test_sigint_resets_running_step_to_pending_and_rerun_picks_it_up
 test_blocked_step_stops_then_resumes_with_human_answers

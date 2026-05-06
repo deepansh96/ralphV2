@@ -4,14 +4,82 @@ current_time_ms() {
   printf '%s000\n' "$(date +%s)"
 }
 
+agent_retry_delays() {
+  printf '%s\n' "${RALPH_RETRY_DELAYS:-30 60 120}"
+}
+
+agent_log_is_retryable_failure() {
+  local log_file="$1"
+
+  [[ -s "$log_file" ]] || return 0
+
+  if grep -Eiq 'overloaded|529|rate limit|ETIMEDOUT|ECONNRESET' "$log_file"; then
+    return 0
+  fi
+
+  if ! jq -s '.' "$log_file" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  return 1
+}
+
+agent_sleep_before_retry() {
+  local attempt="$1"
+  local delays delay
+
+  read -r -a delays <<<"$(agent_retry_delays)"
+  delay="${delays[$((attempt - 1))]:-0}"
+  [[ "$delay" -gt 0 ]] || return 0
+  sleep "$delay"
+}
+
+agent_run_with_retry() {
+  local log_file="$1"
+  local command_fn="$2"
+  local attempt max_attempts status errexit_enabled
+
+  max_attempts=3
+  attempt=1
+
+  while true; do
+    errexit_enabled="false"
+    if [[ $- == *e* ]]; then
+      errexit_enabled="true"
+      set +e
+    fi
+    "$command_fn" > "$log_file"
+    status=$?
+    if [[ "$errexit_enabled" == "true" ]]; then
+      set -e
+    fi
+
+    if [[ "$status" -eq 0 ]]; then
+      return 0
+    fi
+
+    if [[ "$attempt" -ge "$max_attempts" ]] || ! agent_log_is_retryable_failure "$log_file"; then
+      return "$status"
+    fi
+
+    mv "$log_file" "$log_file.attempt-$attempt"
+    agent_sleep_before_retry "$attempt"
+    attempt=$((attempt + 1))
+  done
+}
+
 run_claude() {
   local prompt="$1"
   local log_file="$2"
   local project_root="${3:-}"  # accepted for forward-compatibility, currently unused
   local start_ms end_ms duration_ms status
 
+  run_claude_command() {
+    claude -p "$prompt" --dangerously-skip-permissions --output-format stream-json --verbose
+  }
+
   start_ms="$(current_time_ms)"
-  claude -p "$prompt" --dangerously-skip-permissions --output-format stream-json --verbose > "$log_file"
+  agent_run_with_retry "$log_file" run_claude_command
   status=$?
   end_ms="$(current_time_ms)"
   duration_ms=$((end_ms - start_ms))
@@ -31,14 +99,18 @@ run_codex() {
     project_root="$(git -C "$SCRIPT_DIR/.." rev-parse --show-toplevel)"
   fi
   last_message_file="$(mktemp)"
+  run_codex_command() {
+    printf '%s' "$prompt" | (cd "$project_root" && codex -a never exec \
+      --skip-git-repo-check \
+      --sandbox danger-full-access \
+      -C "$project_root" \
+      --json \
+      --output-last-message "$last_message_file" \
+      -)
+  }
+
   start_ms="$(current_time_ms)"
-  printf '%s' "$prompt" | (cd "$project_root" && codex -a never exec \
-    --skip-git-repo-check \
-    --sandbox danger-full-access \
-    -C "$project_root" \
-    --json \
-    --output-last-message "$last_message_file" \
-    -) > "$log_file"
+  agent_run_with_retry "$log_file" run_codex_command
   status=$?
   end_ms="$(current_time_ms)"
   duration_ms=$((end_ms - start_ms))
