@@ -42,7 +42,8 @@ ACTIVE_STATE_FILE=""
 ACTIVE_STEP_ID=""
 ACTIVE_METRICS_FILE=""
 
-handle_sigint() {
+handle_shutdown() {
+  trap - INT TERM HUP EXIT
   if [[ -n "$ACTIVE_STATE_FILE" && -n "$ACTIVE_STEP_ID" ]]; then
     state_update_step "$ACTIVE_STATE_FILE" "$ACTIVE_STEP_ID" "pending"
   fi
@@ -158,14 +159,14 @@ run_pipeline() {
     ACTIVE_STATE_FILE="$state_file"
     ACTIVE_STEP_ID="$step_id"
     ACTIVE_METRICS_FILE="$metrics_file"
-    trap handle_sigint INT
+    trap handle_shutdown INT TERM HUP EXIT
 
     set +e
     agent_run_step "$step" "$prompt" "$log_file" "$project_root" > "$metrics_file"
     agent_status=$?
     set -e
 
-    trap - INT
+    trap - INT TERM HUP EXIT
     ACTIVE_STATE_FILE=""
     ACTIVE_STEP_ID=""
     ACTIVE_METRICS_FILE=""

@@ -10,7 +10,7 @@ ARCHIVE_DIR="$ROOT_DIR/archive"
 CONTEXT_FILE="$PROJECT_ROOT/CONTEXT.md"
 INITIAL_CONTEXT_BACKUP="$(mktemp)"
 INITIAL_CONTEXT_PRESENT="false"
-TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033)
+TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033 9034 9035)
 
 if [[ -f "$CONTEXT_FILE" ]]; then
   cp "$CONTEXT_FILE" "$INITIAL_CONTEXT_BACKUP"
@@ -304,6 +304,60 @@ jq -n -c '{
   subtype: "success",
   result: "completed after interrupt",
   duration_ms: 100,
+  usage: {
+    input_tokens: 1,
+    output_tokens: 1
+  },
+  total_cost_usd: 0.01
+}'
+FAKE_CLAUDE
+  chmod +x "$fake_bin/claude"
+}
+
+install_fake_sleeping_claude() {
+  local fake_bin="$1"
+
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/claude" <<'FAKE_CLAUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+
+prompt=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p)
+      prompt="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
+  printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+  jq -n -c '{
+    type: "result",
+    subtype: "success",
+    result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
+    duration_ms: 100,
+    usage: {
+      input_tokens: 1,
+      output_tokens: 1
+    },
+    total_cost_usd: 0.01
+  }'
+  exit 0
+fi
+
+sleep 2
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+jq -n -c '{
+  type: "result",
+  subtype: "success",
+  result: "completed after sleep",
+  duration_ms: 2000,
   usage: {
     input_tokens: 1,
     output_tokens: 1
@@ -1614,7 +1668,7 @@ test_codex_agent_step_logs_jsonl_and_records_metrics() {
 }
 
 test_sigint_resets_running_step_to_pending_and_rerun_picks_it_up() {
-  local issue output fake_bin status first_status second_status
+  local issue output fake_bin status first_status second_status metrics_files
 
   issue="9009"
   write_valid_context
@@ -1650,10 +1704,122 @@ test_sigint_resets_running_step_to_pending_and_rerun_picks_it_up() {
   [[ "$status" -eq 0 ]] || fail "expected SIGINT handler to exit cleanly, got $status: $output"
   first_status="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
   [[ "$first_status" == "pending" ]] || fail "expected interrupted step to reset to pending, got $first_status"
+  metrics_files="$(find "$WORKSPACES_DIR/$issue" -maxdepth 1 -name 'metrics.interruptible-step.*' -print)"
+  [[ -z "$metrics_files" ]] || fail "expected SIGINT to clean metrics temp file, found $metrics_files"
 
   PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" >/dev/null
   second_status="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
   [[ "$second_status" == "completed" ]] || fail "expected rerun to complete same step, got $second_status"
+}
+
+test_sigterm_resets_running_step_to_pending_and_cleans_metrics_file() {
+  local issue fake_bin output_file ralph_pid status metrics_files
+
+  issue="9034"
+  write_valid_context
+  fake_bin="$WORKSPACES_DIR/fake-bin"
+  output_file="$WORKSPACES_DIR/$issue/ralph.out"
+  rm -rf "${WORKSPACES_DIR:?}/$issue" "$fake_bin"
+  install_fake_sleeping_claude "$fake_bin"
+
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  jq -n \
+    --arg issue "$issue" \
+    '{
+      issue: ($issue | tonumber),
+      repo: "deepansh96/ralph",
+      baseBranch: "main",
+      branch: "feat/issue-9034-fixture",
+      steps: [
+        {
+          id: "term-step",
+          type: "test-fixture",
+          agent: "claude",
+          status: "pending",
+          metrics: {},
+          notes: ""
+        }
+      ]
+    }' > "$WORKSPACES_DIR/$issue/state.json"
+
+  PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" > "$output_file" 2>&1 &
+  ralph_pid=$!
+
+  for _ in {1..50}; do
+    status="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
+    metrics_files="$(find "$WORKSPACES_DIR/$issue" -maxdepth 1 -name 'metrics.term-step.*' -print)"
+    if [[ "$status" == "in_progress" && -n "$metrics_files" ]]; then
+      break
+    fi
+    sleep 0.1
+  done
+
+  status="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
+  [[ "$status" == "in_progress" ]] || fail "expected TERM test step to be in_progress before signal, got $status"
+  [[ -n "$metrics_files" ]] || fail "expected TERM test metrics temp file before signal"
+
+  kill -TERM "$ralph_pid"
+  wait "$ralph_pid" || true
+
+  status="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
+  [[ "$status" == "pending" ]] || fail "expected SIGTERM to reset step to pending, got $status"
+  metrics_files="$(find "$WORKSPACES_DIR/$issue" -maxdepth 1 -name 'metrics.term-step.*' -print)"
+  [[ -z "$metrics_files" ]] || fail "expected SIGTERM to clean metrics temp file, found $metrics_files"
+}
+
+test_sighup_resets_running_step_to_pending_and_cleans_metrics_file() {
+  local issue fake_bin output_file ralph_pid status metrics_files
+
+  issue="9035"
+  write_valid_context
+  fake_bin="$WORKSPACES_DIR/fake-bin"
+  output_file="$WORKSPACES_DIR/$issue/ralph.out"
+  rm -rf "${WORKSPACES_DIR:?}/$issue" "$fake_bin"
+  install_fake_sleeping_claude "$fake_bin"
+
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  jq -n \
+    --arg issue "$issue" \
+    '{
+      issue: ($issue | tonumber),
+      repo: "deepansh96/ralph",
+      baseBranch: "main",
+      branch: "feat/issue-9035-fixture",
+      steps: [
+        {
+          id: "hup-step",
+          type: "test-fixture",
+          agent: "claude",
+          status: "pending",
+          metrics: {},
+          notes: ""
+        }
+      ]
+    }' > "$WORKSPACES_DIR/$issue/state.json"
+
+  PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" > "$output_file" 2>&1 &
+  ralph_pid=$!
+
+  for _ in {1..50}; do
+    status="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
+    metrics_files="$(find "$WORKSPACES_DIR/$issue" -maxdepth 1 -name 'metrics.hup-step.*' -print)"
+    if [[ "$status" == "in_progress" && -n "$metrics_files" ]]; then
+      break
+    fi
+    sleep 0.1
+  done
+
+  status="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
+  [[ "$status" == "in_progress" ]] || fail "expected HUP test step to be in_progress before signal, got $status"
+  [[ -n "$metrics_files" ]] || fail "expected HUP test metrics temp file before signal"
+
+  kill -HUP "$ralph_pid"
+  wait "$ralph_pid" || true
+
+  status="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
+  [[ "$status" == "pending" ]] || fail "expected SIGHUP to reset step to pending, got $status"
+  metrics_files="$(find "$WORKSPACES_DIR/$issue" -maxdepth 1 -name 'metrics.hup-step.*' -print)"
+  [[ -z "$metrics_files" ]] || fail "expected SIGHUP to clean metrics temp file, found $metrics_files"
 }
 
 test_blocked_step_stops_then_resumes_with_human_answers() {
@@ -3018,6 +3184,8 @@ test_logs_tails_specific_step_log
 test_claude_agent_step_renders_prompt_logs_metrics_and_summary
 test_codex_agent_step_logs_jsonl_and_records_metrics
 test_sigint_resets_running_step_to_pending_and_rerun_picks_it_up
+test_sigterm_resets_running_step_to_pending_and_cleans_metrics_file
+test_sighup_resets_running_step_to_pending_and_cleans_metrics_file
 test_blocked_step_stops_then_resumes_with_human_answers
 test_failed_agent_invocation_marks_step_failed_and_exits_one
 test_init_prompt_defines_complete_workspace_initialization_contract
