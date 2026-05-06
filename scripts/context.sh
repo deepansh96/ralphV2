@@ -53,9 +53,8 @@ EOF
     return 1
   fi
 
-  if jq -e '.' "$log_file" >/dev/null 2>&1; then
-    output="$(jq -r '.result // .message // .content // empty' "$log_file")"
-  else
+  output="$(grep '^{' "$log_file" | jq -r 'select(.type == "result") | .result // empty' 2>/dev/null || true)"
+  if [[ -z "$output" ]]; then
     output="$(<"$log_file")"
   fi
 

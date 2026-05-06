@@ -10,7 +10,7 @@ ARCHIVE_DIR="$ROOT_DIR/archive"
 CONTEXT_FILE="$PROJECT_ROOT/CONTEXT.md"
 INITIAL_CONTEXT_BACKUP="$(mktemp)"
 INITIAL_CONTEXT_PRESENT="false"
-TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033)
+TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033 9034 9035 9036)
 
 if [[ -f "$CONTEXT_FILE" ]]; then
   cp "$CONTEXT_FILE" "$INITIAL_CONTEXT_BACKUP"
@@ -1419,6 +1419,114 @@ test_run_hard_stops_when_context_is_insufficient() {
   [[ -f "$log_file" ]] || fail "expected context check log file"
   assert_contains "$output" "CONTEXT.md is insufficient"
   assert_contains "$output" "Missing required sections"
+}
+
+test_context_check_passes_when_jsonl_result_contains_pass() {
+  local issue output status
+
+  issue="9034"
+  write_valid_context
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_single_step_state "$issue" "stub-step" "pending"
+
+  source "$ROOT_DIR/scripts/prompt.sh"
+  source "$ROOT_DIR/scripts/context.sh"
+
+  run_claude() {
+    local prompt="$1"
+    local log_file="$2"
+
+    printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}' > "$log_file"
+    jq -n -c '{
+      type: "result",
+      subtype: "success",
+      result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
+      duration_ms: 100,
+      usage: {
+        input_tokens: 1,
+        output_tokens: 1
+      },
+      total_cost_usd: 0.01
+    }' >> "$log_file"
+  }
+
+  set +e
+  output="$(context_check "$ROOT_DIR" "$WORKSPACES_DIR/$issue/state.json" "$WORKSPACES_DIR/$issue" 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 0 ]] || fail "expected JSONL CONTEXT_CHECK PASS to return 0; output: $output"
+}
+
+test_context_check_fails_when_jsonl_result_contains_fail() {
+  local issue output status
+
+  issue="9035"
+  write_valid_context
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_single_step_state "$issue" "stub-step" "pending"
+
+  source "$ROOT_DIR/scripts/prompt.sh"
+  source "$ROOT_DIR/scripts/context.sh"
+
+  run_claude() {
+    local prompt="$1"
+    local log_file="$2"
+
+    jq -n -c '{
+      type: "assistant",
+      message: "CONTEXT_CHECK: PASS from a non-result stream event"
+    }' > "$log_file"
+    jq -n -c '{
+      type: "result",
+      subtype: "success",
+      result: "CONTEXT_CHECK: FAIL\nMissing required sections.",
+      duration_ms: 100,
+      usage: {
+        input_tokens: 1,
+        output_tokens: 1
+      },
+      total_cost_usd: 0.01
+    }' >> "$log_file"
+  }
+
+  set +e
+  output="$(context_check "$ROOT_DIR" "$WORKSPACES_DIR/$issue/state.json" "$WORKSPACES_DIR/$issue" 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 1 ]] || fail "expected JSONL CONTEXT_CHECK FAIL result to return 1; status: $status output: $output"
+  assert_contains "$output" "CONTEXT.md is insufficient"
+  assert_contains "$output" "Missing required sections"
+}
+
+test_context_check_falls_back_to_plain_text_pass() {
+  local issue output status
+
+  issue="9036"
+  write_valid_context
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_single_step_state "$issue" "stub-step" "pending"
+
+  source "$ROOT_DIR/scripts/prompt.sh"
+  source "$ROOT_DIR/scripts/context.sh"
+
+  run_claude() {
+    local prompt="$1"
+    local log_file="$2"
+
+    cat > "$log_file" <<'LOG'
+CONTEXT_CHECK: PASS
+CONTEXT.md follows the required format.
+LOG
+  }
+
+  set +e
+  output="$(context_check "$ROOT_DIR" "$WORKSPACES_DIR/$issue/state.json" "$WORKSPACES_DIR/$issue" 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 0 ]] || fail "expected plain-text CONTEXT_CHECK PASS fallback to return 0; output: $output"
 }
 
 test_run_completes_pending_agent_step() {
@@ -3011,6 +3119,9 @@ test_run_requires_existing_state
 test_run_rejects_failed_steps
 test_run_hard_stops_when_context_missing
 test_run_hard_stops_when_context_is_insufficient
+test_context_check_passes_when_jsonl_result_contains_pass
+test_context_check_fails_when_jsonl_result_contains_fail
+test_context_check_falls_back_to_plain_text_pass
 test_run_completes_pending_agent_step
 test_status_prints_step_table
 test_logs_tails_active_step_log
