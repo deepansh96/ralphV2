@@ -144,7 +144,7 @@ run_pipeline() {
     log_file="$workspace/logs/$step_id.log"
     template_file="$SCRIPT_DIR/prompts/$step_type.md"
 
-    state_update_step "$state_file" "$step_id" "in_progress"
+    state_update_step "$state_file" "$step_id" "in_progress" "null" "null" "$$"
 
     if ! prompt="$(prompt_render "$template_file" "$state_file" "$workspace" "$step" "$SCRIPT_DIR/skills")"; then
       state_update_step "$state_file" "$step_id" "failed"

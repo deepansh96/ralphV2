@@ -37,7 +37,7 @@ status_print() {
 
   now_epoch="$(date +%s)"
 
-  printf "%-4s %-24s %-18s %-10s %-12s %-10s\n" "#" "Step ID" "Type" "Agent" "Status" "Duration"
+  printf "%-4s %-24s %-18s %-10s %-12s %-10s %-18s\n" "#" "Step ID" "Type" "Agent" "Status" "Duration" "Process"
   jq -r '
     .steps
     | to_entries[]
@@ -48,16 +48,23 @@ status_print() {
         (.value.agent // "-"),
         .value.status,
         (.value.metrics.duration // .value.metrics.duration_ms // "-"),
-        (.value.started_at // "-")
+        (.value.started_at // "-"),
+        (.value.pid // "-")
       ]
     | @tsv
-  ' "$state_file" | while IFS=$'\t' read -r number id type agent status duration started_at; do
+  ' "$state_file" | while IFS=$'\t' read -r number id type agent status duration started_at pid; do
     local display_duration="-"
+    local process_status="-"
 
     if [[ "$status" == "in_progress" ]]; then
       if [[ "$started_at" != "-" && "$started_at" != "null" && -n "$started_at" ]]; then
         local elapsed=$(( now_epoch - started_at ))
         display_duration="$(_format_duration_seconds "$elapsed")"
+      fi
+      if [[ "$pid" != "-" && "$pid" != "null" && -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        process_status="alive (PID $pid)"
+      else
+        process_status="not found (stale)"
       fi
     elif [[ "$status" == "completed" ]]; then
       if [[ "$duration" != "-" && "$duration" != "null" && -n "$duration" ]]; then
@@ -69,7 +76,7 @@ status_print() {
       fi
     fi
 
-    printf "%-4s %-24s %-18s %-10s %-12s %-10s\n" "$number" "$id" "$type" "$agent" "$status" "$display_duration"
+    printf "%-4s %-24s %-18s %-10s %-12s %-10s %-18s\n" "$number" "$id" "$type" "$agent" "$status" "$display_duration" "$process_status"
   done
 
   if [[ -n "$workspace" ]]; then

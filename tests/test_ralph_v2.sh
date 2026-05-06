@@ -10,7 +10,7 @@ ARCHIVE_DIR="$ROOT_DIR/archive"
 CONTEXT_FILE="$PROJECT_ROOT/CONTEXT.md"
 INITIAL_CONTEXT_BACKUP="$(mktemp)"
 INITIAL_CONTEXT_PRESENT="false"
-TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033)
+TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033 9034 9035 9036 9037 9038 9039)
 
 if [[ -f "$CONTEXT_FILE" ]]; then
   cp "$CONTEXT_FILE" "$INITIAL_CONTEXT_BACKUP"
@@ -304,6 +304,60 @@ jq -n -c '{
   subtype: "success",
   result: "completed after interrupt",
   duration_ms: 100,
+  usage: {
+    input_tokens: 1,
+    output_tokens: 1
+  },
+  total_cost_usd: 0.01
+}'
+FAKE_CLAUDE
+  chmod +x "$fake_bin/claude"
+}
+
+install_fake_sleeping_claude() {
+  local fake_bin="$1"
+
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/claude" <<'FAKE_CLAUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+
+prompt=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p)
+      prompt="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
+  printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+  jq -n -c '{
+    type: "result",
+    subtype: "success",
+    result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
+    duration_ms: 100,
+    usage: {
+      input_tokens: 1,
+      output_tokens: 1
+    },
+    total_cost_usd: 0.01
+  }'
+  exit 0
+fi
+
+sleep 2
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+jq -n -c '{
+  type: "result",
+  subtype: "success",
+  result: "completed after sleep",
+  duration_ms: 2000,
   usage: {
     input_tokens: 1,
     output_tokens: 1
@@ -2780,6 +2834,236 @@ test_state_update_step_clears_started_at_on_pending() {
   [[ "$started_at" == "null" ]] || fail "expected started_at to be null after reset to pending, got: $started_at"
 }
 
+test_state_update_step_tracks_and_clears_pid() {
+  local issue state_file pid_file pid_value state_pid
+
+  issue="9034"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_single_step_state "$issue" "pid-step" "pending"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  pid_file="$WORKSPACES_DIR/$issue/pids/pid-step.pid"
+  pid_value="12345"
+
+  source "$ROOT_DIR/scripts/state.sh"
+
+  state_update_step "$state_file" "pid-step" "in_progress" "null" "null" "$pid_value"
+
+  state_pid="$(jq -r '.steps[0].pid' "$state_file")"
+  [[ "$state_pid" == "$pid_value" ]] || fail "expected state pid $pid_value, got $state_pid"
+  [[ -f "$pid_file" ]] || fail "expected pid file to be created"
+  [[ "$(<"$pid_file")" == "$pid_value" ]] || fail "expected pid file to contain $pid_value"
+
+  state_update_step "$state_file" "pid-step" "completed"
+
+  state_pid="$(jq -r '.steps[0].pid' "$state_file")"
+  [[ "$state_pid" == "null" ]] || fail "expected pid to clear on completed, got $state_pid"
+  [[ ! -f "$pid_file" ]] || fail "expected pid file to be removed on completed"
+
+  state_update_step "$state_file" "pid-step" "in_progress" "null" "null" "$pid_value"
+  state_update_step "$state_file" "pid-step" "pending"
+  state_pid="$(jq -r '.steps[0].pid' "$state_file")"
+  [[ "$state_pid" == "null" ]] || fail "expected pid to clear on pending, got $state_pid"
+  [[ ! -f "$pid_file" ]] || fail "expected pid file to be removed on pending"
+
+  state_update_step "$state_file" "pid-step" "in_progress" "null" "null" "$pid_value"
+  state_update_step "$state_file" "pid-step" "failed"
+  state_pid="$(jq -r '.steps[0].pid' "$state_file")"
+  [[ "$state_pid" == "null" ]] || fail "expected pid to clear on failed, got $state_pid"
+  [[ ! -f "$pid_file" ]] || fail "expected pid file to be removed on failed"
+}
+
+test_run_pipeline_records_current_shell_pid_while_step_runs() {
+  local issue fake_bin state_file pid_file ralph_pid state_pid file_pid final_status
+
+  issue="9039"
+  fake_bin="$WORKSPACES_DIR/fake-bin"
+  write_valid_context
+  rm -rf "${WORKSPACES_DIR:?}/$issue" "$fake_bin"
+  install_fake_sleeping_claude "$fake_bin"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  pid_file="$WORKSPACES_DIR/$issue/pids/sleeping-step.pid"
+
+  jq -n \
+    --arg issue "$issue" \
+    '{
+      issue: ($issue | tonumber),
+      repo: "deepansh96/ralph",
+      baseBranch: "main",
+      branch: "feat/issue-9039-fixture",
+      steps: [
+        {
+          id: "sleeping-step",
+          type: "test-fixture",
+          agent: "claude",
+          status: "pending",
+          metrics: {},
+          notes: ""
+        }
+      ]
+    }' > "$state_file"
+
+  PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" >/dev/null &
+  ralph_pid="$!"
+
+  for _ in {1..100}; do
+    [[ -f "$pid_file" ]] && break
+    kill -0 "$ralph_pid" 2>/dev/null || break
+    sleep 0.05
+  done
+
+  [[ -f "$pid_file" ]] || fail "expected pid file while ralph step is running"
+  state_pid="$(jq -r '.steps[0].pid' "$state_file")"
+  file_pid="$(<"$pid_file")"
+  [[ "$state_pid" == "$ralph_pid" ]] || fail "expected state pid $ralph_pid, got $state_pid"
+  [[ "$file_pid" == "$ralph_pid" ]] || fail "expected pid file $ralph_pid, got $file_pid"
+
+  wait "$ralph_pid"
+  final_status="$(jq -r '.steps[0].status' "$state_file")"
+  [[ "$final_status" == "completed" ]] || fail "expected sleeping step to complete, got $final_status"
+  [[ "$(jq -r '.steps[0].pid' "$state_file")" == "null" ]] || fail "expected pid to clear after completion"
+  [[ ! -f "$pid_file" ]] || fail "expected pid file to be removed after completion"
+}
+
+test_state_validate_resets_stale_in_progress_step_without_pid_file() {
+  local issue state_file now_epoch started_at output status status_value started_value
+
+  issue="9035"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  now_epoch="$(date +%s)"
+  started_at=$(( now_epoch - 10 ))
+
+  jq -n \
+    --arg issue "$issue" \
+    --argjson started_at "$started_at" \
+    '{
+      issue: ($issue | tonumber),
+      steps: [
+        {
+          id: "stale-step",
+          type: "stub",
+          agent: "stub",
+          status: "in_progress",
+          started_at: $started_at,
+          pid: null,
+          metrics: {},
+          notes: ""
+        }
+      ]
+    }' > "$state_file"
+
+  source "$ROOT_DIR/scripts/state.sh"
+
+  set +e
+  output="$(RALPH_STALE_THRESHOLD=1 state_validate "$state_file" 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 0 ]] || fail "expected stale reset validation to succeed, got $status: $output"
+  status_value="$(jq -r '.steps[0].status' "$state_file")"
+  started_value="$(jq '.steps[0].started_at' "$state_file")"
+  [[ "$status_value" == "pending" ]] || fail "expected stale step to reset to pending, got $status_value"
+  [[ "$started_value" == "null" ]] || fail "expected stale step started_at to clear, got $started_value"
+  assert_contains "$output" "Warning"
+  assert_contains "$output" "stale-step"
+}
+
+test_state_validate_keeps_stale_in_progress_step_with_live_pid() {
+  local issue state_file now_epoch started_at pid output status status_value
+
+  issue="9036"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs" "$WORKSPACES_DIR/$issue/pids"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  now_epoch="$(date +%s)"
+  started_at=$(( now_epoch - 10 ))
+  sleep 60 &
+  pid="$!"
+
+  jq -n \
+    --arg issue "$issue" \
+    --argjson started_at "$started_at" \
+    --argjson pid "$pid" \
+    '{
+      issue: ($issue | tonumber),
+      steps: [
+        {
+          id: "live-step",
+          type: "stub",
+          agent: "stub",
+          status: "in_progress",
+          started_at: $started_at,
+          pid: $pid,
+          metrics: {},
+          notes: ""
+        }
+      ]
+    }' > "$state_file"
+  printf '%s\n' "$pid" > "$WORKSPACES_DIR/$issue/pids/live-step.pid"
+
+  source "$ROOT_DIR/scripts/state.sh"
+
+  set +e
+  output="$(RALPH_STALE_THRESHOLD=1 state_validate "$state_file" 2>&1)"
+  status=$?
+  set -e
+  kill "$pid" 2>/dev/null || true
+
+  [[ "$status" -eq 0 ]] || fail "expected live PID validation to succeed, got $status: $output"
+  status_value="$(jq -r '.steps[0].status' "$state_file")"
+  [[ "$status_value" == "in_progress" ]] || fail "expected live PID step to remain in_progress, got $status_value"
+  [[ "$output" != *"Warning"* ]] || fail "expected no stale warning for live PID, got: $output"
+}
+
+test_state_validate_resets_stale_in_progress_step_with_dead_pid_file() {
+  local issue state_file now_epoch started_at dead_pid output status status_value
+
+  issue="9038"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs" "$WORKSPACES_DIR/$issue/pids"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  now_epoch="$(date +%s)"
+  started_at=$(( now_epoch - 10 ))
+  dead_pid="999999"
+
+  jq -n \
+    --arg issue "$issue" \
+    --argjson started_at "$started_at" \
+    --argjson dead_pid "$dead_pid" \
+    '{
+      issue: ($issue | tonumber),
+      steps: [
+        {
+          id: "dead-step",
+          type: "stub",
+          agent: "stub",
+          status: "in_progress",
+          started_at: $started_at,
+          pid: $dead_pid,
+          metrics: {},
+          notes: ""
+        }
+      ]
+    }' > "$state_file"
+  printf '%s\n' "$dead_pid" > "$WORKSPACES_DIR/$issue/pids/dead-step.pid"
+
+  source "$ROOT_DIR/scripts/state.sh"
+
+  set +e
+  output="$(RALPH_STALE_THRESHOLD=1 state_validate "$state_file" 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 0 ]] || fail "expected dead PID stale validation to succeed, got $status: $output"
+  status_value="$(jq -r '.steps[0].status' "$state_file")"
+  [[ "$status_value" == "pending" ]] || fail "expected dead PID step to reset to pending, got $status_value"
+  [[ ! -f "$WORKSPACES_DIR/$issue/pids/dead-step.pid" ]] || fail "expected dead PID file to be removed"
+  assert_contains "$output" "Warning"
+  assert_contains "$output" "dead-step"
+}
+
 test_status_shows_elapsed_time_for_in_progress_step() {
   local issue state_file output now_epoch started_at
 
@@ -2835,6 +3119,58 @@ test_status_shows_elapsed_time_for_in_progress_step() {
   local pending_line
   pending_line="$(echo "$output" | grep "waiting-step")"
   assert_contains "$pending_line" "-"
+}
+
+test_status_shows_pid_liveness_for_in_progress_steps() {
+  local issue state_file output now_epoch live_pid dead_pid
+
+  issue="9037"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  now_epoch="$(date +%s)"
+  sleep 60 &
+  live_pid="$!"
+  dead_pid="999999"
+
+  jq -n \
+    --arg issue "$issue" \
+    --argjson started_at "$now_epoch" \
+    --argjson live_pid "$live_pid" \
+    --argjson dead_pid "$dead_pid" \
+    '{
+      issue: ($issue | tonumber),
+      steps: [
+        {
+          id: "live-running-step",
+          type: "stub",
+          agent: "stub",
+          status: "in_progress",
+          started_at: $started_at,
+          pid: $live_pid,
+          metrics: {},
+          notes: ""
+        },
+        {
+          id: "dead-running-step",
+          type: "stub",
+          agent: "stub",
+          status: "in_progress",
+          started_at: $started_at,
+          pid: $dead_pid,
+          metrics: {},
+          notes: ""
+        }
+      ]
+    }' > "$state_file"
+
+  output="$("$RALPH" status --issue "$issue")"
+  kill "$live_pid" 2>/dev/null || true
+
+  assert_contains "$output" "live-running-step"
+  assert_contains "$output" "alive (PID $live_pid)"
+  assert_contains "$output" "dead-running-step"
+  assert_contains "$output" "not found (stale)"
 }
 
 test_parse_log_claude_extracts_text_and_tool_use() {
@@ -2997,7 +3333,7 @@ test_status_shows_dash_for_in_progress_without_started_at() {
   local step_line
   step_line="$(echo "$output" | grep "^[0-9].*old-running-step")"
   local duration_field
-  duration_field="$(echo "$step_line" | awk '{print $NF}')"
+  duration_field="$(echo "$step_line" | awk '{print $6}')"
   [[ "$duration_field" == "-" ]] || fail "expected dash for in_progress step without started_at, got: $duration_field"
 }
 
@@ -3043,7 +3379,13 @@ test_final_and_pr_review_pipeline_completes_with_idempotent_pr
 test_codex_step_uses_project_root_from_state_json
 test_state_update_step_sets_started_at_on_in_progress
 test_state_update_step_clears_started_at_on_pending
+test_state_update_step_tracks_and_clears_pid
+test_run_pipeline_records_current_shell_pid_while_step_runs
+test_state_validate_resets_stale_in_progress_step_without_pid_file
+test_state_validate_keeps_stale_in_progress_step_with_live_pid
+test_state_validate_resets_stale_in_progress_step_with_dead_pid_file
 test_status_shows_elapsed_time_for_in_progress_step
+test_status_shows_pid_liveness_for_in_progress_steps
 test_parse_log_claude_extracts_text_and_tool_use
 test_parse_log_codex_extracts_messages_and_commands
 test_parse_log_empty_file_shows_starting
