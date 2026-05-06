@@ -23,9 +23,10 @@ source "$SCRIPT_DIR/scripts/agent.sh"
 usage() {
   cat >&2 <<'USAGE'
 Usage:
-  ralph.sh --issue N [--steps N]
+  ralph.sh --issue N [--steps N] [--background]
   ralph.sh status --issue N
   ralph.sh logs --issue N [--step step-id]
+  ralph.sh poll --issue N
 USAGE
 }
 
@@ -200,12 +201,101 @@ run_pipeline() {
   metrics_print_summary "$state_file"
 }
 
+run_pipeline_background() {
+  local state_file="$1"
+  local workspace="$2"
+  local step_limit="${3:-0}"
+  local wrapper_log="$workspace/logs/wrapper.log"
+  local wrapper_pid_file="$workspace/step-runner.pid"
+  local wrapper_pid
+
+  mkdir -p "$workspace/logs"
+
+  nohup bash -c 'exec "$1" __run_pipeline "$2" "$3" "$4"' \
+    bash "$SCRIPT_DIR/ralph.sh" "$state_file" "$workspace" "$step_limit" \
+    > "$wrapper_log" 2>&1 &
+  wrapper_pid="$!"
+  printf '%s\n' "$wrapper_pid" > "$wrapper_pid_file"
+  printf "Started Ralph background pipeline wrapper PID %s\n" "$wrapper_pid"
+}
+
+poll_pipeline() {
+  local state_file="$1"
+  local workspace="$2"
+  local interval="${RALPH_POLL_INTERVAL:-30}"
+  local step step_id started_at pid wrapper_pid wrapper_pid_file elapsed elapsed_display pid_status
+  local pending_count
+
+  wrapper_pid_file="$workspace/step-runner.pid"
+
+  while true; do
+    if step="$(jq -c 'first(.steps[]? | select(.status == "failed")) // empty' "$state_file")" && [[ -n "$step" ]]; then
+      step_id="$(jq -r '.id' <<<"$step")"
+      printf "Step %s failed.\n" "$step_id" >&2
+      return 1
+    fi
+
+    if step="$(jq -c 'first(.steps[]? | select(.status == "blocked")) // empty' "$state_file")" && [[ -n "$step" ]]; then
+      step_id="$(jq -r '.id' <<<"$step")"
+      hitl_print_blocked "$step_id" "$(hitl_flag_file "$workspace" "$step_id")"
+      return 0
+    fi
+
+    step="$(jq -c 'first(.steps[]? | select(.status == "in_progress")) // empty' "$state_file")"
+    pending_count="$(jq '[.steps[]? | select(.status == "pending")] | length' "$state_file")"
+    if [[ -z "$step" && "$pending_count" -eq 0 ]]; then
+      printf "Pipeline complete.\n"
+      return 0
+    fi
+
+    if [[ -n "$step" ]]; then
+      step_id="$(jq -r '.id' <<<"$step")"
+      started_at="$(jq -r '.started_at // empty' <<<"$step")"
+      pid="$(jq -r '.pid // empty' <<<"$step")"
+      if [[ -f "$wrapper_pid_file" ]]; then
+        wrapper_pid="$(<"$wrapper_pid_file")"
+      else
+        wrapper_pid=""
+      fi
+
+      elapsed_display="-"
+      if [[ "$started_at" =~ ^[0-9]+$ ]]; then
+        elapsed=$(( $(date +%s) - started_at ))
+        elapsed_display="$(_format_duration_seconds "$elapsed")"
+      fi
+
+      pid_status="dead"
+      if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        pid_status="alive"
+      fi
+      printf "Step %s elapsed %s PID %s.\n" "$step_id" "$elapsed_display" "$pid_status"
+
+      if [[ -n "$wrapper_pid" ]] && ! kill -0 "$wrapper_pid" 2>/dev/null; then
+        state_validate "$state_file" >/dev/null 2>&1 || true
+        printf "Wrapper PID %s is dead while step %s is still in progress.\n" "$wrapper_pid" "$step_id" >&2
+        return 1
+      fi
+    else
+      printf "No active step; %s pending.\n" "$pending_count"
+    fi
+
+    sleep "$interval"
+  done
+}
+
+if [[ "${1:-}" == "__run_pipeline" ]]; then
+  [[ $# -eq 4 ]] || die "__run_pipeline requires state file, workspace, and step limit"
+  run_pipeline "$2" "$3" "$4"
+  exit $?
+fi
+
 COMMAND="run"
 ISSUE=""
 STEP_ID=""
 STEP_LIMIT=""
+BACKGROUND="false"
 
-if [[ "${1:-}" == "status" || "${1:-}" == "logs" ]]; then
+if [[ "${1:-}" == "status" || "${1:-}" == "logs" || "${1:-}" == "poll" ]]; then
   COMMAND="$1"
   shift
 fi
@@ -226,6 +316,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || die "--steps requires a value"
       STEP_LIMIT="$2"
       shift 2
+      ;;
+    --background)
+      BACKGROUND="true"
+      shift
       ;;
     -h|--help)
       usage
@@ -251,14 +345,22 @@ case "$COMMAND" in
     if ! jq -e '.steps[]? | select(.status == "completed")' "$STATE_FILE" >/dev/null 2>&1; then
       context_check "$SCRIPT_DIR" "$STATE_FILE" "$SCRIPT_DIR/workspaces/$ISSUE"
     fi
-    run_pipeline "$STATE_FILE" "$SCRIPT_DIR/workspaces/$ISSUE" "${STEP_LIMIT:-0}"
+    if [[ "$BACKGROUND" == "true" ]]; then
+      run_pipeline_background "$STATE_FILE" "$SCRIPT_DIR/workspaces/$ISSUE" "${STEP_LIMIT:-0}"
+    else
+      run_pipeline "$STATE_FILE" "$SCRIPT_DIR/workspaces/$ISSUE" "${STEP_LIMIT:-0}"
+    fi
     ;;
-  status|logs)
+  status|logs|poll)
     STATE_FILE="$SCRIPT_DIR/workspaces/$ISSUE/state.json"
-    state_validate "$STATE_FILE"
-    if [[ "$COMMAND" == "status" ]]; then
+    if [[ "$COMMAND" == "poll" ]]; then
+      [[ -f "$STATE_FILE" ]] || state_validate "$STATE_FILE"
+      poll_pipeline "$STATE_FILE" "$SCRIPT_DIR/workspaces/$ISSUE"
+    elif [[ "$COMMAND" == "status" ]]; then
+      state_validate "$STATE_FILE"
       status_print "$STATE_FILE" "$SCRIPT_DIR/workspaces/$ISSUE"
     else
+      state_validate "$STATE_FILE"
       logs_tail "$STATE_FILE" "$SCRIPT_DIR/workspaces/$ISSUE" "$STEP_ID"
     fi
     ;;
