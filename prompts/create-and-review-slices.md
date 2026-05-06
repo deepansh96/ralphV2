@@ -32,6 +32,7 @@ Draft vertical slices following the `to-issues` skill rules:
 - Keep slices small enough for one AFK implementation step, but complete enough that the resulting code is useful.
 - Mark every generated sub-issue as AFK.
 - Keep future work or blocked-by references out of the generated sub-issues unless the PRD explicitly requires them for this issue.
+- When referencing dependencies between slices, always use the GitHub issue number (e.g., "Blocked by #25"), never the slice ordinal (e.g., "Blocked by Slice 7"). The implement-slice step checks blockers by running `gh issue view <number>` — ordinal references will resolve to wrong issues.
 
 ## Council Review
 

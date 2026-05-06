@@ -60,13 +60,22 @@ If any blocker is still open, set this step's status to `failed` with a note lis
 
 ## Branch
 
-Work on the feature branch recorded in state:
+**CRITICAL**: This repo uses git submodules. You MUST run ALL git commands from the project root at `{{WORKSPACE}}/../../..` (which is the same as the `projectRoot` in state.json). Do NOT run git commands from inside the workspace directory — it is inside a submodule with a different remote.
 
+First, change to the project root:
 ```bash
-git checkout {{BRANCH}}
+cd $(jq -r '.projectRoot' {{WORKSPACE}}/state.json)
+```
+
+Then checkout the feature branch:
+```bash
+git fetch origin
+git checkout {{BRANCH}} 2>/dev/null || git checkout -b {{BRANCH}} origin/{{BRANCH}}
 ```
 
 If the branch is already checked out, continue. If checkout fails, stop and report the failure.
+
+**Stay in the project root for all subsequent commands** — do not cd back to the workspace.
 
 ## TDD Workflow
 

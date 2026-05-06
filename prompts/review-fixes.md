@@ -42,10 +42,11 @@ Read the automated code review comments posted on the PR, evaluate each finding 
 Work on the feature branch recorded in state:
 
 ```bash
-git checkout {{BRANCH}}
+git fetch origin
+git checkout {{BRANCH}} || git checkout -b {{BRANCH}} origin/{{BRANCH}}
 ```
 
-If checkout fails, stop and report the failure.
+If checkout fails after fetch, stop and report the failure.
 
 ## Discover PR Number
 
