@@ -10,7 +10,7 @@ Base branch: {{BASE_BRANCH}}
 
 ## Goal
 
-Validate that implementation can start from a clean, explicit base branch; create and push the feature branch; read the AFK implementation sub-issues from GitHub; and extend `{{WORKSPACE}}/state.json` with dynamic implementation, final review, PR review, and review-fixes steps.
+Validate that implementation can start from an explicit base branch; create and push the feature branch; read the AFK implementation sub-issues from GitHub; and extend `{{WORKSPACE}}/state.json` with dynamic implementation, final review, PR review, and review-fixes steps.
 
 ## Required Inputs
 
@@ -25,11 +25,8 @@ Validate that implementation can start from a clean, explicit base branch; creat
 
 On any hard stop failure, set this step's status to `failed` in `{{WORKSPACE}}/state.json` with a note explaining the failure, then stop. Ralph will detect the `failed` status and halt the pipeline.
 
-1. Verify the working tree is clean:
-   `git status --porcelain`
-   If output is not empty, error that the working tree is dirty and the user must commit, stash, or discard the uncommitted changes before preflight.
-2. Verify `baseBranch` in `state.json` is not `null` or empty. If it is missing, null, or empty, error with clear guidance to set `.baseBranch` explicitly in `{{WORKSPACE}}/state.json` before re-running preflight.
-3. Verify the named base branch exists locally or can be fetched from the remote before creating the feature branch.
+1. Verify `baseBranch` in `state.json` is not `null` or empty. If it is missing, null, or empty, error with clear guidance to set `.baseBranch` explicitly in `{{WORKSPACE}}/state.json` before re-running preflight.
+2. Verify the named base branch exists locally or can be fetched from the remote before creating the feature branch.
 
 ## Branch Creation
 

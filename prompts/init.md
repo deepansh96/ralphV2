@@ -14,6 +14,9 @@ Initialize a Ralph v2 workspace for GitHub issue `{{ISSUE}}` in repo `{{REPO}}`.
   `command -v gh`
 - Read the GitHub issue before creating state:
   `gh issue view {{ISSUE}} --repo {{REPO}}`
+- Verify the working tree is clean before creating state:
+  `git status --porcelain`
+  If output is not empty, error that the working tree is dirty and the user must commit or stash changes (e.g. from a grilling session) before initializing.
 - Create `ralph-v2/workspaces/{{ISSUE}}/`.
 - Write exactly one state file at `ralph-v2/workspaces/{{ISSUE}}/state.json`.
 - Running init on an already-initialized workspace must not overwrite existing state. If `ralph-v2/workspaces/{{ISSUE}}/state.json` already exists, stop with a clear warning or error.
@@ -99,10 +102,11 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
 
 1. Run `command -v gh`. If it fails, stop and report that the GitHub CLI is required.
 2. Run `gh issue view {{ISSUE}} --repo {{REPO}}`. If it fails, stop and report the issue lookup failure.
-3. If `ralph-v2/workspaces/{{ISSUE}}/state.json` exists, stop. Do not silently overwrite it.
-4. Create `ralph-v2/workspaces/{{ISSUE}}/`.
-5. Write `state.json` using the schema above. Use a current UTC ISO-8601 timestamp for `createdAt`.
-6. Validate the file with `jq`.
-7. Run `./ralph-v2/ralph.sh status --issue {{ISSUE}}` and confirm it prints all five fixed steps with `pending` status.
+3. Run `git status --porcelain`. If the output is not empty, stop and report that the working tree must be clean before initializing.
+4. If `ralph-v2/workspaces/{{ISSUE}}/state.json` exists, stop. Do not silently overwrite it.
+5. Create `ralph-v2/workspaces/{{ISSUE}}/`.
+6. Write `state.json` using the schema above. Use a current UTC ISO-8601 timestamp for `createdAt`.
+7. Validate the file with `jq`.
+8. Run `./ralph-v2/ralph.sh status --issue {{ISSUE}}` and confirm it prints all five fixed steps with `pending` status.
 
 Do not run any pipeline step. This prompt only initializes the workspace state.

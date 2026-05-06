@@ -1767,6 +1767,8 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   assert_contains "$prompt" "ralph.sh status --issue {{ISSUE}}"
   assert_contains "$prompt" '"projectRoot"'
   assert_contains "$prompt" "git rev-parse --show-toplevel"
+  assert_contains "$prompt" "git status --porcelain"
+  assert_contains "$prompt" "working tree"
 }
 
 test_initialized_workspace_status_shows_four_pending_fixed_steps() {
@@ -1977,8 +1979,6 @@ test_preflight_prompt_defines_full_preflight_workflow_contract() {
 
   prompt="$(<"$prompt_file")"
 
-  assert_contains "$prompt" "git status --porcelain"
-  assert_contains "$prompt" "working tree"
   assert_contains "$prompt" "baseBranch"
   assert_contains "$prompt" "clear guidance"
   assert_contains "$prompt" "feat/issue-{{ISSUE}}-<slug>"
