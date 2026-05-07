@@ -17,8 +17,9 @@ DON'T: ./ralph/ralph.sh --issue N 2>&1 | head -100
 -----------------------------------------
 ralph.sh and the spawned agent (claude -p / codex) are separate PIDs.
 Killing ralph.sh alone leaves the agent running as an orphan. The orphan
-will complete its step, update state.json, and auto-advance to the next
-step — potentially running steps out of order or in parallel.
+may complete its step, but it will not update state.json or auto-advance
+to the next step. Only ralph.sh updates state.json. If ralph.sh is killed
+without resetting the active step, that step stays in_progress forever.
 
 To stop cleanly:
   1. Kill ralph.sh
