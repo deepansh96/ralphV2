@@ -8,6 +8,7 @@ state_read() {
 
 state_validate() {
   local state_file="$1"
+  local stale_threshold now_epoch workspace
 
   if [[ ! -f "$state_file" ]]; then
     echo "Error: state.json not found; run init.md first" >&2
@@ -18,6 +19,46 @@ state_validate() {
     echo "Error: state has failed steps; set status to pending or completed before re-running" >&2
     return 1
   fi
+
+  stale_threshold="${RALPH_STALE_THRESHOLD:-3600}"
+  now_epoch="$(date +%s)"
+  workspace="$(dirname "$state_file")"
+
+  while IFS=$'\t' read -r step_id state_pid; do
+    local pid_file pid
+
+    [[ -n "$step_id" ]] || continue
+
+    pid_file="$workspace/pids/$step_id.pid"
+    if [[ ! -f "$pid_file" ]]; then
+      echo "Warning: resetting stale in_progress step '$step_id' to pending; PID file not found" >&2
+      state_update_step "$state_file" "$step_id" "pending"
+      continue
+    fi
+
+    pid="$(<"$pid_file")"
+    if [[ -z "$pid" ]]; then
+      pid="$state_pid"
+    fi
+
+    if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then
+      echo "Warning: resetting stale in_progress step '$step_id' to pending; PID not alive" >&2
+      state_update_step "$state_file" "$step_id" "pending"
+    fi
+  done < <(
+    jq -r \
+      --argjson now_epoch "$now_epoch" \
+      --argjson stale_threshold "$stale_threshold" \
+      '
+        .steps[]?
+        | select(
+            .status == "in_progress"
+            and (.started_at | type) == "number"
+            and (($now_epoch - .started_at) > $stale_threshold)
+          )
+        | [.id, (.pid // "")] | @tsv
+      ' "$state_file"
+  )
 }
 
 state_get_current_step() {
@@ -51,15 +92,21 @@ state_update_step() {
   local status="$3"
   local metrics_json="${4:-null}"
   local notes_json="${5:-null}"
+  local pid="${6:-}"
   local tmp_file
   local now_epoch
+  local workspace pid_dir pid_file
 
   now_epoch="$(date +%s)"
+  workspace="$(dirname "$state_file")"
+  pid_dir="$workspace/pids"
+  pid_file="$pid_dir/$step_id.pid"
   tmp_file="$(mktemp "${state_file}.tmp.XXXXXX")"
 
   jq \
     --arg id "$step_id" \
     --arg status "$status" \
+    --arg pid "$pid" \
     --argjson metrics "$metrics_json" \
     --argjson notes "$notes_json" \
     --argjson now_epoch "$now_epoch" \
@@ -70,7 +117,10 @@ state_update_step() {
           | if $metrics == null then . else .metrics = ((.metrics // {}) + $metrics) end
           | if $notes == null then . else .notes = $notes end
           | if $status == "in_progress" then .started_at = $now_epoch
+            | .pid = (if $pid == "" then null else ($pid | tonumber) end)
             elif $status == "pending" then .started_at = null
+            | .pid = null
+            elif ($status == "completed" or $status == "failed") then .pid = null
             else .
             end
         else
@@ -80,6 +130,15 @@ state_update_step() {
     ' "$state_file" > "$tmp_file"
 
   mv "$tmp_file" "$state_file"
+
+  if [[ "$status" == "in_progress" && -n "$pid" ]]; then
+    mkdir -p "$pid_dir"
+    printf '%s\n' "$pid" > "$pid_file"
+  elif [[ "$status" == "in_progress" ]]; then
+    rm -f "$pid_file"
+  elif [[ "$status" == "pending" || "$status" == "completed" || "$status" == "failed" ]]; then
+    rm -f "$pid_file"
+  fi
 }
 
 state_add_steps() {
