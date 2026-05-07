@@ -30,7 +30,7 @@ sleep 120 && ./ralph-v2/ralph.sh status --issue N 2>&1
 ## Workflow
 
 1. Grill the feature into a GitHub issue using the project context and decision workflow.
-2. Run the `init.md` prompt for that issue so an agent creates `ralph-v2/workspaces/<issue>/state.json`.
+2. Run the `init.md` prompt for that issue so an agent creates `ralph-v2/workspaces/<issue>/state.json`. By default, init creates 2 review-decisions rounds. Request fewer with "with 1 review round" or "with 0 review rounds".
 3. Set `.baseBranch` explicitly in `state.json` before preflight reaches branch creation.
 4. Run `./ralph-v2/ralph.sh --issue N`.
 5. If a step blocks, answer the questions in `workspaces/<issue>/hitl-<step-id>.md`, then run the same command again.
@@ -45,7 +45,7 @@ grill -> init -> run -> cleanup
 During `run`, Ralph executes:
 
 ```text
-review-decisions -> create-and-review-prd -> create-and-review-slices -> preflight -> implement-slice... -> final-review -> pr-review -> review-fixes
+review-decisions (0-2 rounds, default 2) -> create-and-review-prd -> create-and-review-slices -> preflight -> implement-slice... -> final-review -> pr-review -> review-fixes
 ```
 
 ## State

@@ -30,7 +30,14 @@ Create the workspace and state file for the issue.
 Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo
 ```
 
-Output: `ralph-v2/workspaces/<issue>/state.json` with five fixed steps (review-decisions-1, review-decisions-2, create-and-review-prd, create-and-review-slices, preflight) all pending.
+By default, init creates 2 review-decisions rounds. To change this:
+
+```
+Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 1 review round
+Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 0 review rounds
+```
+
+Output: `ralph-v2/workspaces/<issue>/state.json` with fixed steps (3–5 depending on review rounds) all pending.
 
 **After init, set `.baseBranch` in state.json** to the branch you want the feature branch created from. This is required — preflight will fail without it.
 
@@ -42,7 +49,7 @@ Execute the pipeline. This is the autonomous loop.
 ./ralph-v2/ralph.sh --issue N
 ```
 
-Ralph runs steps sequentially: review-decisions-1 → review-decisions-2 → create-and-review-prd → create-and-review-slices → preflight → implement-slice(s) → final-review → pr-review → review-fixes.
+Ralph runs steps sequentially: review-decisions (0–2 rounds, default 2) → create-and-review-prd → create-and-review-slices → preflight → implement-slice(s) → final-review → pr-review → review-fixes.
 
 - Preflight creates the feature branch and appends dynamic steps (one per sub-issue slice, plus final-review, pr-review, review-fixes).
 - If a step blocks for human input, ralph stops and prints the flag file path. Answer the questions there, then re-run the same command.
