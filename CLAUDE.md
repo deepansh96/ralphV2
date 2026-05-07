@@ -30,11 +30,12 @@ Create the workspace and state file for the issue.
 Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo
 ```
 
-By default, init creates 2 review-decisions rounds. To change this:
+By default, init creates 2 review-decisions rounds and sets `reviewRounds: 2` on the PRD and slices steps. To change this:
 
 ```
 Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 1 review round
 Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 0 review rounds
+Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 1 review round on PRD and 0 on slices
 ```
 
 Output: `ralph-v2/workspaces/<issue>/state.json` with fixed steps (3–5 depending on review rounds) all pending.
@@ -84,6 +85,7 @@ sleep 120 && ./ralph-v2/ralph.sh status --issue N 2>&1
 - **Never pipe ralph commands through `head`, `tail`, or similar** — ralph spawns long-running subprocesses that produce output slowly. Piping causes buffering deadlocks. Run ralph commands directly or in background mode.
 - `state.json` is the single source of truth. Agents read it, update it, and ralph.sh dispatches based on it.
 - Review steps use a `reviewers` array (e.g. `["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"]`). Edit it per-step to add/remove council agents.
+- `create-and-review-prd` and `create-and-review-slices` have a `reviewRounds` field (0, 1, or 2, default 2) controlling how many council rounds run inside the step. Edit it per-step in state.json.
 - Non-review steps have `"reviewers": []`.
 - Implementation steps run on `codex`. Review and planning steps run on `claude`.
 - `CONTEXT.md`, `CLAUDE.md`, and `docs/adr/` are read from the project root — not from inside `ralph-v2/`.

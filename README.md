@@ -102,8 +102,8 @@ Failed steps stop the pipeline until the user explicitly resets the step to `pen
 ## Step Types
 
 - `review-decisions`: reviews issue decisions against `CONTEXT.md`, `CLAUDE.md`, and ADRs; may block for human input.
-- `create-and-review-prd`: preserves the original issue body, drafts the PRD, runs two council reviews, and updates the parent issue.
-- `create-and-review-slices`: drafts vertical AFK slices, reviews them, creates GitHub sub-issues, and links them under the parent.
+- `create-and-review-prd`: preserves the original issue body, drafts the PRD, runs council reviews (controlled by `reviewRounds`, default 2), and updates the parent issue.
+- `create-and-review-slices`: drafts vertical AFK slices, runs council reviews (controlled by `reviewRounds`, default 2), creates GitHub sub-issues, and links them under the parent.
 - `preflight`: checks the working tree and `baseBranch`, creates/pushes the feature branch, and appends dynamic steps.
 - `implement-slice`: reads the assigned sub-issue, follows TDD, commits, pushes, and closes the sub-issue.
 - `final-review`: reviews branch changes, runs quality checks, verifies acceptance criteria, and writes `final-review.md`.

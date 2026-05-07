@@ -10,7 +10,7 @@ Skills: {{SKILLS_DIR}}
 
 ## Goal
 
-Turn the issue's grilled decisions into a complete PRD, preserve the original issue body locally, run two independent council reviews, incorporate feedback after each round, and update the same GitHub issue with the final PRD.
+Turn the issue's grilled decisions into a complete PRD, preserve the original issue body locally, run council reviews (count determined by `reviewRounds` in state.json), incorporate feedback after each round, and update the same GitHub issue with the final PRD.
 
 ## Required Inputs
 
@@ -59,6 +59,7 @@ Draft the PRD following the `to-prd` skill template. The final issue body must c
 
 ## Council Attribution
 
+(Include one line per round actually executed. Omit this section if reviewRounds is 0.)
 Round 1 — Reviewed by: <agents> · Failed: <agents or "none">
 Round 2 — Reviewed by: <agents> · Failed: <agents or "none">
 ```
@@ -73,9 +74,15 @@ Requirements:
 
 ## Council Review
 
-Run exactly two rounds of independent council review using the standalone wrapper.
+Before starting, read the `reviewRounds` field for this step (`{{STEP_ID}}`) from `{{WORKSPACE}}/state.json`. This controls how many council review rounds to run:
 
-Round 1:
+- **2 (default):** Run both Round 1 and Round 2 below.
+- **1:** Run only Round 1. Skip Round 2 entirely.
+- **0:** Skip council review entirely. Proceed directly to compacting and GitHub update.
+
+If `reviewRounds` is missing, default to 2.
+
+Round 1 (skip if `reviewRounds` is 0):
 
 ```bash
 ./ralph-v2/scripts/council-review.sh --only {{REVIEWERS}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
@@ -99,7 +106,7 @@ Before incorporating feedback, verify each council point against the codebase. F
 
 Incorporate verified Round 1 feedback into the PRD. Keep major feedback that changes scope, architecture, correctness, sequencing, or testing. Drop nitpicks, style-only comments, and points invalidated by codebase verification.
 
-Round 2:
+Round 2 (skip if `reviewRounds` is less than 2):
 
 ```bash
 ./ralph-v2/scripts/council-review.sh --only {{REVIEWERS}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.

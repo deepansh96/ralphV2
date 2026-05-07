@@ -83,6 +83,7 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "status": "pending",
       "agent": "claude",
       "reviewers": ["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"],
+      "reviewRounds": 2,  // 0, 1, or 2 — controls how many council review rounds run inside this step
       "hitl": false,
       "metrics": null,
       "notes": ""
@@ -94,6 +95,7 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "status": "pending",
       "agent": "claude",
       "reviewers": ["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"],
+      "reviewRounds": 2,  // 0, 1, or 2 — controls how many council review rounds run inside this step
       "hitl": false,
       "metrics": null,
       "notes": ""
@@ -117,6 +119,13 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
 - **2 rounds (default):** Include both `review-decisions-1` (`hitl: false`) and `review-decisions-2` (`hitl: true`). Total fixed steps: 5.
 - **1 round:** Include only `review-decisions-1` with `hitl: true`. Total fixed steps: 4.
 - **0 rounds:** Omit both review-decisions steps. Steps start at `create-and-review-prd`. Total fixed steps: 3.
+
+**`reviewRounds` rules (for `create-and-review-prd` and `create-and-review-slices`):**
+- **2 (default):** Two council review rounds. Draft → council → incorporate → council → incorporate.
+- **1:** One council review round. Draft → council → incorporate → done.
+- **0:** No council review. Draft → done.
+
+Default is 2. If the user requests fewer review rounds for these steps (e.g. "with 1 review round on PRD", "skip council on slices"), set the value accordingly. Each step's `reviewRounds` is independent.
 
 The actual `state.json` output must be valid JSON (no comments). The comments above are for your reference only.
 
