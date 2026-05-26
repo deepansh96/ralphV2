@@ -39,7 +39,15 @@ Read the automated code review comments posted on the PR, evaluate each finding 
 
 ## Branch
 
-Work on the feature branch recorded in state:
+**CRITICAL**: This repo uses git submodules. You MUST run ALL git commands from the project root recorded in `{{WORKSPACE}}/state.json`. Do NOT run git commands from inside the Ralph workspace directory — it is inside the Ralph tooling repo with a different remote.
+
+First, change to the project root:
+
+```bash
+cd $(jq -r '.projectRoot' {{WORKSPACE}}/state.json)
+```
+
+Then work on the feature branch recorded in state:
 
 ```bash
 git fetch origin
@@ -47,6 +55,8 @@ git checkout {{BRANCH}} || git checkout -b {{BRANCH}} origin/{{BRANCH}}
 ```
 
 If checkout fails after fetch, stop and report the failure.
+
+**Stay in the project root for all subsequent commands** — do not cd back to the workspace.
 
 ## Discover PR Number
 

@@ -38,13 +38,24 @@ Create an idempotent PR from the feature branch to the base branch, write a comp
 
 ## Branch
 
-Work on the feature branch recorded in state:
+**CRITICAL**: This repo uses git submodules. You MUST run ALL git commands from the project root recorded in `{{WORKSPACE}}/state.json`. Do NOT run git commands from inside the Ralph workspace directory — it is inside the Ralph tooling repo with a different remote.
+
+First, change to the project root:
 
 ```bash
-git checkout {{BRANCH}}
+cd $(jq -r '.projectRoot' {{WORKSPACE}}/state.json)
+```
+
+Then work on the feature branch recorded in state:
+
+```bash
+git fetch origin
+git checkout {{BRANCH}} 2>/dev/null || git checkout -b {{BRANCH}} origin/{{BRANCH}}
 ```
 
 If checkout fails, stop and report the failure.
+
+**Stay in the project root for all subsequent commands** — do not cd back to the workspace.
 
 Ensure the branch is pushed before creating or updating the PR:
 
