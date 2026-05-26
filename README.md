@@ -107,7 +107,7 @@ Failed steps stop the pipeline until the user explicitly resets the step to `pen
 - `preflight`: checks the working tree and `baseBranch`, creates/pushes the feature branch, and appends dynamic steps.
 - `implement-slice`: reads the assigned sub-issue, follows TDD, commits, pushes, and closes the sub-issue.
 - `final-review`: reviews branch changes, runs quality checks, verifies acceptance criteria, and writes `final-review.md`.
-- `pr-review`: creates or updates the PR and invokes `code-review:code-review`.
+- `pr-review`: creates or updates the PR and runs automated review using the step agent's review path (`code-review:code-review` for Claude, `codex review` for Codex).
 - `review-fixes`: evaluates automated review findings, implements fixes for valid issues, dismisses false positives, and posts a summary comment on the PR.
 
 ## Bundled Skills

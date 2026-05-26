@@ -1054,6 +1054,7 @@ FINAL_REVIEW
     }'
     ;;
   pr-review)
+    [[ "$prompt" == *"Step agent: claude"* ]] || exit 150
     [[ "$prompt" == *"gh pr list"* ]] || exit 151
     [[ "$prompt" == *"gh pr create"* ]] || exit 152
     [[ "$prompt" == *"--base main"* ]] || exit 153
@@ -1064,6 +1065,7 @@ FINAL_REVIEW
     [[ "$prompt" == *"code-review:code-review"* ]] || exit 158
     [[ "$prompt" == *"PR comments"* ]] || exit 159
     [[ "$prompt" == *"Do not create duplicate PRs"* ]] || exit 160
+    [[ "$prompt" == *"review --base"* ]] || exit 161
     cat > "$workspace/pr-body.md" <<'PR_BODY'
 ## Summary
 
@@ -2591,6 +2593,7 @@ test_pr_review_prompt_defines_full_pr_workflow_contract() {
   assert_contains "$prompt" "Base branch: {{BASE_BRANCH}}"
   assert_contains "$prompt" "Step: {{STEP_ID}}"
   assert_contains "$prompt" "Skills: {{SKILLS_DIR}}"
+  assert_contains "$prompt" "Step agent: {{AGENT}}"
   assert_contains "$prompt" "agent: claude"
   assert_contains "$prompt" "gh pr list"
   assert_contains "$prompt" "gh pr create"
@@ -2600,6 +2603,8 @@ test_pr_review_prompt_defines_full_pr_workflow_contract() {
   assert_contains "$prompt" "linked sub-issues"
   assert_contains "$prompt" "human QA checklist"
   assert_contains "$prompt" "code-review:code-review"
+  assert_contains "$prompt" "review --base"
+  assert_contains "$prompt" "codex-pr-review.md"
   assert_contains "$prompt" "PR comments"
   assert_contains "$prompt" "idempotent"
   assert_contains "$prompt" "Do not create duplicate PRs"
@@ -2627,6 +2632,7 @@ test_review_fixes_prompt_defines_full_review_fixes_workflow_contract() {
   assert_contains "$prompt" "issues/<pr-number>/comments"
   assert_contains "$prompt" "pulls/<pr-number>/comments"
   assert_contains "$prompt" "code-review:code-review"
+  assert_contains "$prompt" "codex review"
   assert_contains "$prompt" "Fix"
   assert_contains "$prompt" "Dismiss"
   assert_contains "$prompt" "Run quality checks from CLAUDE.md"

@@ -72,7 +72,7 @@ Also fetch inline review comments:
 gh api repos/{{REPO}}/pulls/<pr-number>/comments --paginate
 ```
 
-Identify comments posted by the `code-review:code-review` plugin. These are the findings to evaluate. If a review comment contains multiple issues, treat each as a separate finding.
+Identify automated review findings from the PR review step. These may come from the `code-review:code-review` plugin when `pr-review` ran on Claude, or from the combined PR comment that includes `codex review` output when `pr-review` ran on Codex. If a review comment contains multiple issues, treat each as a separate finding.
 
 ## Evaluate Each Finding
 

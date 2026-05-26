@@ -9,6 +9,7 @@ Branch: {{BRANCH}}
 Base branch: {{BASE_BRANCH}}
 Step: {{STEP_ID}}
 Skills: {{SKILLS_DIR}}
+Step agent: {{AGENT}}
 
 Default agent: claude
 Mode: AFK, no HITL
@@ -19,7 +20,7 @@ If any operation fails irrecoverably (checkout, push, PR creation, code review i
 
 ## Goal
 
-Create an idempotent PR from the feature branch to the base branch, write a comprehensive PR description with a summary of changes, linked sub-issues, and a human QA checklist, run a council review for independent multi-agent feedback, then invoke the `code-review:code-review` plugin skill. Synthesize both reviews into a single combined review comment on the PR.
+Create an idempotent PR from the feature branch to the base branch, write a comprehensive PR description with a summary of changes, linked sub-issues, and a human QA checklist, run a council review for independent multi-agent feedback, then run the automated code review path for this step's assigned agent. Synthesize both reviews into a single combined review comment on the PR.
 
 ## Required Inputs
 
@@ -137,17 +138,34 @@ Save the council output to `{{WORKSPACE}}/council-pr-review.md`.
 
 ## Automated Code Review
 
-After the council review completes, invoke the `code-review:code-review` plugin skill on the PR.
+After the council review completes, read this step's assigned agent from `{{WORKSPACE}}/state.json` for step `{{STEP_ID}}`. It should match `Step agent: {{AGENT}}`.
 
-The review must be posted as PR comments. If the skill requires a PR URL, pass the PR URL. If it requires repository, base, and head information, pass `{{REPO}}`, `{{BASE_BRANCH}}`, and `{{BRANCH}}`.
+Use exactly one automated review path:
 
-If the `code-review:code-review` plugin skill is unavailable or fails, stop and report the failure. Do not mark this step complete unless the automated review has been invoked successfully.
+- If the step agent is `claude`, invoke the `code-review:code-review` plugin skill on the PR. The review must be posted as PR comments. If the skill requires a PR URL, pass the PR URL. If it requires repository, base, and head information, pass `{{REPO}}`, `{{BASE_BRANCH}}`, and `{{BRANCH}}`. If the `code-review:code-review` plugin skill is unavailable or fails, stop and report the failure.
+- If the step agent is `codex`, run Codex's local review command from the project root and save its output:
+
+```bash
+git fetch origin {{BASE_BRANCH}}
+codex -a never --sandbox danger-full-access review --base origin/{{BASE_BRANCH}} > {{WORKSPACE}}/codex-pr-review.md
+```
+
+If `origin/{{BASE_BRANCH}}` is not available after fetch but local `{{BASE_BRANCH}}` exists, retry once with:
+
+```bash
+codex -a never --sandbox danger-full-access review --base {{BASE_BRANCH}} > {{WORKSPACE}}/codex-pr-review.md
+```
+
+If `codex review` is unavailable or exits non-zero, stop and report the failure.
+- If the step agent is neither `claude` nor `codex`, stop and report that automated PR review is unsupported for that agent.
+
+Do not mark this step complete unless the selected automated review path has completed successfully.
 
 ## Combined Review
 
 Before synthesizing, verify each council finding against the actual code. For each point: read the relevant files and diffs the council references. State whether the point is valid, partially valid, or invalid, citing what you found. If invalid, drop it with evidence. Do not accept or reject council feedback based on reasoning alone.
 
-After verification, synthesize the verified council findings and the `code-review:code-review` findings into a single combined review. Filter the council findings using the same rules as other review steps: keep critical and major issues, drop nitpicks, style-only comments, and points invalidated by codebase verification. Include a council attribution line at the end of the comment (e.g., `Reviewed by: codex, gemini, kimi · Failed: deepseek` or `Reviewed by: codex, gemini, kimi, deepseek` if none failed). Post the combined review as a PR comment using `gh pr comment`.
+After verification, synthesize the verified council findings and the selected automated review findings into a single combined review. For the Claude path, use the `code-review:code-review` findings from PR comments. For the Codex path, use `{{WORKSPACE}}/codex-pr-review.md`. Filter the council findings using the same rules as other review steps: keep critical and major issues, drop nitpicks, style-only comments, and points invalidated by codebase verification. Include the automated review source (`code-review:code-review` or `codex review`) and a council attribution line at the end of the comment (e.g., `Reviewed by: codex, gemini, kimi · Failed: deepseek` or `Reviewed by: codex, gemini, kimi, deepseek` if none failed). Post the combined review as a PR comment using `gh pr comment`.
 
 ## Output
 
@@ -163,7 +181,8 @@ Include:
 - Whether the PR was created or updated.
 - Linked sub-issues included in the body.
 - Summary of council review findings (kept and dropped).
-- Confirmation that `code-review:code-review` was invoked and review comments were posted.
+- Automated review source used (`code-review:code-review` or `codex review`).
+- Confirmation that the selected automated review completed successfully.
 - Confirmation that the combined review was posted as a PR comment.
 
 ## Completion
@@ -175,5 +194,5 @@ Complete normally only after:
 - Re-running the step would update the existing PR instead of creating a duplicate.
 - The PR description includes a summary of changes, linked sub-issues, and a human QA checklist.
 - The council review has completed and findings are saved to `{{WORKSPACE}}/council-pr-review.md`.
-- The `code-review:code-review` plugin skill has been invoked on the PR.
-- The combined review (council + code-review) is posted as a PR comment.
+- The selected automated review path for the step agent has completed successfully.
+- The combined review (council + automated review) is posted as a PR comment.
