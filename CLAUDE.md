@@ -22,6 +22,8 @@ Read ralph-v2/skills/grill-with-docs/SKILL.md and run a grilling session for thi
 
 Output: a well-defined GitHub issue with clear scope, decisions, and acceptance criteria. The grilling session also creates or updates `CONTEXT.md` and any ADRs.
 
+If those documentation changes are speculative or feature-specific, keep them on a pushed planning branch such as `grill/issue-N-short-slug` instead of committing them directly to the default branch. Later, set Ralph's `.baseBranch` to that planning branch so the implementation branch stacks on top of the grilled context.
+
 ### 2. Init
 
 Create the workspace and state file for the issue.
@@ -40,7 +42,7 @@ Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with
 
 Output: `ralph-v2/workspaces/<issue>/state.json` with fixed steps (3–5 depending on review rounds) all pending.
 
-**After init, set `.baseBranch` in state.json** to the branch you want the feature branch created from. This is required — preflight will fail without it.
+**After init, set `.baseBranch` in state.json** to the branch you want the feature branch created from. This is required — preflight will fail without it. Use the branch that already contains the relevant grilled context: the default branch if the docs were merged there, or the pushed `grill/*` planning branch if the docs are still feature-specific.
 
 ### 3. Run
 

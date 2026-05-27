@@ -26,7 +26,11 @@ If the user does not mention review rounds, use the default of 2. If the user re
   `gh issue view {{ISSUE}} --repo {{REPO}}`
 - Verify the working tree is clean before creating state:
   `git status --porcelain`
-  If output is not empty, error that the working tree is dirty and the user must commit or stash changes (e.g. from a grilling session) before initializing.
+  If output is not empty, error that the working tree is dirty and explain the Ralph branch contract:
+  - Grilling documentation changes (`CONTEXT.md`, ADRs, or similar) must be committed before `init`.
+  - If those changes are speculative or feature-specific, commit and push them on a `grill/*` planning branch; when ready to build, set `.baseBranch` to that `grill/*` branch.
+  - If those changes are already accepted for the mainline, commit and push or merge them into the intended base branch; then set `.baseBranch` to that updated branch.
+  - Do not stash grilling docs unless the user explicitly wants `init` and downstream agents to ignore them.
 - Create `ralph-v2/workspaces/{{ISSUE}}/`.
 - Write exactly one state file at `ralph-v2/workspaces/{{ISSUE}}/state.json`.
 - Running init on an already-initialized workspace must not overwrite existing state. If `ralph-v2/workspaces/{{ISSUE}}/state.json` already exists, stop with a clear warning or error.
@@ -133,7 +137,7 @@ The actual `state.json` output must be valid JSON (no comments). The comments ab
 
 1. Run `command -v gh`. If it fails, stop and report that the GitHub CLI is required.
 2. Run `gh issue view {{ISSUE}} --repo {{REPO}}`. If it fails, stop and report the issue lookup failure.
-3. Run `git status --porcelain`. If the output is not empty, stop and report that the working tree must be clean before initializing.
+3. Run `git status --porcelain`. If the output is not empty, stop and report that the working tree must be clean before initializing. Include this guidance: commit grilling docs to a pushed `grill/*` planning branch and use that branch as `.baseBranch`, or merge the docs into the intended base branch and use that branch as `.baseBranch`.
 4. If `ralph-v2/workspaces/{{ISSUE}}/state.json` exists, stop. Do not silently overwrite it.
 5. Create `ralph-v2/workspaces/{{ISSUE}}/`.
 6. Write `state.json` using the schema above. Use a current UTC ISO-8601 timestamp for `createdAt`.

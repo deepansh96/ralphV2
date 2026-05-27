@@ -2284,6 +2284,8 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   assert_contains "$prompt" "git rev-parse --show-toplevel"
   assert_contains "$prompt" "git status --porcelain"
   assert_contains "$prompt" "working tree"
+  assert_contains "$prompt" "grill/*"
+  assert_contains "$prompt" "planning branch"
 }
 
 test_initialized_workspace_status_shows_four_pending_fixed_steps() {
@@ -2499,6 +2501,10 @@ test_preflight_prompt_defines_full_preflight_workflow_contract() {
   assert_contains "$prompt" "feat/issue-{{ISSUE}}-<slug>"
   assert_contains "$prompt" "kebab"
   assert_contains "$prompt" "git push"
+  assert_contains "$prompt" "git status --porcelain"
+  assert_contains "$prompt" "git ls-remote --exit-code --heads origin {{BASE_BRANCH}}"
+  assert_contains "$prompt" "grill/"
+  assert_contains "$prompt" "planning branch"
   assert_contains "$prompt" "branch"
   assert_contains "$prompt" "gh issue view {{ISSUE}} --repo {{REPO}}"
   assert_contains "$prompt" "sub-issues"
@@ -2696,6 +2702,9 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   assert_contains "$(<"$readme")" "ralph.sh logs --issue N"
   assert_contains "$(<"$readme")" "cleanup.sh <issue-number>"
   assert_contains "$(<"$readme")" "grill"
+  assert_contains "$(<"$readme")" "grill/*"
+  assert_contains "$(<"$readme")" "planning branch"
+  assert_contains "$(<"$readme")" "baseBranch"
   assert_contains "$(<"$readme")" "init"
   assert_contains "$(<"$readme")" "run"
   assert_contains "$(<"$readme")" "cleanup"

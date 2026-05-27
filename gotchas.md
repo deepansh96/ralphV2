@@ -28,13 +28,16 @@ To stop cleanly:
   4. Check state.json and reset any in_progress step to pending
 
 
-3. CLEAN WORKING TREE BEFORE PREFLIGHT
+3. CLEAN WORKING TREE AND GRILLING DOCS BEFORE PREFLIGHT
 ----------------------------------------
 Preflight checks git status --porcelain and fails if anything is dirty.
-Common culprit: uncommitted submodule pointer changes (e.g., after editing
-ralph's CLAUDE.md or scripts).
+Common culprit: uncommitted grilling output, such as CONTEXT.md or ADR
+changes created while still on main.
 
-Fix: ask user, then commit and push the submodule changes first, then retry preflight.
+Fix: ask user, then commit and push those docs to the branch that should be
+the feature base. For speculative work, that is usually a grill/* planning
+branch, and state.json .baseBranch should point at that branch. For accepted
+mainline docs, merge or push them to main and use main as .baseBranch.
 
 
 4. RESETTING FAILED STEPS

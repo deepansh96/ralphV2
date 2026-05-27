@@ -20,6 +20,36 @@ If an existing issue was provided, read it and use it to inform your questions �
 
 Many grilling questions can be answered — or at least informed — by reading the code. Before asking the user a question, check whether the codebase already has the answer. If it does, present what you found as your recommendation. If the code is ambiguous, show both what the code suggests and what's unclear, then ask.
 
+## Branch safety
+
+Before editing `CONTEXT.md` or ADRs, inspect the current git state:
+
+```bash
+git status --short --branch
+git branch --show-current
+git symbolic-ref --quiet --short refs/remotes/origin/HEAD
+```
+
+If the working tree is already dirty, stop and ask the user how to handle the existing changes before continuing. Do not mix unrelated local edits into the grilling documentation.
+
+If the current branch is the default branch (`main`, `master`, or the branch reported by `origin/HEAD`), ask the user whether to create a planning branch before grilling changes are written. Recommend creating one unless the user says the domain documentation changes are already accepted for the default branch.
+
+Use this naming convention:
+
+- Existing issue: `grill/issue-<issue-number>-<slug>`
+- No existing issue: `grill/<slug>`
+
+Derive `<slug>` from the issue title or feature description: lowercase, replace non-alphanumeric runs with single hyphens, trim leading and trailing hyphens, and keep it reasonably short.
+
+If the user agrees, create and push the planning branch before making documentation edits:
+
+```bash
+git checkout -b grill/issue-<issue-number>-<slug>
+git push -u origin grill/issue-<issue-number>-<slug>
+```
+
+If the user declines because the documentation belongs on the default branch, continue on the current branch but call out that these context and ADR changes should be committed and pushed before `init`.
+
 ## Domain awareness
 
 During codebase exploration, also look for existing documentation:
@@ -116,3 +146,9 @@ gh issue create --title "<title>" --body-file <temp-file>
 ```
 
 Print the issue number and URL at the end — the user needs it to run `init`.
+
+Before ending, inspect `git status --short`. If grilling changed `CONTEXT.md` or ADRs, tell the user exactly which branch contains those changes and what must happen before Ralph `init`:
+
+- If the changes are on a `grill/*` planning branch, commit and push them there. When ready to build from those decisions, set Ralph's `baseBranch` to that `grill/*` branch so the feature branch stacks on top of the planning docs.
+- If the changes are on the default branch, commit and push them there only if the decisions are accepted independently of the feature. Then set Ralph's `baseBranch` to the default branch.
+- If the user is not ready to build, leave the committed planning branch in place and do not run `init` yet.
