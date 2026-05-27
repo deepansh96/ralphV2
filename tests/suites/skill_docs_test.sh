@@ -53,6 +53,8 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   assert_contains "$(<"$readme")" "ralph.sh --issue N"
   assert_contains "$(<"$readme")" "ralph.sh status --issue N"
   assert_contains "$(<"$readme")" "ralph.sh logs --issue N"
+  assert_contains "$(<"$readme")" "./tests/run.sh"
+  assert_contains "$(<"$readme")" "tests/suites/"
   assert_contains "$(<"$readme")" "cleanup.sh <issue-number>"
   assert_contains "$(<"$readme")" "grill"
   assert_contains "$(<"$readme")" "grill/*"

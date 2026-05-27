@@ -27,6 +27,22 @@ To monitor a running pipeline, poll with sleep intervals rather than continuousl
 sleep 120 && ./ralph-v2/ralph.sh status --issue N 2>&1
 ```
 
+## Tests
+
+Run the full deterministic shell suite from the repository root:
+
+```bash
+./tests/run.sh
+```
+
+Run specific suites by name:
+
+```bash
+./tests/run.sh agent pipeline prompt_contracts
+```
+
+`tests/test_ralph_v2.sh` is a compatibility wrapper around `tests/run.sh`. The suite is split by behavior under `tests/suites/`, with shared fixtures and fake external tools in `tests/lib/`. See `tests/README.md` for the suite map.
+
 ## Workflow
 
 1. Grill the feature into a GitHub issue using the project context and decision workflow. If grilling produces speculative `CONTEXT.md` or ADR changes, keep them on a pushed `grill/*` planning branch instead of committing them directly to `main`.

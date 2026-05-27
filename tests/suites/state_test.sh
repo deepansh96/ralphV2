@@ -141,6 +141,36 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
   [[ "$(jq '.steps | length' "$state_file")" == "6" ]] || fail "expected duplicate failure not to append steps"
 }
 
+test_state_add_steps_rejects_malformed_step_payloads() {
+  local issue state_file output status
+
+  issue="9049"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  jq -n '{issue: 9049, steps: []}' > "$state_file"
+
+  source "$ROOT_DIR/scripts/state.sh"
+
+  set +e
+  output="$(state_add_steps "$state_file" '{"id":"not-an-array"}' 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -ne 0 ]] || fail "expected non-array state_add_steps payload to fail"
+  assert_contains "$output" "new steps must be a JSON array"
+  [[ "$(jq '.steps | length' "$state_file")" == "0" ]] || fail "expected malformed payload not to append steps"
+
+  set +e
+  output="$(state_add_steps "$state_file" '[{"id":"","type":"bad"}]' 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -ne 0 ]] || fail "expected empty step id payload to fail"
+  assert_contains "$output" "new steps must be a JSON array"
+  [[ "$(jq '.steps | length' "$state_file")" == "0" ]] || fail "expected empty-id payload not to append steps"
+}
+
 test_state_update_step_sets_started_at_on_in_progress() {
   local issue state_file started_at
 
@@ -414,6 +444,7 @@ test_state_validate_resets_stale_in_progress_step_with_dead_pid_file() {
 
 run_test test_run_rejects_failed_steps
 run_test test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates
+run_test test_state_add_steps_rejects_malformed_step_payloads
 run_test test_state_update_step_sets_started_at_on_in_progress
 run_test test_state_update_step_clears_started_at_on_pending
 run_test test_state_update_step_tracks_and_clears_pid

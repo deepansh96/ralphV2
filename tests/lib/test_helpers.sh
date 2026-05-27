@@ -10,7 +10,7 @@ ARCHIVE_DIR="$ROOT_DIR/archive"
 CONTEXT_FILE="$PROJECT_ROOT/CONTEXT.md"
 INITIAL_CONTEXT_BACKUP="$(mktemp)"
 INITIAL_CONTEXT_PRESENT="false"
-TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033 9034 9035 9036 9037 9038 9039 9040 9041 9042 9043 9044 9045)
+TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033 9034 9035 9036 9037 9038 9039 9040 9041 9042 9043 9044 9045 9046 9047 9048 9049 9050)
 export RALPH_RETRY_DELAYS="${RALPH_RETRY_DELAYS:-0 0 0}"
 
 if [[ -f "$CONTEXT_FILE" ]]; then
@@ -1292,6 +1292,59 @@ case "$command_name" in
 esac
 FAKE_COUNCIL
   chmod +x "$fake_bin/council"
+}
+
+install_fake_codex_pr_review() {
+  local fake_bin="$1"
+
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/codex" <<'FAKE_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+
+while [[ $# -gt 0 ]]; do
+  shift
+done
+
+prompt="$(cat)"
+[[ "$prompt" == *"Step agent: codex"* ]] || exit 181
+[[ "$prompt" == *"codex-pr-review.md"* ]] || exit 182
+[[ "$prompt" == *"codex review"* ]] || exit 183
+[[ "$prompt" == *"review --base origin/main"* ]] || exit 184
+[[ "$prompt" == *"gh pr comment"* ]] || exit 185
+
+workspace="$(awk '/^Workspace:/ { print $2; exit }' <<<"$prompt")"
+cat > "$workspace/codex-pr-review.md" <<'CODEX_REVIEW'
+No findings.
+CODEX_REVIEW
+
+cat > "$workspace/pr-review.md" <<'PR_REVIEW'
+# PR Review
+
+- PR: #88 https://github.com/deepansh96/ralph/pull/88
+- Automated review source: codex review
+- Codex review output: no findings
+PR_REVIEW
+
+printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":31,"output_tokens":29}}'
+FAKE_CODEX
+  chmod +x "$fake_bin/codex"
+
+  cat > "$fake_bin/claude" <<'FAKE_CLAUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+jq -n -c '{
+  type: "result",
+  subtype: "success",
+  result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
+  duration_ms: 100,
+  usage: { input_tokens: 1, output_tokens: 1 },
+  total_cost_usd: 0.01
+}'
+FAKE_CLAUDE
+  chmod +x "$fake_bin/claude"
 }
 
 

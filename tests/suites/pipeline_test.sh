@@ -649,6 +649,62 @@ test_final_and_pr_review_pipeline_completes_with_idempotent_pr() {
   assert_contains "$(<"$pr_review_file")" "Action: updated"
 }
 
+test_pr_review_pipeline_uses_codex_review_path_when_step_agent_is_codex() {
+  local issue fake_bin output status_value input_tokens output_tokens pr_review_file codex_review_file log_file
+
+  issue="9050"
+  fake_bin="$WORKSPACES_DIR/fake-bin"
+  write_valid_context
+  rm -rf "${WORKSPACES_DIR:?}/$issue" "$fake_bin"
+  install_fake_codex_pr_review "$fake_bin"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  jq -n \
+    --arg issue "$issue" \
+    --arg project_root "$PROJECT_ROOT" \
+    '{
+      issue: ($issue | tonumber),
+      repo: "deepansh96/ralph",
+      baseBranch: "main",
+      branch: "feat/issue-9050-codex-pr-review",
+      projectRoot: $project_root,
+      status: "initialized",
+      steps: [
+        {
+          id: "pr-review",
+          phase: "dynamic",
+          type: "pr-review",
+          agent: "codex",
+          reviewers: ["codex", "gemini"],
+          hitl: false,
+          status: "pending",
+          metrics: {},
+          notes: ""
+        }
+      ]
+    }' > "$WORKSPACES_DIR/$issue/state.json"
+
+  output="$(PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue")"
+
+  status_value="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
+  input_tokens="$(jq -r '.steps[0].metrics.input_tokens' "$WORKSPACES_DIR/$issue/state.json")"
+  output_tokens="$(jq -r '.steps[0].metrics.output_tokens' "$WORKSPACES_DIR/$issue/state.json")"
+  pr_review_file="$WORKSPACES_DIR/$issue/pr-review.md"
+  codex_review_file="$WORKSPACES_DIR/$issue/codex-pr-review.md"
+  log_file="$WORKSPACES_DIR/$issue/logs/pr-review.log"
+
+  [[ "$status_value" == "completed" ]] || fail "expected codex pr-review step to complete, got $status_value"
+  [[ "$input_tokens" == "31" ]] || fail "expected codex pr-review input_tokens metric, got $input_tokens"
+  [[ "$output_tokens" == "29" ]] || fail "expected codex pr-review output_tokens metric, got $output_tokens"
+  [[ -f "$pr_review_file" ]] || fail "expected pr-review.md to exist"
+  [[ -f "$codex_review_file" ]] || fail "expected codex-pr-review.md to exist"
+  [[ -f "$log_file" ]] || fail "expected pr-review log to exist"
+  assert_contains "$(<"$pr_review_file")" "Automated review source: codex review"
+  assert_contains "$(<"$codex_review_file")" "No findings"
+  assert_contains "$(tr '\n' ' ' < "$log_file")" "turn.completed"
+  assert_contains "$output" "pr-review"
+  assert_contains "$output" "codex"
+}
+
 run_test test_run_completes_pending_agent_step
 run_test test_sigint_resets_running_step_to_pending_and_rerun_picks_it_up
 run_test test_sigterm_resets_running_step_to_pending_and_cleans_metrics_file
@@ -660,5 +716,6 @@ run_test test_create_prd_pipeline_preserves_original_and_updates_single_prd_body
 run_test test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently
 run_test test_implement_slice_pipeline_runs_codex_with_sub_issue_context
 run_test test_final_and_pr_review_pipeline_completes_with_idempotent_pr
+run_test test_pr_review_pipeline_uses_codex_review_path_when_step_agent_is_codex
 
 echo "pipeline_test.sh passed"

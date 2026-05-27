@@ -414,6 +414,47 @@ FAKE_CLAUDE
   [[ "$actual_cwd" == "$PROJECT_ROOT" ]] || fail "expected codex to run in $PROJECT_ROOT, got $actual_cwd"
 }
 
+test_unsupported_agent_marks_step_failed() {
+  local issue fake_bin output status status_value
+
+  issue="9048"
+  write_valid_context
+  fake_bin="$WORKSPACES_DIR/fake-bin"
+  rm -rf "${WORKSPACES_DIR:?}/$issue" "$fake_bin"
+  install_fake_claude "$fake_bin"
+
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  jq -n \
+    --arg issue "$issue" \
+    --arg project_root "$PROJECT_ROOT" \
+    '{
+      issue: ($issue | tonumber),
+      repo: "deepansh96/ralph",
+      baseBranch: "main",
+      branch: "feat/issue-9048-unsupported-agent",
+      projectRoot: $project_root,
+      steps: [
+        {
+          id: "unsupported-step",
+          type: "test-fixture",
+          agent: "gemini",
+          status: "pending",
+          metrics: {},
+          notes: ""
+        }
+      ]
+    }' > "$WORKSPACES_DIR/$issue/state.json"
+
+  set +e
+  output="$(PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 1 ]] || fail "expected unsupported agent run to exit 1, got $status: $output"
+  status_value="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
+  [[ "$status_value" == "failed" ]] || fail "expected unsupported agent step to be marked failed, got $status_value"
+}
+
 run_test test_claude_agent_step_renders_prompt_logs_metrics_and_summary
 run_test test_run_claude_retries_transient_error_and_preserves_attempt_logs
 run_test test_run_codex_retries_transient_errors_and_preserves_attempt_logs
@@ -422,5 +463,6 @@ run_test test_run_claude_retries_empty_crash_log
 run_test test_run_claude_retries_truncated_crash_log
 run_test test_codex_agent_step_logs_jsonl_and_records_metrics
 run_test test_codex_step_uses_project_root_from_state_json
+run_test test_unsupported_agent_marks_step_failed
 
 echo "agent_test.sh passed"

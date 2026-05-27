@@ -24,6 +24,8 @@ Run one or more suites by name:
 - `pipeline_test.sh`: run-loop behavior, HITL resume, failed-step handling, and simulated workflow steps.
 - `background_poll_test.sh`: background wrapper and polling behavior.
 - `council_test.sh`: council submit/status/read/cleanup wrapper behavior.
+- `runner_test.sh`: suite selection and missing-suite errors for `tests/run.sh`.
+- `prompt_render_test.sh`: prompt placeholder rendering and missing-template failures.
 - `prompt_contracts_test.sh`: prompt and skill contracts that downstream agents must follow.
 - `skill_docs_test.sh`: bundled skill/link integrity and workflow documentation.
 - `parse_log_test.sh`: log summarization for Claude and Codex JSONL output.

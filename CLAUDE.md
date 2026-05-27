@@ -81,6 +81,22 @@ To monitor a running pipeline, poll with sleep intervals rather than continuousl
 sleep 120 && ./ralph-v2/ralph.sh status --issue N 2>&1
 ```
 
+## Tests
+
+Run Ralph's deterministic shell tests from the `ralph-v2/` repository root:
+
+```bash
+./tests/run.sh
+```
+
+Run a focused suite by name:
+
+```bash
+./tests/run.sh agent pipeline prompt_contracts
+```
+
+`tests/test_ralph_v2.sh` remains as a compatibility wrapper. New tests should live under `tests/suites/`, use shared helpers from `tests/lib/test_helpers.sh`, and fake external tools such as `claude`, `codex`, `gh`, and `council` instead of calling real services.
+
 ## Key rules
 
 - All commands run from the **project root**, not from inside `ralph-v2/`.

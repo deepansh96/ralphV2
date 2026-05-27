@@ -12,6 +12,8 @@ suites=(
   pipeline_test.sh
   background_poll_test.sh
   council_test.sh
+  runner_test.sh
+  prompt_render_test.sh
   prompt_contracts_test.sh
   skill_docs_test.sh
   parse_log_test.sh
