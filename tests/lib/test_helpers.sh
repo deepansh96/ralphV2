@@ -1073,8 +1073,8 @@ FINAL_REVIEW
 
 ## Linked Issues
 
+- Closes #9021
 - Closes #9111
-- Parent: #9021
 
 ## Final Review
 

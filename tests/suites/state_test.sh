@@ -41,7 +41,7 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
           id: "preflight",
           phase: "fixed",
           type: "preflight",
-          agent: "claude",
+          agent: "codex",
           reviewers: [],
           hitl: false,
           status: "completed",
@@ -82,7 +82,7 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
       "id": "final-review",
       "phase": "dynamic",
       "type": "final-review",
-      "agent": "claude",
+      "agent": "codex",
       "reviewers": [],
       "hitl": false,
       "status": "pending",
@@ -93,7 +93,7 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
       "id": "pr-review",
       "phase": "dynamic",
       "type": "pr-review",
-      "agent": "claude",
+      "agent": "codex",
       "reviewers": ["codex", "gemini", "kimi", "deepseek"],
       "hitl": false,
       "status": "pending",
@@ -104,7 +104,7 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
       "id": "review-fixes",
       "phase": "dynamic",
       "type": "review-fixes",
-      "agent": "claude",
+      "agent": "codex",
       "reviewers": [],
       "hitl": false,
       "status": "pending",
@@ -119,9 +119,9 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
 
   assert_contains "$ids" "preflight implement-slice-9101 implement-slice-9102 final-review pr-review review-fixes"
   assert_contains "$agents" "implement-slice:codex"
-  assert_contains "$agents" "final-review:claude"
-  assert_contains "$agents" "pr-review:claude"
-  assert_contains "$agents" "review-fixes:claude"
+  assert_contains "$agents" "final-review:codex"
+  assert_contains "$agents" "pr-review:codex"
+  assert_contains "$agents" "review-fixes:codex"
   assert_contains "$sub_issues" "9101 9102"
 
   output="$("$RALPH" status --issue "$issue")"

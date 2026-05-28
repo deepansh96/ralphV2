@@ -105,5 +105,5 @@ Run a focused suite by name:
 - Review steps use a `reviewers` array (e.g. `["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"]`). Edit it per-step to add/remove council agents.
 - `create-and-review-prd` and `create-and-review-slices` have a `reviewRounds` field (0, 1, or 2, default 2) controlling how many council rounds run inside the step. Edit it per-step in state.json.
 - Non-review steps have `"reviewers": []`.
-- Implementation steps run on `codex`. Review and planning steps run on `claude`.
+- Generated steps run on `codex` by default. Individual steps can still be edited in `state.json` to use another supported agent when needed.
 - `CONTEXT.md`, `CLAUDE.md`, and `docs/adr/` are read from the project root — not from inside `ralph-v2/`.

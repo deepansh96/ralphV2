@@ -8,6 +8,8 @@ Workspace: {{WORKSPACE}}
 Step: {{STEP_ID}}
 Skills: {{SKILLS_DIR}}
 
+Default agent: codex
+
 ## Goal
 
 Read the PRD from the parent GitHub issue, draft vertical implementation slices, run council reviews (count determined by `reviewRounds` in state.json), and create AFK-ready sub-issues linked under the parent issue.

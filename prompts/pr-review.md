@@ -11,7 +11,7 @@ Step: {{STEP_ID}}
 Skills: {{SKILLS_DIR}}
 Step agent: {{AGENT}}
 
-Default agent: claude
+Default agent: codex
 Mode: AFK, no HITL
 
 ## Failure Protocol
@@ -80,7 +80,7 @@ Write a PR body file in the workspace, for example:
 The PR description must include:
 
 - Summary of changes.
-- Linked sub-issues.
+- Linked parent issue and sub-issues, using GitHub closing keywords so all issues close automatically when the PR merges.
 - Human QA checklist.
 - Final review outcome from `{{WORKSPACE}}/final-review.md`, if available.
 
@@ -93,8 +93,8 @@ Use this structure:
 
 ## Linked Issues
 
+- Closes #{{ISSUE}}
 - Closes #<sub-issue>
-- Parent: #{{ISSUE}}
 
 ## Final Review
 
@@ -203,7 +203,7 @@ Complete normally only after:
 - The feature branch has been pushed.
 - An open PR exists from `{{BRANCH}}` to `{{BASE_BRANCH}}`.
 - Re-running the step would update the existing PR instead of creating a duplicate.
-- The PR description includes a summary of changes, linked sub-issues, and a human QA checklist.
+- The PR description includes a summary of changes, `Closes #{{ISSUE}}`, closing references for every implementation sub-issue, and a human QA checklist.
 - The council review has completed and findings are saved to `{{WORKSPACE}}/council-pr-review.md`.
 - The selected automated review path for the step agent has completed successfully.
 - The combined review (council + automated review) is posted as a PR comment.

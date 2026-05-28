@@ -626,6 +626,7 @@ test_final_and_pr_review_pipeline_completes_with_idempotent_pr() {
   [[ -f "$review_fixes_comment" ]] || fail "expected review-fixes-comment.md to exist"
   assert_contains "$(<"$final_file")" "Acceptance criteria verification"
   assert_contains "$(<"$pr_body_file")" "## Summary"
+  assert_contains "$(<"$pr_body_file")" "Closes #9021"
   assert_contains "$(<"$pr_body_file")" "Closes #9111"
   assert_contains "$(<"$pr_body_file")" "Human QA Checklist"
   assert_contains "$(<"$pr_review_file")" "code-review:code-review invoked"

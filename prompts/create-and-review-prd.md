@@ -8,6 +8,8 @@ Workspace: {{WORKSPACE}}
 Step: {{STEP_ID}}
 Skills: {{SKILLS_DIR}}
 
+Default agent: codex
+
 ## Goal
 
 Turn the issue's grilled decisions into a complete PRD, preserve the original issue body locally, run council reviews (count determined by `reviewRounds` in state.json), incorporate feedback after each round, and update the same GitHub issue with the final PRD.

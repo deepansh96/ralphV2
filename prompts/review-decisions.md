@@ -8,6 +8,8 @@ Workspace: {{WORKSPACE}}
 Step: {{STEP_ID}}
 Skills: {{SKILLS_DIR}}
 
+Default agent: codex
+
 ## Required Inputs
 
 - Read the issue with `gh issue view {{ISSUE}} --repo {{REPO}}`.

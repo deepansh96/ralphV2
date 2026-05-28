@@ -8,6 +8,8 @@ Workspace: {{WORKSPACE}}
 Step: {{STEP_ID}}
 Base branch: {{BASE_BRANCH}}
 
+Default agent: codex
+
 ## Goal
 
 Validate that implementation can start from an explicit base branch; create and push the feature branch; read the AFK implementation sub-issues from GitHub; and extend `{{WORKSPACE}}/state.json` with dynamic implementation, final review, PR review, and review-fixes steps.
@@ -79,7 +81,7 @@ Append the final steps after all implementation steps:
   "phase": "dynamic",
   "type": "final-review",
   "status": "pending",
-  "agent": "claude",
+  "agent": "codex",
   "reviewers": [],
   "hitl": false,
   "metrics": null,
@@ -93,7 +95,7 @@ Append the final steps after all implementation steps:
   "phase": "dynamic",
   "type": "pr-review",
   "status": "pending",
-  "agent": "claude",
+  "agent": "codex",
   "reviewers": ["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"],
   "hitl": false,
   "metrics": null,
@@ -107,7 +109,7 @@ Append the final steps after all implementation steps:
   "phase": "dynamic",
   "type": "review-fixes",
   "status": "pending",
-  "agent": "claude",
+  "agent": "codex",
   "reviewers": [],
   "hitl": false,
   "metrics": null,
@@ -138,8 +140,8 @@ After updating state, run:
 Confirm the status output shows the fixed pipeline plus all dynamic steps:
 
 - N `implement-slice` steps with `agent` set to `codex` and the correct `sub_issue` value for each GitHub sub-issue
-- `final-review` with `agent` set to `claude`
-- `pr-review` with `agent` set to `claude`
-- `review-fixes` with `agent` set to `claude`
+- `final-review` with `agent` set to `codex`
+- `pr-review` with `agent` set to `codex`
+- `review-fixes` with `agent` set to `codex`
 
 Complete normally only after the branch is pushed, the `branch` field is updated, sub-issues are read from GitHub, and state contains the full dynamic pipeline.

@@ -10,7 +10,7 @@ Base branch: {{BASE_BRANCH}}
 Step: {{STEP_ID}}
 Skills: {{SKILLS_DIR}}
 
-Default agent: claude
+Default agent: codex
 Mode: AFK, no HITL
 
 ## Failure Protocol

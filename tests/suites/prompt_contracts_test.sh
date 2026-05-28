@@ -55,7 +55,7 @@ test_initialized_workspace_status_shows_four_pending_fixed_steps() {
           phase: "fixed",
           type: "review-decisions",
           status: "pending",
-          agent: "claude",
+          agent: "codex",
           reviewers: ["codex", "gemini", "kimi", "deepseek"],
           hitl: true,
           metrics: null,
@@ -66,7 +66,7 @@ test_initialized_workspace_status_shows_four_pending_fixed_steps() {
           phase: "fixed",
           type: "create-and-review-prd",
           status: "pending",
-          agent: "claude",
+          agent: "codex",
           reviewers: ["codex", "gemini", "kimi", "deepseek"],
           hitl: false,
           metrics: null,
@@ -77,7 +77,7 @@ test_initialized_workspace_status_shows_four_pending_fixed_steps() {
           phase: "fixed",
           type: "create-and-review-slices",
           status: "pending",
-          agent: "claude",
+          agent: "codex",
           reviewers: ["codex", "gemini", "kimi", "deepseek"],
           hitl: false,
           metrics: null,
@@ -88,7 +88,7 @@ test_initialized_workspace_status_shows_four_pending_fixed_steps() {
           phase: "fixed",
           type: "preflight",
           status: "pending",
-          agent: "claude",
+          agent: "codex",
           reviewers: [],
           hitl: false,
           metrics: null,
@@ -116,6 +116,7 @@ test_review_decisions_prompt_defines_council_filtering_and_hitl_contract() {
   prompt="$(<"$prompt_file")"
 
   assert_contains "$prompt" "gh issue view {{ISSUE}} --repo {{REPO}}"
+  assert_contains "$prompt" "Default agent: codex"
   assert_contains "$prompt" "CONTEXT.md"
   assert_contains "$prompt" "CLAUDE.md"
   assert_contains "$prompt" "docs/adr"
@@ -136,6 +137,7 @@ test_create_prd_prompt_defines_full_prd_workflow_contract() {
   prompt="$(<"$prompt_file")"
 
   assert_contains "$prompt" "gh issue view {{ISSUE}} --repo {{REPO}}"
+  assert_contains "$prompt" "Default agent: codex"
   assert_contains "$prompt" "original-issue.md"
   assert_contains "$prompt" "CONTEXT.md"
   assert_contains "$prompt" "CLAUDE.md"
@@ -165,6 +167,7 @@ test_create_slices_prompt_defines_full_slice_creation_contract() {
   prompt="$(<"$prompt_file")"
 
   assert_contains "$prompt" "gh issue view {{ISSUE}} --repo {{REPO}}"
+  assert_contains "$prompt" "Default agent: codex"
   assert_contains "$prompt" "CONTEXT.md"
   assert_contains "$prompt" "CLAUDE.md"
   assert_contains "$prompt" "docs/adr"
@@ -190,6 +193,7 @@ test_preflight_prompt_defines_full_preflight_workflow_contract() {
   prompt="$(<"$prompt_file")"
 
   assert_contains "$prompt" "baseBranch"
+  assert_contains "$prompt" "Default agent: codex"
   assert_contains "$prompt" "clear guidance"
   assert_contains "$prompt" "feat/issue-{{ISSUE}}-<slug>"
   assert_contains "$prompt" "kebab"
@@ -227,7 +231,7 @@ test_implement_slice_prompt_defines_full_implementation_workflow_contract() {
   assert_contains "$prompt" "Step: {{STEP_ID}}"
   assert_contains "$prompt" "Sub-issue: {{SUB_ISSUE}}"
   assert_contains "$prompt" "Skills: {{SKILLS_DIR}}"
-  assert_contains "$prompt" "agent: codex"
+  assert_contains "$prompt" "Default agent: codex"
   assert_contains "$prompt" "AFK"
   assert_contains "$prompt" "CONTEXT.md"
   assert_contains "$prompt" "CLAUDE.md"
@@ -264,7 +268,7 @@ test_final_review_prompt_defines_full_review_workflow_contract() {
   assert_contains "$prompt" "Base branch: {{BASE_BRANCH}}"
   assert_contains "$prompt" "Step: {{STEP_ID}}"
   assert_contains "$prompt" "Skills: {{SKILLS_DIR}}"
-  assert_contains "$prompt" "agent: claude"
+  assert_contains "$prompt" "Default agent: codex"
   assert_contains "$prompt" "git diff --name-only {{BASE_BRANCH}}...HEAD"
   assert_contains "$prompt" "Progressively read changed files"
   assert_contains "$prompt" "Run quality checks from CLAUDE.md"
@@ -293,13 +297,15 @@ test_pr_review_prompt_defines_full_pr_workflow_contract() {
   assert_contains "$prompt" "Step: {{STEP_ID}}"
   assert_contains "$prompt" "Skills: {{SKILLS_DIR}}"
   assert_contains "$prompt" "Step agent: {{AGENT}}"
-  assert_contains "$prompt" "agent: claude"
+  assert_contains "$prompt" "Default agent: codex"
   assert_contains "$prompt" "gh pr list"
   assert_contains "$prompt" "gh pr create"
   assert_contains "$prompt" "--base {{BASE_BRANCH}}"
   assert_contains "$prompt" "--head {{BRANCH}}"
   assert_contains "$prompt" "summary of changes"
   assert_contains "$prompt" "linked sub-issues"
+  assert_contains "$prompt" 'Closes #{{ISSUE}}'
+  assert_contains "$prompt" "Closes #<sub-issue>"
   assert_contains "$prompt" "human QA checklist"
   assert_contains "$prompt" "code-review:code-review"
   assert_contains "$prompt" "review --base"
@@ -324,7 +330,7 @@ test_review_fixes_prompt_defines_full_review_fixes_workflow_contract() {
   assert_contains "$prompt" "Base branch: {{BASE_BRANCH}}"
   assert_contains "$prompt" "Step: {{STEP_ID}}"
   assert_contains "$prompt" "Skills: {{SKILLS_DIR}}"
-  assert_contains "$prompt" "agent: claude"
+  assert_contains "$prompt" "Default agent: codex"
   assert_contains "$prompt" "pr-review.md"
   assert_contains "$prompt" "final-review.md"
   assert_contains "$prompt" "gh api"

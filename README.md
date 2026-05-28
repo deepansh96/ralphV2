@@ -115,6 +115,8 @@ Each step has this shape:
 }
 ```
 
+Generated steps use `"agent": "codex"` by default. You can edit an individual step's `agent` in `state.json` before it runs if a different supported agent should own that step.
+
 Step statuses are:
 
 ```text
