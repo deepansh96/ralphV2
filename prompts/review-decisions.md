@@ -16,6 +16,66 @@ Default agent: codex
 - Read project `CONTEXT.md`.
 - Read project `CLAUDE.md`.
 - Read any ADRs under `docs/adr/` if that directory exists.
+- Source the artifact helper from the project root:
+  ```bash
+  source ./ralph-v2/scripts/artifacts.sh
+  ```
+- Use `{{WORKSPACE}}/state.json` as the State file for artifact registry reads/writes.
+
+## Artifact Storage Contract
+
+Decision review output is stored in the Decisions Artifact Issue, not in the parent issue body.
+
+Before any call that can refresh the Parent Issue Index, preserve the current parent body once:
+
+```bash
+if [[ ! -f "{{WORKSPACE}}/original-issue.md" ]]; then
+  gh issue view {{ISSUE}} --repo {{REPO}} --json body -q .body > "{{WORKSPACE}}/original-issue.md"
+fi
+```
+
+Maintain `{{WORKSPACE}}/decisions.md` as a workspace recovery/audit file. Its content is the source file used to update the Decisions Artifact. The artifact content must contain these stable sections:
+
+```md
+# Decisions Artifact
+
+## Original Feature Request / Grilled Decisions
+
+<contents of original-issue.md>
+
+## {{STEP_ID}}
+
+<this round's verified findings, recommendations, dropped feedback, and Council Attribution>
+
+## HITL Answers
+
+<human answers, only when this step resumes from HITL>
+```
+
+On rerun, replace the existing `## {{STEP_ID}}` section in `decisions.md` instead of appending a duplicate. Preserve other round sections such as `## review-decisions-1` and `## review-decisions-2`. Preserve each round's `## Council Attribution` inside that round section; never compact council attribution away.
+
+Use the artifact helper to create/reuse, link, update, and refresh:
+
+```bash
+artifact_issue="$(
+  artifact_ensure \
+    "{{WORKSPACE}}/state.json" \
+    "{{REPO}}" \
+    "{{ISSUE}}" \
+    "decisions" \
+    "{{STEP_ID}}" \
+    "{{WORKSPACE}}/decisions.md" \
+    "[ralph artifact] #{{ISSUE}} Decisions"
+)"
+artifact_link_to_parent "{{REPO}}" "{{ISSUE}}" "$artifact_issue"
+artifact_write_body "{{ISSUE}}" "decisions" "{{STEP_ID}}" "{{WORKSPACE}}/decisions.md" "{{WORKSPACE}}/decisions-artifact-body.md"
+artifact_update_body "{{WORKSPACE}}/state.json" "{{REPO}}" "{{ISSUE}}" "decisions" "$artifact_issue" "{{WORKSPACE}}/decisions-artifact-body.md"
+artifact_refresh_parent_index "{{WORKSPACE}}/state.json" "{{REPO}}" "{{ISSUE}}"
+```
+
+`artifact_ensure` must be called before `artifact_link_to_parent`. On rerun it must reuse the existing Decisions Artifact Issue from State or marker recovery; do not create a second Decisions Artifact Issue.
+
+Do not append decision findings to the parent issue body. The parent issue body must be refreshed only as the compact Parent Issue Index via `artifact_refresh_parent_index`.
 
 ## HITL Resume
 
@@ -24,11 +84,13 @@ If this prompt includes a `## HITL Resume` section, use the human answers in tha
 On HITL resume:
 
 1. Read `{{WORKSPACE}}/{{STEP_ID}}.md`.
-2. Append the findings and human answers to the **issue body** (not as a comment) — see "Update the GitHub Issue Body" section below.
-3. Do not call `scripts/council-review.sh`.
-4. Do not repeat any council or review phase.
-5. Do not delete the HITL flag file — it serves as an audit trail.
-6. Finish normally so Ralph can mark the step completed.
+2. Read `{{WORKSPACE}}/decisions.md` if it exists; otherwise reconstruct it from `{{WORKSPACE}}/original-issue.md` and `{{WORKSPACE}}/{{STEP_ID}}.md`.
+3. Add or replace a stable `## HITL Answers` section in `{{WORKSPACE}}/decisions.md` using the human answers from the `## HITL Resume` section.
+4. Call `artifact_ensure`, `artifact_link_to_parent`, `artifact_write_body`, `artifact_update_body`, and `artifact_refresh_parent_index` as described in "Artifact Storage Contract".
+5. Do not call `scripts/council-review.sh`.
+6. Do not repeat any council or review phase.
+7. Do not delete the HITL flag file — it serves as an audit trail.
+8. Finish normally so Ralph can mark the step completed.
 
 ## Council Review
 
@@ -49,7 +111,7 @@ For each issue found, state the severity (critical / major / minor), the specifi
 
 Before calling council, capture the working tree state with `git status --porcelain`. After council returns, run `git status --porcelain` again. If any files changed during the council run (new entries or different status compared to the before snapshot), revert only those files: `git checkout -- <file>` for modified tracked files, `rm <file>` for newly created untracked files.
 
-The council output includes an `=== COUNCIL ATTRIBUTION ===` block at the end listing which agents succeeded (`Reviewed by:`) and which failed (`Failed:`). Preserve this attribution for use in the output file and the GitHub issue body.
+The council output includes an `=== COUNCIL ATTRIBUTION ===` block at the end listing which agents succeeded (`Reviewed by:`) and which failed (`Failed:`). Preserve this attribution in `{{WORKSPACE}}/{{STEP_ID}}.md` and inside the matching `## {{STEP_ID}}` section of the Decisions Artifact.
 
 ## Codebase Verification
 
@@ -131,19 +193,27 @@ Failed: <comma-separated list of agents that failed, or "none">
 ### 2. ...
 ```
 
-## Update the GitHub Issue Body
+## Update the Decisions Artifact
 
-After writing the output file, append the review findings to the **issue body** (not as a comment). Downstream steps read the issue body with `gh issue view` and do not see comments.
+After writing the output file, write the review findings to the Decisions Artifact Issue. Downstream steps read artifact issues for full planning context and use the parent only as a compact index.
 
-1. Read the current issue body into a temp file:
+1. Ensure `{{WORKSPACE}}/original-issue.md` exists, preserving the parent issue body before the first Parent Issue Index refresh:
    ```bash
-   gh issue view {{ISSUE}} --repo {{REPO}} --json body -q .body > /tmp/issue-body-{{ISSUE}}.md
+   if [[ ! -f "{{WORKSPACE}}/original-issue.md" ]]; then
+     gh issue view {{ISSUE}} --repo {{REPO}} --json body -q .body > "{{WORKSPACE}}/original-issue.md"
+   fi
    ```
-2. Append a summary of the major findings, recommendations, and council attribution to the temp file.
-3. Update the issue body:
+2. Merge `{{WORKSPACE}}/{{STEP_ID}}.md` into `{{WORKSPACE}}/decisions.md` under `## {{STEP_ID}}`, replacing that section when it already exists.
+3. Keep `## Original Feature Request / Grilled Decisions` seeded from `{{WORKSPACE}}/original-issue.md`.
+4. Create or reuse the Decisions Artifact Issue:
    ```bash
-   gh issue edit {{ISSUE}} --repo {{REPO}} --body-file /tmp/issue-body-{{ISSUE}}.md
+   artifact_issue="$(artifact_ensure "{{WORKSPACE}}/state.json" "{{REPO}}" "{{ISSUE}}" "decisions" "{{STEP_ID}}" "{{WORKSPACE}}/decisions.md" "[ralph artifact] #{{ISSUE}} Decisions")"
+   artifact_link_to_parent "{{REPO}}" "{{ISSUE}}" "$artifact_issue"
+   artifact_write_body "{{ISSUE}}" "decisions" "{{STEP_ID}}" "{{WORKSPACE}}/decisions.md" "{{WORKSPACE}}/decisions-artifact-body.md"
+   artifact_update_body "{{WORKSPACE}}/state.json" "{{REPO}}" "{{ISSUE}}" "decisions" "$artifact_issue" "{{WORKSPACE}}/decisions-artifact-body.md"
+   artifact_refresh_parent_index "{{WORKSPACE}}/state.json" "{{REPO}}" "{{ISSUE}}"
    ```
+5. Treat any artifact helper create/reuse/update failure as a hard stop and set this Step to `failed`.
 
 ## Blocking Protocol
 

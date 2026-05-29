@@ -501,10 +501,56 @@ step_id="$(awk '/^Step:/ { print $2; exit }' <<<"$prompt")"
 state_file="$workspace/state.json"
 flag_file="$workspace/hitl-$step_id.md"
 findings_file="$workspace/review-decisions.md"
+original_file="$workspace/original-issue.md"
+decisions_file="$workspace/decisions.md"
+decision_artifact_file="$workspace/github-decisions-artifact.md"
+parent_index_file="$workspace/github-parent-index.md"
+
+write_decisions_artifact() {
+  local round_section="$1"
+  local hitl_section="${2:-}"
+
+  if [[ ! -f "$original_file" ]]; then
+    printf 'Original grilled issue body\nDecision seed from parent before compaction\n' > "$original_file"
+  fi
+
+  {
+    printf 'Ralph-Artifact: decisions\n'
+    printf 'Parent: #9015\n'
+    printf 'Owning-Step: review-decisions-1\n'
+    printf 'Last-Updated: 2026-05-30T00:00:00Z\n'
+    printf 'WARNING: Managed by Ralph. Manual edits may be overwritten.\n'
+    printf '%s\n' '---'
+    printf '# Decisions Artifact\n\n'
+    printf '## Original Feature Request / Grilled Decisions\n\n'
+    cat "$original_file"
+    printf '\n'
+    printf '%s\n' "$round_section"
+    if [[ -n "$hitl_section" ]]; then
+      printf '\n%s\n' "$hitl_section"
+    fi
+  } > "$decisions_file"
+  cp "$decisions_file" "$decision_artifact_file"
+  cat > "$parent_index_file" <<'INDEX'
+## Ralph Run Index
+
+## Artifacts
+
+- Decisions: #9100
+
+## Notes
+
+- Artifact issues are planning storage and are not implementation slices.
+INDEX
+}
 
 if [[ "$prompt" == *"This step was previously blocked for human input"* ]]; then
   [[ "$prompt" == *"complete WITHOUT re-running council review"* ]] || exit 51
   [[ "$prompt" == *"Use the architecture option"* ]] || exit 52
+  [[ "$prompt" == *"## HITL Answers"* ]] || exit 53
+  [[ "$prompt" == *"artifact_ensure"* ]] || exit 54
+  [[ "$prompt" == *"artifact_update_body"* ]] || exit 55
+  write_decisions_artifact "$(awk '/^## review-decisions-1$/ { found=1 } found { print }' "$findings_file")" $'## HITL Answers\n\nUse the architecture option'
   printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
   jq -n -c --arg prompt "$prompt" '{
     type: "result",
@@ -524,18 +570,33 @@ fi
 [[ "$prompt" == *"Major feedback"* ]] || exit 62
 [[ "$prompt" == *"nitpick"* ]] || exit 63
 [[ "$prompt" == *"review-decisions.md"* ]] || exit 64
+[[ "$prompt" == *"source ./ralph-v2/scripts/artifacts.sh"* ]] || exit 65
+[[ "$prompt" == *"artifact_ensure"* ]] || exit 66
+[[ "$prompt" == *"artifact_link_to_parent"* ]] || exit 67
+[[ "$prompt" == *"artifact_update_body"* ]] || exit 68
+[[ "$prompt" == *"artifact_refresh_parent_index"* ]] || exit 69
+[[ "$prompt" == *"Do not append decision findings to the parent issue body"* ]] || exit 70
 
 cat > "$findings_file" <<'FINDINGS'
-# Review Decisions
+# Review Decisions - review-decisions-1
 
-## Major feedback
+## review-decisions-1
+
+### Major feedback
 
 - Major issue: baseBranch must be explicit before preflight.
 
-## Open questions
+### Open questions
 
 - Which architecture option should Ralph use?
+
+## Council Attribution
+
+Reviewed by: codex, gemini
+Failed: none
 FINDINGS
+
+write_decisions_artifact "$(<"$findings_file")"
 
 jq --arg id "$step_id" '
   .steps |= map(if .id == $id then .status = "blocked" else . end)

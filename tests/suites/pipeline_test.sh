@@ -283,7 +283,7 @@ test_failed_agent_invocation_marks_step_failed_and_exits_one() {
 }
 
 test_review_decisions_runs_after_context_check_and_blocks_then_resumes() {
-  local issue fake_bin output flag_file findings_file status_value log_file status
+  local issue fake_bin output flag_file findings_file status_value log_file status artifact_file parent_index_file decisions_file create_count round_count hitl_count
 
   issue="9015"
   fake_bin="$WORKSPACES_DIR/fake-bin"
@@ -321,15 +321,40 @@ test_review_decisions_runs_after_context_check_and_blocks_then_resumes() {
   [[ "$status" -eq 0 ]] || fail "expected review-decisions first run to block cleanly, got $status: $output"
   flag_file="$WORKSPACES_DIR/$issue/hitl-review-decisions.md"
   findings_file="$WORKSPACES_DIR/$issue/review-decisions.md"
+  decisions_file="$WORKSPACES_DIR/$issue/decisions.md"
+  artifact_file="$WORKSPACES_DIR/$issue/github-decisions-artifact.md"
+  parent_index_file="$WORKSPACES_DIR/$issue/github-parent-index.md"
   status_value="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
 
   [[ "$status_value" == "blocked" ]] || fail "expected review-decisions to block, got $status_value"
   [[ -f "$WORKSPACES_DIR/$issue/logs/check-context.log" ]] || fail "expected context check log file"
   [[ -f "$findings_file" ]] || fail "expected review-decisions findings file"
+  [[ -f "$WORKSPACES_DIR/$issue/original-issue.md" ]] || fail "expected original issue body to be preserved before parent index refresh"
+  [[ -f "$decisions_file" ]] || fail "expected decisions.md recovery/audit file"
+  [[ -f "$artifact_file" ]] || fail "expected Decisions Artifact fixture to be written"
+  [[ -f "$parent_index_file" ]] || fail "expected compact parent index fixture"
   [[ -f "$flag_file" ]] || fail "expected HITL flag file"
   assert_contains "$output" "blocked for human input"
   assert_contains "$(<"$findings_file")" "Major issue"
+  assert_contains "$(<"$artifact_file")" "Ralph-Artifact: decisions"
+  assert_contains "$(<"$artifact_file")" "## Original Feature Request / Grilled Decisions"
+  assert_contains "$(<"$artifact_file")" "Original grilled issue body"
+  assert_contains "$(<"$artifact_file")" "## review-decisions-1"
+  assert_contains "$(<"$artifact_file")" "## Council Attribution"
+  assert_contains "$(<"$artifact_file")" "Reviewed by: codex, gemini"
+  assert_contains "$(<"$parent_index_file")" "## Ralph Run Index"
+  assert_contains "$(<"$parent_index_file")" "- Decisions: #9100"
+  [[ "$(<"$parent_index_file")" != *"Major issue"* ]] || fail "expected parent index not to contain decision findings"
   [[ "$(<"$findings_file")" != *"nitpick"* ]] || fail "expected findings to filter nitpicks"
+
+  jq '.steps[0].status = "pending"' "$WORKSPACES_DIR/$issue/state.json" > "$WORKSPACES_DIR/$issue/state.json.tmp"
+  mv "$WORKSPACES_DIR/$issue/state.json.tmp" "$WORKSPACES_DIR/$issue/state.json"
+  PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" >/dev/null
+
+  round_count="$(grep -c '^## review-decisions-1$' "$artifact_file")"
+  create_count="$(grep -c '^Ralph-Artifact: decisions$' "$artifact_file")"
+  [[ "$round_count" == "1" ]] || fail "expected rerun to replace review-decisions-1 section, got $round_count"
+  [[ "$create_count" == "1" ]] || fail "expected rerun to reuse one Decisions Artifact, got $create_count marker sections"
 
   printf "\nUse the architecture option\n" >> "$flag_file"
   PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" >/dev/null
@@ -337,6 +362,10 @@ test_review_decisions_runs_after_context_check_and_blocks_then_resumes() {
   status_value="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
   log_file="$WORKSPACES_DIR/$issue/logs/review-decisions.log"
   [[ "$status_value" == "completed" ]] || fail "expected review-decisions to complete after answers, got $status_value"
+  assert_contains "$(<"$artifact_file")" "## HITL Answers"
+  assert_contains "$(<"$artifact_file")" "Use the architecture option"
+  hitl_count="$(grep -c '^## HITL Answers$' "$artifact_file")"
+  [[ "$hitl_count" == "1" ]] || fail "expected one HITL Answers section, got $hitl_count"
   assert_contains "$(tr '\n' ' ' < "$log_file")" "completed without rerunning council"
 }
 

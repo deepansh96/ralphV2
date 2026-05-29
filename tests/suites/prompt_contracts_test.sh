@@ -131,6 +131,20 @@ test_review_decisions_prompt_defines_council_filtering_and_hitl_contract() {
   assert_contains "$prompt" "{{STEP_ID}}.md"
   assert_contains "$prompt" "hitl-{{STEP_ID}}.md"
   assert_contains "$prompt" "complete WITHOUT re-running council review"
+  assert_contains "$prompt" "source ./ralph-v2/scripts/artifacts.sh"
+  assert_contains "$prompt" "original-issue.md"
+  assert_contains "$prompt" "decisions.md"
+  assert_contains "$prompt" "artifact_ensure"
+  assert_contains "$prompt" "artifact_link_to_parent"
+  assert_contains "$prompt" "artifact_update_body"
+  assert_contains "$prompt" "artifact_refresh_parent_index"
+  assert_contains "$prompt" "## Original Feature Request / Grilled Decisions"
+  assert_contains "$prompt" 'replace the existing `## {{STEP_ID}}` section'
+  assert_contains "$prompt" "## HITL Answers"
+  assert_contains "$prompt" "Parent Issue Index"
+  assert_contains "$prompt" "Do not append decision findings to the parent issue body"
+  [[ "$prompt" != *"Append the findings and human answers to the **issue body**"* ]] || fail "expected HITL resume to write decisions artifact, not parent issue body"
+  [[ "$prompt" != *"Append a summary of the major findings"* ]] || fail "expected review decisions to stop appending findings to parent body"
 }
 
 test_create_prd_prompt_defines_full_prd_workflow_contract() {
