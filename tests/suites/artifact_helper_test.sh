@@ -493,6 +493,107 @@ test_artifact_predicates_and_dispatch_placeholders() {
   [[ -z "$output" ]] || fail "expected predicate dispatch to be quiet"
 }
 
+test_slice_eligibility_requires_exact_markers_state_and_tracking() {
+  local issue eligible_body wrong_parent_body loose_body artifact_body closed_body
+
+  issue="9064"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue"
+  eligible_body="$WORKSPACES_DIR/$issue/eligible.md"
+  wrong_parent_body="$WORKSPACES_DIR/$issue/wrong-parent.md"
+  loose_body="$WORKSPACES_DIR/$issue/loose.md"
+  artifact_body="$WORKSPACES_DIR/$issue/artifact.md"
+  closed_body="$WORKSPACES_DIR/$issue/closed.md"
+
+  printf 'AFK: true\nParent: #14\n\nBuild it.\n' > "$eligible_body"
+  printf 'AFK: true\nParent: #99\n\nWrong run.\n' > "$wrong_parent_body"
+  printf 'AFK:true\nParent: #14 \n\nLoose markers.\n' > "$loose_body"
+  printf 'AFK: true\nParent: #14\n\nClosed but tracked.\n' > "$closed_body"
+  {
+    printf 'Ralph-Artifact: prd\n'
+    printf 'Parent: #14\n'
+    printf 'Owning-Step: create-and-review-prd\n'
+    printf 'Last-Updated: now\n'
+    printf '%s\n' '---'
+    printf 'AFK: true\n'
+  } > "$artifact_body"
+
+  slice_is_eligible_implementation "$eligible_body" "14" "OPEN" "false" || fail "expected exact open slice to be eligible"
+  ! slice_is_eligible_implementation "$wrong_parent_body" "14" "OPEN" "false" || fail "expected wrong parent to be ineligible"
+  ! slice_is_eligible_implementation "$loose_body" "14" "OPEN" "false" || fail "expected non-exact markers to be ineligible"
+  ! slice_is_eligible_implementation "$artifact_body" "14" "OPEN" "false" || fail "expected artifact marker to exclude issue"
+  ! slice_is_eligible_implementation "$closed_body" "14" "CLOSED" "false" || fail "expected untracked closed slice to be ineligible"
+  slice_is_eligible_implementation "$closed_body" "14" "CLOSED" "true" || fail "expected tracked closed slice to remain eligible"
+}
+
+test_preflight_slice_collection_excludes_artifacts_and_reports_malformed() {
+  local issue state_file issues_json notes_file selected notes
+
+  issue="9065"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_artifact_state "$issue"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  issues_json="$WORKSPACES_DIR/$issue/issues.json"
+  notes_file="$WORKSPACES_DIR/$issue/notes.txt"
+
+  jq '.steps += [
+    {
+      "id": "implement-slice-205",
+      "phase": "dynamic",
+      "type": "implement-slice",
+      "status": "completed",
+      "agent": "codex",
+      "reviewers": [],
+      "hitl": false,
+      "sub_issue": 205,
+      "metrics": null,
+      "notes": ""
+    }
+  ]' "$state_file" > "$state_file.tmp"
+  mv "$state_file.tmp" "$state_file"
+
+  jq -n '[
+    {"number":201,"title":"Eligible","state":"OPEN","body":"AFK: true\nParent: #14\n\nBuild."},
+    {"number":202,"title":"Artifact","state":"OPEN","body":"Ralph-Artifact: prd\nParent: #14\nOwning-Step: create-and-review-prd\nLast-Updated: now\n---\nAFK: true\n"},
+    {"number":203,"title":"Mixed malformed","state":"OPEN","body":"Ralph-Artifact: decisions\nAFK: true\nParent: #14\n---\nBad."},
+    {"number":204,"title":"Wrong parent","state":"OPEN","body":"AFK: true\nParent: #99\n\nSkip."},
+    {"number":205,"title":"Tracked closed","state":"CLOSED","body":"AFK: true\nParent: #14\n\nKeep."},
+    {"number":206,"title":"Untracked closed","state":"CLOSED","body":"AFK: true\nParent: #14\n\nSkip."},
+    {"number":207,"title":"Loose marker","state":"OPEN","body":"AFK: true\nParent:#14\n\nSkip."}
+  ]' > "$issues_json"
+
+  selected="$(artifact_collect_preflight_slices "$state_file" "14" "$issues_json" "$notes_file")"
+  notes="$(<"$notes_file")"
+
+  [[ "$selected" == $'201\n205' ]] || fail "expected only eligible open and tracked closed slices, got: $selected"
+  assert_contains "$notes" "Skipped issue #202"
+  assert_contains "$notes" "Skipped issue #203: malformed"
+  assert_contains "$notes" "Skipped issue #204"
+  assert_contains "$notes" "Skipped issue #206"
+  assert_contains "$notes" "Skipped issue #207"
+}
+
+test_preflight_slice_collection_handles_zero_artifacts() {
+  local issue state_file issues_json notes_file selected notes
+
+  issue="9066"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_artifact_state "$issue"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  issues_json="$WORKSPACES_DIR/$issue/issues.json"
+  notes_file="$WORKSPACES_DIR/$issue/notes.txt"
+
+  jq -n '[
+    {"number":301,"title":"Only slice","state":"OPEN","body":"AFK: true\nParent: #14\n\nBuild."}
+  ]' > "$issues_json"
+
+  selected="$(artifact_collect_preflight_slices "$state_file" "14" "$issues_json" "$notes_file")"
+  notes="$(<"$notes_file")"
+
+  [[ "$selected" == "301" ]] || fail "expected eligible slice without artifact issues, got: $selected"
+  [[ -z "$notes" ]] || fail "expected no skip notes when only eligible slices exist, got: $notes"
+}
+
 test_artifact_refresh_parent_index_renders_compact_index_without_artifact_content() {
   local issue state_file content_file body_file output parent_body body_size
 
@@ -666,6 +767,9 @@ run_test test_artifact_ensure_finds_parent_scoped_candidate_preferring_open_newe
 run_test test_artifact_update_body_rejects_wrong_markers_and_oversized_body
 run_test test_artifact_link_to_parent_warns_on_graphql_fallback_without_parent_write
 run_test test_artifact_predicates_and_dispatch_placeholders
+run_test test_slice_eligibility_requires_exact_markers_state_and_tracking
+run_test test_preflight_slice_collection_excludes_artifacts_and_reports_malformed
+run_test test_preflight_slice_collection_handles_zero_artifacts
 run_test test_artifact_refresh_parent_index_renders_compact_index_without_artifact_content
 run_test test_artifact_refresh_parent_index_uses_state_pr_before_branch_lookup
 run_test test_artifact_refresh_parent_index_reads_slices_before_preflight_and_warnings

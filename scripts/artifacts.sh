@@ -331,14 +331,114 @@ artifact_is_artifact_issue() {
     grep -Eq '^Parent: #[0-9]+$'
 }
 
+artifact_has_provenance_marker() {
+  local body_file="$1"
+
+  [[ -f "$body_file" ]] || return 1
+  awk '/^---$/ { exit } { print }' "$body_file" |
+    grep -Eq '^Ralph-Artifact:'
+}
+
+slice_bool_true() {
+  case "${1,,}" in
+    1|true|yes|y) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+slice_is_tracked_in_state() {
+  local state_file="$1"
+  local issue="$2"
+
+  [[ -f "$state_file" ]] || return 1
+  jq -e --argjson issue "$issue" '
+    any(.steps[]?; .type == "implement-slice" and (.sub_issue // null) == $issue)
+  ' "$state_file" >/dev/null
+}
+
+slice_eligibility_note() {
+  local body_file="$1"
+  local parent_issue="$2"
+  local issue_state="${3:-OPEN}"
+  local already_tracked="${4:-false}"
+  local state_lower
+
+  if [[ ! -f "$body_file" ]]; then
+    printf 'missing issue body\n'
+    return 0
+  fi
+
+  if artifact_has_provenance_marker "$body_file"; then
+    if grep -Fxq 'AFK: true' "$body_file"; then
+      printf 'malformed: issue has both AFK: true and Ralph-Artifact: markers\n'
+    else
+      printf 'artifact issue, not an implementation slice\n'
+    fi
+    return 0
+  fi
+
+  if ! grep -Fxq 'AFK: true' "$body_file"; then
+    printf 'missing exact AFK: true marker\n'
+    return 0
+  fi
+  if ! grep -Fxq "Parent: #$parent_issue" "$body_file"; then
+    printf 'missing exact Parent: #%s marker\n' "$parent_issue"
+    return 0
+  fi
+
+  state_lower="${issue_state,,}"
+  if [[ -n "$state_lower" && "$state_lower" != "open" ]] && ! slice_bool_true "$already_tracked"; then
+    printf 'issue is %s and no existing State Step tracks it\n' "$issue_state"
+    return 0
+  fi
+}
+
 slice_is_eligible_implementation() {
   local body_file="$1"
   local parent_issue="$2"
+  local issue_state="${3:-OPEN}"
+  local already_tracked="${4:-false}"
+  local note
 
   [[ -f "$body_file" ]] || return 1
-  ! artifact_is_artifact_issue "$body_file" || return 1
-  grep -Fxq 'AFK: true' "$body_file" || return 1
-  grep -Fxq "Parent: #$parent_issue" "$body_file" || return 1
+  note="$(slice_eligibility_note "$body_file" "$parent_issue" "$issue_state" "$already_tracked")"
+  [[ -z "$note" ]]
+}
+
+artifact_collect_preflight_slices() {
+  local state_file="$1"
+  local parent_issue="$2"
+  local issues_json_file="$3"
+  local notes_file="$4"
+  local issue_json number state body_file already_tracked note
+
+  [[ -f "$issues_json_file" ]] || {
+    echo "Error: issues JSON file not found: $issues_json_file" >&2
+    return 1
+  }
+  : > "$notes_file"
+
+  while IFS= read -r issue_json; do
+    [[ -n "$issue_json" ]] || continue
+    number="$(jq -r '.number // empty' <<<"$issue_json")"
+    [[ "$number" =~ ^[1-9][0-9]*$ ]] || continue
+    state="$(jq -r '.state // "OPEN"' <<<"$issue_json")"
+    body_file="$(mktemp)"
+    jq -r '.body // ""' <<<"$issue_json" > "$body_file"
+
+    already_tracked="false"
+    if slice_is_tracked_in_state "$state_file" "$number"; then
+      already_tracked="true"
+    fi
+
+    if slice_is_eligible_implementation "$body_file" "$parent_issue" "$state" "$already_tracked"; then
+      printf '%s\n' "$number"
+    else
+      note="$(slice_eligibility_note "$body_file" "$parent_issue" "$state" "$already_tracked")"
+      printf 'Skipped issue #%s: %s\n' "$number" "$note" >> "$notes_file"
+    fi
+    rm -f "$body_file"
+  done < <(jq -c '.[]?' "$issues_json_file")
 }
 
 artifact_issue_summary() {
@@ -367,7 +467,7 @@ artifact_candidate_slice_summary() {
   local parent_issue="$2"
   local issue="$3"
   local step_status="${4:-}"
-  local issue_json body_file
+  local issue_json body_file state already_tracked note
 
   if ! issue_json="$(gh issue view "$issue" --repo "$repo" --json number,title,state,body,url 2>/dev/null)"; then
     printf '%s\t%s\n' "" "Skipped issue #$issue: could not read issue details"
@@ -376,14 +476,20 @@ artifact_candidate_slice_summary() {
 
   body_file="$(mktemp)"
   jq -r '.body // ""' <<<"$issue_json" > "$body_file"
-  if slice_is_eligible_implementation "$body_file" "$parent_issue"; then
+  state="$(jq -r '.state // "OPEN"' <<<"$issue_json")"
+  already_tracked="false"
+  if [[ -n "$step_status" ]]; then
+    already_tracked="true"
+  fi
+  if slice_is_eligible_implementation "$body_file" "$parent_issue" "$state" "$already_tracked"; then
     rm -f "$body_file"
     artifact_issue_summary "$repo" "$issue" "$step_status"
     return 0
   fi
 
+  note="$(slice_eligibility_note "$body_file" "$parent_issue" "$state" "$already_tracked")"
   rm -f "$body_file"
-  printf '%s\t%s\n' "" "Skipped issue #$issue: not an eligible AFK implementation slice"
+  printf '%s\t%s\n' "" "Skipped issue #$issue: $note"
 }
 
 artifact_slice_numbers_from_file() {
@@ -397,7 +503,7 @@ artifact_collect_slice_lines() {
   local state_file="$1"
   local repo="$2"
   local parent_issue="$3"
-  local workspace slice_file dynamic_count issue status issue_json body_file
+  local workspace slice_file dynamic_count issue status issue_json body_file state
   local slice_lines_file="$4"
   local notes_file="$5"
 
@@ -444,10 +550,11 @@ artifact_collect_slice_lines() {
       [[ -n "$issue" ]] || continue
       body_file="$(mktemp)"
       jq -r --argjson number "$issue" '.[] | select(.number == $number) | .body // ""' <<<"$issue_json" > "$body_file"
-      if slice_is_eligible_implementation "$body_file" "$parent_issue"; then
+      state="$(jq -r --argjson number "$issue" '.[] | select(.number == $number) | .state // "OPEN"' <<<"$issue_json")"
+      if slice_is_eligible_implementation "$body_file" "$parent_issue" "$state" "false"; then
         jq -r --argjson number "$issue" '.[] | select(.number == $number) | "- #\(.number) - \(.title // "") (\(.state // "UNKNOWN"))"' <<<"$issue_json" >> "$slice_lines_file"
       else
-        printf 'Skipped issue #%s: not an eligible AFK implementation slice\n' "$issue" >> "$notes_file"
+        printf 'Skipped issue #%s: %s\n' "$issue" "$(slice_eligibility_note "$body_file" "$parent_issue" "$state" "false")" >> "$notes_file"
       fi
       rm -f "$body_file"
     done < <(jq -r '.[].number' <<<"$issue_json")
@@ -614,6 +721,8 @@ Functions:
   artifact_close_all
   artifact_is_artifact_issue
   slice_is_eligible_implementation
+  slice_eligibility_note
+  artifact_collect_preflight_slices
 USAGE
 }
 
@@ -626,7 +735,7 @@ artifact_main() {
   shift || true
 
   case "$fn" in
-    artifact_ensure|artifact_update_body|artifact_link_to_parent|artifact_refresh_parent_index|artifact_close_all|artifact_is_artifact_issue|slice_is_eligible_implementation)
+    artifact_ensure|artifact_update_body|artifact_link_to_parent|artifact_refresh_parent_index|artifact_close_all|artifact_is_artifact_issue|slice_is_eligible_implementation|slice_eligibility_note|artifact_collect_preflight_slices)
       "$fn" "$@"
       ;;
     *)

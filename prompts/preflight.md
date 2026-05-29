@@ -22,6 +22,8 @@ Validate that implementation can start from an explicit base branch; create and 
 - Read the sub-issues linked under the parent issue on GitHub. Prefer GitHub's sub-issue relationship data when available; also inspect issue bodies that reference `Parent: #{{ISSUE}}` so re-runs can recover from partial linkage.
 - Source the state manager before extending state:
   `source ./ralph-v2/scripts/state.sh`
+- Source the Artifact Helper before filtering issues:
+  `source ./ralph-v2/scripts/artifacts.sh`
 
 ## Hard Stops
 
@@ -54,7 +56,20 @@ Create the feature branch from `baseBranch`.
 
 ## Dynamic Steps
 
-Read the implementation sub-issues created by the `create-and-review-slices` step and append one implementation step per sub-issue, followed by final review, PR review, and review-fixes.
+Read the implementation sub-issues created by the `create-and-review-slices` step and append one implementation step per eligible sub-issue, followed by final review, PR review, and review-fixes.
+
+Use the shared Artifact Helper eligibility routines instead of hand-rolled `grep` filtering:
+
+- Build a JSON file of linked or marker-discovered candidate issues with at least `number`, `state`, and `body`.
+- Call `artifact_collect_preflight_slices "{{WORKSPACE}}/state.json" "{{ISSUE}}" <candidates-json-file> <skip-notes-file>` to produce the implementation slice issue numbers.
+- `artifact_collect_preflight_slices` uses `slice_is_eligible_implementation <issue-body-file> "{{ISSUE}}" <issue-state> <already-tracked>` for the exact eligibility decision.
+- An issue is eligible only when it has exact full-line `AFK: true`, exact full-line `Parent: #{{ISSUE}}`, no `Ralph-Artifact:` provenance marker, and an open issue state unless an existing State Step already tracks that issue.
+- Issues with both `AFK: true` and `Ralph-Artifact:` are malformed Artifact Issue metadata. Exclude them, keep the skip note, and make sure the malformed note remains visible in logs and the next Parent Issue Index refresh.
+- Issues with `AFK: true` but the wrong parent are excluded.
+- Issues with non-exact marker formatting such as `AFK:true`, `Parent:#{{ISSUE}}`, trailing marker whitespace, or quoted/list-marker variants are excluded.
+- Closed matching slice issues are included only when an existing State Step already tracks them.
+- Filtering must succeed when zero Artifact Issues exist under the parent; do not require Artifact Issues to be present before preflight can proceed.
+- Artifact Issues linked under the parent must never become `implement-slice` Steps, even if their body also contains `AFK: true` later in the content.
 
 Each implementation step must use this shape:
 
@@ -118,6 +133,14 @@ Append the final steps after all implementation steps:
 ```
 
 Use `state_add_steps "{{WORKSPACE}}/state.json" '<json-array>'` to extend the state file. `state_add_steps` prevents duplicate step IDs and writes atomically.
+
+After branch setup and dynamic Step setup are complete, call:
+
+```bash
+artifact_refresh_parent_index "{{WORKSPACE}}/state.json" "{{REPO}}" "{{ISSUE}}"
+```
+
+This refresh records branch and implementation-slice routing in the compact Parent Issue Index. If the skip-notes file contains malformed or excluded issue notes, preserve those notes in the refresh path so the operator can see why candidate issues were skipped.
 
 ## Idempotency
 
