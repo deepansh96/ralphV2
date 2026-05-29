@@ -369,8 +369,8 @@ test_review_decisions_runs_after_context_check_and_blocks_then_resumes() {
   assert_contains "$(tr '\n' ' ' < "$log_file")" "completed without rerunning council"
 }
 
-test_create_prd_pipeline_preserves_original_and_updates_single_prd_body() {
-  local issue fake_bin original_file issue_body_file status_value log_file decision_count problem_count
+test_create_prd_pipeline_writes_prd_artifact_and_compact_parent_index() {
+  local issue fake_bin original_file prd_file prd_artifact_file parent_index_file status_value log_file decision_count problem_count
 
   issue="9016"
   fake_bin="$WORKSPACES_DIR/fake-bin"
@@ -386,6 +386,11 @@ test_create_prd_pipeline_preserves_original_and_updates_single_prd_body() {
       baseBranch: null,
       branch: null,
       status: "initialized",
+      artifacts: {
+        decisions: 9100,
+        prd: null,
+        slicePlan: null
+      },
       steps: [
         {
           id: "review-decisions",
@@ -415,17 +420,28 @@ test_create_prd_pipeline_preserves_original_and_updates_single_prd_body() {
   PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" >/dev/null
 
   original_file="$WORKSPACES_DIR/$issue/original-issue.md"
-  issue_body_file="$WORKSPACES_DIR/$issue/github-issue-body.md"
+  prd_file="$WORKSPACES_DIR/$issue/prd.md"
+  prd_artifact_file="$WORKSPACES_DIR/$issue/github-prd-artifact.md"
+  parent_index_file="$WORKSPACES_DIR/$issue/github-parent-index.md"
   log_file="$WORKSPACES_DIR/$issue/logs/create-and-review-prd.log"
   status_value="$(jq -r '.steps[1].status' "$WORKSPACES_DIR/$issue/state.json")"
 
   [[ "$status_value" == "completed" ]] || fail "expected create-and-review-prd to complete, got $status_value"
   [[ -f "$original_file" ]] || fail "expected original issue body to be preserved"
-  [[ -f "$issue_body_file" ]] || fail "expected issue body fixture to be updated"
+  [[ -f "$prd_file" ]] || fail "expected prd.md recovery/audit file"
+  [[ -f "$prd_artifact_file" ]] || fail "expected PRD Artifact fixture to be updated"
+  [[ -f "$parent_index_file" ]] || fail "expected compact parent index fixture"
   assert_contains "$(<"$original_file")" "Original grilled issue body"
-  assert_contains "$(<"$issue_body_file")" "## Decision Summary"
-  assert_contains "$(<"$issue_body_file")" "## Problem Statement"
-  assert_contains "$(tr '\n' ' ' < "$log_file")" "create-and-review-prd preserved original"
+  assert_contains "$(<"$prd_file")" "## Decision Summary"
+  assert_contains "$(<"$prd_artifact_file")" "Ralph-Artifact: prd"
+  assert_contains "$(<"$prd_artifact_file")" "## Problem Statement"
+  assert_contains "$(<"$prd_artifact_file")" "## PRD Review Round 1"
+  assert_contains "$(<"$prd_artifact_file")" "Reviewed by: codex, gemini"
+  assert_contains "$(<"$parent_index_file")" "## Ralph Run Index"
+  assert_contains "$(<"$parent_index_file")" "- PRD: #9101"
+  [[ "$(<"$parent_index_file")" != *"## Problem Statement"* ]] || fail "expected parent index not to contain full PRD content"
+  assert_contains "$(tr '\n' ' ' < "$log_file")" "updated PRD Artifact Issue"
+  [[ "$(jq -r '.artifacts.prd' "$WORKSPACES_DIR/$issue/state.json")" == "9101" ]] || fail "expected state artifacts.prd to be set"
 
   jq '.steps[1].status = "pending"' "$WORKSPACES_DIR/$issue/state.json" > "$WORKSPACES_DIR/$issue/state.json.tmp"
   mv "$WORKSPACES_DIR/$issue/state.json.tmp" "$WORKSPACES_DIR/$issue/state.json"
@@ -434,10 +450,70 @@ test_create_prd_pipeline_preserves_original_and_updates_single_prd_body() {
   PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" >/dev/null
 
   assert_contains "$(<"$original_file")" "Human note that must stay preserved"
-  decision_count="$(grep -c '^## Decision Summary$' "$issue_body_file")"
-  problem_count="$(grep -c '^## Problem Statement$' "$issue_body_file")"
+  decision_count="$(grep -c '^## Decision Summary$' "$prd_artifact_file")"
+  problem_count="$(grep -c '^## Problem Statement$' "$prd_artifact_file")"
   [[ "$decision_count" == "1" ]] || fail "expected one Decision Summary after rerun, got $decision_count"
   [[ "$problem_count" == "1" ]] || fail "expected one Problem Statement after rerun, got $problem_count"
+}
+
+test_create_prd_pipeline_zero_review_synthesizes_decisions_artifact() {
+  local issue fake_bin decisions_file decision_artifact_file prd_artifact_file parent_index_file status_value
+
+  issue="9067"
+  fake_bin="$WORKSPACES_DIR/fake-bin"
+  write_valid_context
+  rm -rf "${WORKSPACES_DIR:?}/$issue" "$fake_bin"
+  install_fake_create_prd_claude "$fake_bin"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  jq -n \
+    --arg issue "$issue" \
+    '{
+      issue: ($issue | tonumber),
+      repo: "deepansh96/ralph",
+      baseBranch: null,
+      branch: null,
+      status: "initialized",
+      artifacts: {
+        decisions: null,
+        prd: null,
+        slicePlan: null
+      },
+      steps: [
+        {
+          id: "create-and-review-prd",
+          phase: "fixed",
+          type: "create-and-review-prd",
+          agent: "claude",
+          reviewers: ["codex", "gemini"],
+          hitl: false,
+          reviewRounds: 0,
+          status: "pending",
+          metrics: {},
+          notes: ""
+        }
+      ]
+    }' > "$WORKSPACES_DIR/$issue/state.json"
+
+  PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" >/dev/null
+
+  decisions_file="$WORKSPACES_DIR/$issue/decisions.md"
+  decision_artifact_file="$WORKSPACES_DIR/$issue/github-decisions-artifact.md"
+  prd_artifact_file="$WORKSPACES_DIR/$issue/github-prd-artifact.md"
+  parent_index_file="$WORKSPACES_DIR/$issue/github-parent-index.md"
+  status_value="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
+
+  [[ "$status_value" == "completed" ]] || fail "expected create-and-review-prd to complete, got $status_value"
+  [[ -f "$WORKSPACES_DIR/$issue/original-issue.md" ]] || fail "expected original issue body to be preserved in zero-review mode"
+  [[ -f "$decisions_file" ]] || fail "expected decisions.md to be persisted in zero-review mode"
+  [[ -f "$decision_artifact_file" ]] || fail "expected synthesized Decisions Artifact fixture"
+  [[ -f "$prd_artifact_file" ]] || fail "expected PRD Artifact fixture"
+  [[ -f "$parent_index_file" ]] || fail "expected compact parent index fixture"
+  assert_contains "$(<"$decision_artifact_file")" "Ralph-Artifact: decisions"
+  assert_contains "$(<"$decision_artifact_file")" "synthesized from the original feature request"
+  assert_contains "$(<"$parent_index_file")" "## Ralph Run Index"
+  [[ "$(<"$parent_index_file")" != *"synthesized from the original feature request"* ]] || fail "expected parent index not to contain synthesized decision content"
+  [[ "$(jq -r '.artifacts.decisions' "$WORKSPACES_DIR/$issue/state.json")" == "9100" ]] || fail "expected state artifacts.decisions to be set"
+  [[ "$(jq -r '.artifacts.prd' "$WORKSPACES_DIR/$issue/state.json")" == "9101" ]] || fail "expected state artifacts.prd to be set"
 }
 
 test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently() {
@@ -742,7 +818,8 @@ run_test test_sighup_resets_running_step_to_pending_and_cleans_metrics_file
 run_test test_blocked_step_stops_then_resumes_with_human_answers
 run_test test_failed_agent_invocation_marks_step_failed_and_exits_one
 run_test test_review_decisions_runs_after_context_check_and_blocks_then_resumes
-run_test test_create_prd_pipeline_preserves_original_and_updates_single_prd_body
+run_test test_create_prd_pipeline_writes_prd_artifact_and_compact_parent_index
+run_test test_create_prd_pipeline_zero_review_synthesizes_decisions_artifact
 run_test test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently
 run_test test_implement_slice_pipeline_runs_codex_with_sub_issue_context
 run_test test_final_and_pr_review_pipeline_completes_with_idempotent_pr

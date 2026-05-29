@@ -5,6 +5,16 @@ description: Turn the current conversation context into a PRD and submit it as a
 
 This skill takes the current conversation context and codebase understanding and produces a PRD. Do NOT interview the user — just synthesize what you already know.
 
+When a Ralph prompt provides a workspace, state file, parent issue, and artifact helper context, operate in artifact mode:
+
+- Read the Parent Issue Index and the Decisions Artifact Issue as the planning inputs.
+- Write the finished PRD to `prd.md` as a local recovery/audit file.
+- Store durable PRD content in the PRD Artifact Issue via the prompt's artifact helper flow.
+- Do not write PRD content to the parent issue body; the parent remains a compact index.
+- Preserve council attribution in stable PRD review round sections supplied by the prompt.
+
+When used outside a Ralph pipeline and no workspace/state/artifact context is provided, preserve standalone behavior: update the associated GitHub issue with the PRD content, or create a new issue only when no existing issue is associated with the work.
+
 ## Process
 
 1. Explore the repo to understand the current state of the codebase, if you haven't already. Before exploring, follow [../domain/DOMAIN-AWARENESS.md](../domain/DOMAIN-AWARENESS.md). Use the project's `CONTEXT.md` vocabulary throughout the PRD.
@@ -15,7 +25,7 @@ A deep module (as opposed to a shallow module) is one which encapsulates a lot o
 
 Check with the user that these modules match their expectations. Check with the user which modules they want tests written for.
 
-3. Write the PRD using the template below. If work started from an existing GitHub issue, update that issue with the PRD content — do not create a new one. Only create a new issue if no existing issue is associated with the work. If unclear, ask the user.
+3. Write the PRD using the template below. In Ralph artifact mode, write the PRD to the PRD Artifact Issue and keep the parent issue as the compact index. In standalone mode, if work started from an existing GitHub issue, update that issue with the PRD content — do not create a new one. Only create a new issue if no existing issue is associated with the work. If unclear, ask the user.
 
    At the top of the issue body (before the Problem Statement), include a **Decision Summary** — a concise, scannable list of every design decision made during the conversation. Each decision should be one line, stating the choice and its value (e.g. "Run ID format: `YYYYMMDD-HHmmss-<4hex>`"). This serves as a quick reference for anyone reading the PRD without needing to parse the full Implementation Decisions section.
 

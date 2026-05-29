@@ -173,8 +173,26 @@ test_create_prd_prompt_defines_full_prd_workflow_contract() {
   assert_contains "$prompt" "Round 2"
   assert_contains "$prompt" "incorporate"
   assert_contains "$prompt" "Compact"
-  assert_contains "$prompt" "gh issue edit {{ISSUE}} --repo {{REPO}}"
+  assert_contains "$prompt" "source ./ralph-v2/scripts/artifacts.sh"
+  assert_contains "$prompt" "Parent Issue Index"
+  assert_contains "$prompt" "Decisions Artifact Issue"
+  assert_contains "$prompt" "PRD Artifact Issue"
+  assert_contains "$prompt" "state_ensure_artifacts"
+  assert_contains "$prompt" "state_get_artifact"
+  assert_contains "$prompt" "artifact_ensure"
+  assert_contains "$prompt" "artifact_link_to_parent"
+  assert_contains "$prompt" "artifact_write_body"
+  assert_contains "$prompt" "artifact_update_body"
+  assert_contains "$prompt" "artifact_refresh_parent_index"
+  assert_contains "$prompt" "decisions.md"
+  assert_contains "$prompt" "prd.md"
+  assert_contains "$prompt" "synthesized from the original feature request"
+  assert_contains "$prompt" 'replace the existing `## PRD Review Round'
+  assert_contains "$prompt" "valid PRD Artifact Issue"
+  assert_contains "$prompt" 'local `prd.md`'
+  assert_contains "$prompt" "Do not write PRD content to the parent issue body"
   assert_contains "$prompt" "idempotent"
+  [[ "$prompt" != *"gh issue edit {{ISSUE}} --repo {{REPO}} --body-file <final-prd-file>"* ]] || fail "expected create-and-review-prd to update the PRD Artifact Issue, not the parent issue body"
 }
 
 test_create_slices_prompt_defines_full_slice_creation_contract() {

@@ -68,16 +68,20 @@ Fix (already applied in agent.sh):
     git -C "$SCRIPT_DIR/.." rev-parse --show-toplevel
 
 
-6. GITHUB ISSUE BODY VS COMMENTS
-----------------------------------
-gh issue view only reads the issue body, NOT comments. All downstream
-steps (PRD, slices, implementation) read the issue via gh issue view.
+6. PARENT ISSUE INDEX VS ARTIFACT ISSUES
+-----------------------------------------
+gh issue view only reads an issue body, NOT comments. In artifact-mode
+runs, the parent issue body is only the compact Parent Issue Index.
 
-Therefore: council findings, PRD content, and review summaries must be
-written to the issue BODY using:
-  gh issue edit N --repo owner/repo --body-file <file>
+Therefore: full planning content must be written to the appropriate
+Artifact Issue body:
+  Decisions -> artifacts.decisions
+  PRD -> artifacts.prd
+  Slice Plan -> artifacts.slicePlan
 
-NOT posted as comments with gh issue comment.
+State owns execution state and artifact issue numbers. Artifact Issues
+own planning content. Do not append Decisions, PRD, Slice Plan, or council
+review bodies to the parent issue, and do not post them only as comments.
 
 
 7. MONITORING PROGRESS

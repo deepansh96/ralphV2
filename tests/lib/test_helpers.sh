@@ -10,7 +10,7 @@ ARCHIVE_DIR="$ROOT_DIR/archive"
 CONTEXT_FILE="$PROJECT_ROOT/CONTEXT.md"
 INITIAL_CONTEXT_BACKUP="$(mktemp)"
 INITIAL_CONTEXT_PRESENT="false"
-TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033 9034 9035 9036 9037 9038 9039 9040 9041 9042 9043 9044 9045 9046 9047 9048 9049 9050 9051 9052 9053 9054 9055 9056 9057 9058 9059 9060 9061 9062 9063 9064 9065 9066)
+TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033 9034 9035 9036 9037 9038 9039 9040 9041 9042 9043 9044 9045 9046 9047 9048 9049 9050 9051 9052 9053 9054 9055 9056 9057 9058 9059 9060 9061 9062 9063 9064 9065 9066 9067)
 export RALPH_RETRY_DELAYS="${RALPH_RETRY_DELAYS:-0 0 0}"
 
 if [[ -f "$CONTEXT_FILE" ]]; then
@@ -665,8 +665,14 @@ if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
 fi
 
 workspace="$(awk '/^Workspace:/ { print $2; exit }' <<<"$prompt")"
+state_file="$workspace/state.json"
+issue="$(jq -r '.issue' "$state_file")"
 original_file="$workspace/original-issue.md"
-issue_body_file="$workspace/github-issue-body.md"
+decisions_file="$workspace/decisions.md"
+decision_artifact_file="$workspace/github-decisions-artifact.md"
+prd_file="$workspace/prd.md"
+prd_artifact_file="$workspace/github-prd-artifact.md"
+parent_index_file="$workspace/github-parent-index.md"
 
 [[ "$prompt" == *"gh issue view"* ]] || exit 71
 [[ "$prompt" == *"--repo"* ]] || exit 70
@@ -677,17 +683,63 @@ issue_body_file="$workspace/github-issue-body.md"
 [[ "$prompt" == *"to-prd"* ]] || exit 76
 [[ "$prompt" == *"Round 1"* ]] || exit 77
 [[ "$prompt" == *"Round 2"* ]] || exit 78
-[[ "$prompt" == *"gh issue edit"* ]] || exit 79
-[[ "$prompt" == *"Do not append a second PRD"* ]] || exit 80
+[[ "$prompt" == *"source ./ralph-v2/scripts/artifacts.sh"* ]] || exit 79
+[[ "$prompt" == *"Parent Issue Index"* ]] || exit 80
+[[ "$prompt" == *"Decisions Artifact Issue"* ]] || exit 81
+[[ "$prompt" == *"PRD Artifact Issue"* ]] || exit 82
+[[ "$prompt" == *"state_ensure_artifacts"* ]] || exit 83
+[[ "$prompt" == *"state_get_artifact"* ]] || exit 84
+[[ "$prompt" == *"artifact_ensure"* ]] || exit 85
+[[ "$prompt" == *"artifact_link_to_parent"* ]] || exit 86
+[[ "$prompt" == *"artifact_update_body"* ]] || exit 87
+[[ "$prompt" == *"artifact_refresh_parent_index"* ]] || exit 88
+[[ "$prompt" == *"prd.md"* ]] || exit 89
+[[ "$prompt" == *"Do not write PRD content to the parent issue body"* ]] || exit 90
+[[ "$prompt" == *"synthesized from the original feature request"* ]] || exit 91
+[[ "$prompt" == *"replace the existing"* ]] || exit 92
 
 if [[ ! -f "$original_file" ]]; then
   printf 'Original grilled issue body\n' > "$original_file"
 fi
 
-cat > "$issue_body_file" <<'PRD'
+if [[ "$(jq -r '.artifacts.decisions // empty' "$state_file")" == "" ]]; then
+  cat > "$decisions_file" <<'DECISIONS'
+# Decisions Artifact
+
+## Original Feature Request / Grilled Decisions
+
+Original grilled issue body
+
+## Synthesized Decisions
+
+This Decisions Artifact was synthesized from the original feature request because review-decision rounds were omitted.
+DECISIONS
+  {
+    printf 'Ralph-Artifact: decisions\n'
+    printf 'Parent: #%s\n' "$issue"
+    printf 'Owning-Step: create-and-review-prd\n'
+    printf 'Last-Updated: 2026-05-30T00:00:00Z\n'
+    printf 'WARNING: Managed by Ralph. Manual edits may be overwritten.\n'
+    printf '%s\n' '---'
+    cat "$decisions_file"
+  } > "$decision_artifact_file"
+  jq '.artifacts = (.artifacts // {"decisions": null, "prd": null, "slicePlan": null})
+    | .artifacts.decisions = 9100' "$state_file" > "$state_file.tmp"
+  mv "$state_file.tmp" "$state_file"
+elif [[ ! -f "$decisions_file" ]]; then
+  cat > "$decisions_file" <<'DECISIONS'
+# Decisions Artifact
+
+## Original Feature Request / Grilled Decisions
+
+Reviewed decisions from existing Decisions Artifact Issue.
+DECISIONS
+fi
+
+cat > "$prd_file" <<'PRD'
 ## Decision Summary
 
-- Workflow: create-and-review-prd preserves original issue body and updates the issue with one PRD.
+- Workflow: create-and-review-prd reads the Parent Issue Index and Decisions Artifact Issue, then updates one PRD Artifact Issue.
 
 ## Problem Statement
 
@@ -699,11 +751,18 @@ Create a reviewed PRD from the grilled issue decisions.
 
 ## User Stories
 
-1. As a developer, I want the create-and-review-prd step to update the existing issue, so that the issue remains the source of truth.
+1. As a developer, I want the create-and-review-prd step to update the PRD Artifact Issue, so that the parent issue remains compact.
 
 ## Implementation Decisions
 
-- Prompt-driven workflow: The agent performs issue reading, review, preservation, and update.
+- Prompt-driven workflow: The agent performs artifact reading, review, local recovery persistence, artifact update, and parent index refresh.
+
+## PRD Review Round 1
+
+### Council Attribution
+
+Reviewed by: codex, gemini
+Failed: none
 
 ## Testing Decisions
 
@@ -718,11 +777,41 @@ Create a reviewed PRD from the grilled issue decisions.
 - Re-runs replace this body instead of appending another PRD.
 PRD
 
+{
+  printf 'Ralph-Artifact: prd\n'
+  printf 'Parent: #%s\n' "$issue"
+  printf 'Owning-Step: create-and-review-prd\n'
+  printf 'Last-Updated: 2026-05-30T00:00:00Z\n'
+  printf 'WARNING: Managed by Ralph. Manual edits may be overwritten.\n'
+  printf '%s\n' '---'
+  cat "$prd_file"
+} > "$prd_artifact_file"
+
+cat > "$parent_index_file" <<'INDEX'
+## Ralph Run Index
+
+This issue is the compact index for a Ralph pipeline run. Durable planning content lives in linked Artifact Issues.
+
+## Artifacts
+
+- Decisions: #9100
+- PRD: #9101
+- Slice Plan: TBD
+
+## Notes
+
+- Artifact issues are planning storage and are not implementation slices.
+INDEX
+
+jq '.artifacts = (.artifacts // {"decisions": null, "prd": null, "slicePlan": null})
+  | .artifacts.prd = 9101' "$state_file" > "$state_file.tmp"
+mv "$state_file.tmp" "$state_file"
+
 printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
 jq -n -c '{
   type: "result",
   subtype: "success",
-  result: "create-and-review-prd preserved original and updated issue body",
+  result: "create-and-review-prd preserved original and updated PRD Artifact Issue",
   duration_ms: 333,
   usage: {
     input_tokens: 5,

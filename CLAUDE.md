@@ -54,6 +54,8 @@ Execute the pipeline. This is the autonomous loop.
 
 Ralph runs steps sequentially: review-decisions (0–2 rounds, default 2) → create-and-review-prd → create-and-review-slices → preflight → implement-slice(s) → final-review → pr-review → review-fixes.
 
+After artifact-mode planning starts, the parent issue is a compact Parent Issue Index. Full Decisions, PRD, and Slice Plan content lives in linked Artifact Issues. State owns execution status and artifact issue numbers; Artifact Issues own planning content.
+
 - Preflight creates the feature branch and appends dynamic steps (one per sub-issue slice, plus final-review, pr-review, review-fixes).
 - If a step blocks for human input, ralph stops and prints the flag file path. Answer the questions there, then re-run the same command.
 - If a step fails, ralph stops. Fix the issue, reset the step status to `pending` in state.json, and re-run.
@@ -102,8 +104,10 @@ Run a focused suite by name:
 - All commands run from the **project root**, not from inside `ralph-v2/`.
 - **Never pipe ralph commands through `head`, `tail`, or similar** — ralph spawns long-running subprocesses that produce output slowly. Piping causes buffering deadlocks. Run ralph commands directly or in background mode.
 - `state.json` is the single source of truth. Agents read it, update it, and ralph.sh dispatches based on it.
+- `state.json` owns execution state and artifact issue numbers (`artifacts.decisions`, `artifacts.prd`, `artifacts.slicePlan`). The Artifact Issues own the planning content.
 - Review steps use a `reviewers` array (e.g. `["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"]`). Edit it per-step to add/remove council agents.
 - `create-and-review-prd` and `create-and-review-slices` have a `reviewRounds` field (0, 1, or 2, default 2) controlling how many council rounds run inside the step. Edit it per-step in state.json.
+- `create-and-review-prd` writes final PRD content to the PRD Artifact Issue and keeps `prd.md` only as a workspace recovery/audit file.
 - Non-review steps have `"reviewers": []`.
 - Generated steps run on `codex` by default. Individual steps can still be edited in `state.json` to use another supported agent when needed.
 - `CONTEXT.md`, `CLAUDE.md`, and `docs/adr/` are read from the project root — not from inside `ralph-v2/`.

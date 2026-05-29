@@ -82,7 +82,7 @@ Each issue has one workspace:
 ralph-v2/workspaces/<issue-number>/
 ```
 
-The workspace contains `state.json`, logs, human-input flag files, and review artifacts.
+The workspace contains `state.json`, logs, human-input flag files, and local recovery/audit copies such as `decisions.md`, `prd.md`, and `slices.md`. Durable planning content lives in linked Artifact Issues.
 
 Top-level `state.json` fields:
 
@@ -92,11 +92,19 @@ Top-level `state.json` fields:
   "repo": "owner/repo",
   "baseBranch": "main",
   "branch": "feat/issue-2-short-slug",
+  "artifacts": {
+    "decisions": 10,
+    "prd": 11,
+    "slicePlan": 12
+  },
+  "pr": null,
   "status": "initialized",
   "createdAt": "2026-05-02T00:00:00Z",
   "steps": []
 }
 ```
+
+State owns pipeline execution and artifact issue numbers. Artifact Issues own planning content: Decisions, PRD, and Slice Plan. The parent GitHub issue is a compact index that links to those artifacts, implementation slices, branch, and PR.
 
 Each step has this shape:
 
@@ -129,8 +137,8 @@ Failed steps stop the pipeline until the user explicitly resets the step to `pen
 
 ## Step Types
 
-- `review-decisions`: reviews issue decisions against `CONTEXT.md`, `CLAUDE.md`, and ADRs; may block for human input.
-- `create-and-review-prd`: preserves the original issue body, drafts the PRD, runs council reviews (controlled by `reviewRounds`, default 2), and updates the parent issue.
+- `review-decisions`: reviews issue decisions against `CONTEXT.md`, `CLAUDE.md`, and ADRs; writes findings to the Decisions Artifact Issue; may block for human input.
+- `create-and-review-prd`: reads the Parent Issue Index and Decisions Artifact Issue, drafts the PRD, runs council reviews (controlled by `reviewRounds`, default 2), writes `prd.md`, and updates the PRD Artifact Issue.
 - `create-and-review-slices`: drafts vertical AFK slices, runs council reviews (controlled by `reviewRounds`, default 2), creates GitHub sub-issues, and links them under the parent.
 - `preflight`: checks the working tree and `baseBranch` contract, creates/pushes the feature branch, and appends dynamic steps.
 - `implement-slice`: reads the assigned sub-issue, follows TDD, commits, pushes, and closes the sub-issue.
