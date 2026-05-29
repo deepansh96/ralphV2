@@ -20,7 +20,7 @@ If any operation fails irrecoverably (checkout, tests, quality checks), set this
 
 ## Goal
 
-Read the project context, parent issue, and assigned sub-issue; implement only the assigned sub-issue via TDD on the feature branch; run project quality checks; commit, push, and close the sub-issue after the implementation is verified.
+Read the project context, compact Parent Issue Index, PRD Artifact Issue, Slice Plan Artifact Issue, and assigned sub-issue; implement only the assigned sub-issue via TDD on the feature branch; run project quality checks; commit, push, and close the sub-issue after the implementation is verified.
 
 ## Required Inputs
 
@@ -40,6 +40,21 @@ Read the project context, parent issue, and assigned sub-issue; implement only t
   `gh issue view {{SUB_ISSUE}} --repo {{REPO}}`
 - Read the current workspace state:
   `{{WORKSPACE}}/state.json`
+- From the project root, source the State helper and read artifact issue numbers:
+
+```bash
+source ./ralph-v2/scripts/state.sh
+state_ensure_artifacts {{WORKSPACE}}/state.json
+prd_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json prd)"
+slice_plan_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json slicePlan)"
+```
+
+- Read the PRD Artifact Issue for broader planning context:
+  `gh issue view <prd-artifact-issue> --repo {{REPO}}`
+- Read the Slice Plan Artifact Issue for broader planning context:
+  `gh issue view <slice-plan-artifact-issue> --repo {{REPO}}`
+- The parent issue is now a compact Parent Issue Index. Use it for routing and links, but do not rely on the parent issue body for full PRD or Slice Plan content.
+- If `prd_artifact_issue` or `slice_plan_artifact_issue` is empty, malformed, or unavailable, fail this step with a recovery note instead of guessing from partial parent content.
 
 ## Blocker Verification
 
@@ -54,6 +69,7 @@ If any blocker is still open, set this step's status to `failed` with a note lis
 ## Scope Rules
 
 - Implement only sub-issue `#{{SUB_ISSUE}}`.
+- Use the PRD Artifact Issue and Slice Plan Artifact Issue only as broader planning context.
 - Stay within the acceptance criteria listed in the assigned sub-issue.
 - Do not implement other parent issue slices, blocked-by issues, referenced future work, or cleanup outside this slice.
 - Preserve unrelated user changes in the working tree.

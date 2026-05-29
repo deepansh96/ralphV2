@@ -1163,6 +1163,11 @@ prompt="$(cat)"
 [[ "$prompt" == *"tdd/refactoring.md"* ]] || exit 117
 [[ "$prompt" == *"gh issue view 9020 --repo deepansh96/ralph"* ]] || exit 118
 [[ "$prompt" == *"gh issue view 9111 --repo deepansh96/ralph"* ]] || exit 119
+[[ "$prompt" == *"source ./ralph-v2/scripts/state.sh"* ]] || exit 129
+[[ "$prompt" == *"state_get_artifact"* ]] || exit 130
+[[ "$prompt" == *"PRD Artifact Issue"* ]] || exit 131
+[[ "$prompt" == *"Slice Plan Artifact Issue"* ]] || exit 132
+[[ "$prompt" == *"do not rely on the parent issue body for full PRD or Slice Plan content"* ]] || exit 133
 [[ "$prompt" == *"Write one failing test first"* ]] || exit 120
 [[ "$prompt" == *"Run quality checks from CLAUDE.md"* ]] || exit 121
 [[ "$prompt" == *"git checkout feat/issue-9020-implementation-workflow"* ]] || exit 122
@@ -1253,6 +1258,8 @@ fi
 
 workspace="$(awk '/^Workspace:/ { print $2; exit }' <<<"$prompt")"
 step_id="$(awk '/^Step:/ { print $2; exit }' <<<"$prompt")"
+ralph_root="$(cd "$(dirname "$workspace")/.." && pwd)"
+state_file="$workspace/state.json"
 
 printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
 case "$step_id" in
@@ -1269,6 +1276,16 @@ case "$step_id" in
     [[ "$prompt" == *"scope creep"* ]] || exit 140
     [[ "$prompt" == *"Update CONTEXT.md"* ]] || exit 141
     [[ "$prompt" == *"Update CLAUDE.md"* ]] || exit 142
+    [[ "$prompt" == *"Decisions Artifact Issue"* ]] || exit 143
+    [[ "$prompt" == *"PRD Artifact Issue"* ]] || exit 144
+    [[ "$prompt" == *"Slice Plan Artifact Issue"* ]] || exit 145
+    [[ "$prompt" == *"state_get_artifact"* ]] || exit 146
+    [[ "$prompt" == *"Do not rely on full planning content in the parent issue body"* ]] || exit 147
+    [[ -f "$workspace/github-parent-index.md" ]] || exit 148
+    [[ -f "$workspace/github-decisions-artifact.md" ]] || exit 149
+    [[ -f "$workspace/github-prd-artifact.md" ]] || exit 172
+    [[ -f "$workspace/github-slice-plan-artifact.md" ]] || exit 173
+    [[ "$(<"$workspace/github-parent-index.md")" != *"FULL_PRD_ONLY_IN_ARTIFACT"* ]] || exit 174
     cat > "$workspace/final-review.md" <<'FINAL_REVIEW'
 # Final Review
 
@@ -1284,6 +1301,7 @@ case "$step_id" in
 ## Acceptance criteria verification
 
 - #9111: satisfied
+- Artifact planning context read: Decisions #9100, PRD #9101, Slice Plan #9102.
 
 ## Documentation updates
 
@@ -1322,6 +1340,10 @@ FINAL_REVIEW
     [[ "$prompt" == *"PR comments"* ]] || exit 159
     [[ "$prompt" == *"Do not create duplicate PRs"* ]] || exit 160
     [[ "$prompt" == *"review --base"* ]] || exit 161
+    [[ "$prompt" == *"state_set_pr"* ]] || exit 162
+    [[ "$prompt" == *"artifact_refresh_parent_index"* ]] || exit 163
+    [[ "$prompt" == *"never include Artifact Issues in PR closing keywords"* ]] || exit 164
+    [[ "$prompt" == *"implementation sub-issues from State \`implement-slice\` Steps"* ]] || exit 165
     cat > "$workspace/pr-body.md" <<'PR_BODY'
 ## Summary
 
@@ -1347,12 +1369,33 @@ PR_BODY
     else
       action="updated"
     fi
+    source "$ralph_root/scripts/state.sh"
+    state_set_pr "$state_file" 77 "https://github.com/deepansh96/ralph/pull/77"
+    cat > "$workspace/github-parent-index.md" <<'PARENT_INDEX'
+## Ralph Run Index
+
+## Summary
+
+Compact parent index fixture only.
+
+## Routing
+
+- PR: https://github.com/deepansh96/ralph/pull/77
+
+## Artifacts
+
+- Decisions: #9100
+- PRD: #9101
+- Slice Plan: #9102
+PARENT_INDEX
     cat > "$workspace/pr-review.md" <<PR_REVIEW
 # PR Review
 
 - PR: #77 https://github.com/deepansh96/ralph/pull/77
 - Action: $action
 - Linked sub-issues: #9111
+- State PR metadata recorded via state_set_pr.
+- Parent index refreshed with PR link.
 - code-review:code-review invoked and review comments posted.
 PR_REVIEW
     jq -n -c --arg action "$action" '{
@@ -1375,6 +1418,11 @@ PR_REVIEW
     [[ "$prompt" == *"Fix"* ]] || exit 165
     [[ "$prompt" == *"Dismiss"* ]] || exit 166
     [[ "$prompt" == *"gh pr comment"* ]] || exit 167
+    [[ "$prompt" == *"Decisions Artifact Issue"* ]] || exit 168
+    [[ "$prompt" == *"PRD Artifact Issue"* ]] || exit 169
+    [[ "$prompt" == *"Slice Plan Artifact Issue"* ]] || exit 171
+    [[ "$prompt" == *"implementation sub-issues"* ]] || exit 172
+    [[ "$prompt" == *"PR comments"* ]] || exit 173
     cat > "$workspace/review-fixes-comment.md" <<'COMMENT'
 ## Review Fixes Assessment
 

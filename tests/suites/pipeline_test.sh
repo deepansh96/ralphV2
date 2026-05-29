@@ -636,6 +636,11 @@ test_implement_slice_pipeline_runs_codex_with_sub_issue_context() {
       baseBranch: "main",
       branch: "feat/issue-9020-implementation-workflow",
       projectRoot: $project_root,
+      artifacts: {
+        decisions: 9100,
+        prd: 9101,
+        slicePlan: 9102
+      },
       status: "initialized",
       steps: [
         {
@@ -671,6 +676,7 @@ test_implement_slice_pipeline_runs_codex_with_sub_issue_context() {
 
 test_final_and_pr_review_pipeline_completes_with_idempotent_pr() {
   local issue fake_bin output final_file pr_body_file pr_review_file create_count final_status pr_status pr_status_after_rerun
+  local parent_index_file pr_number pr_url
 
   issue="9021"
   fake_bin="$WORKSPACES_DIR/fake-bin"
@@ -685,6 +691,12 @@ test_final_and_pr_review_pipeline_completes_with_idempotent_pr() {
       repo: "deepansh96/ralph",
       baseBranch: "main",
       branch: "feat/issue-9021-final-pr-workflow",
+      artifacts: {
+        decisions: 9100,
+        prd: 9101,
+        slicePlan: 9102
+      },
+      pr: null,
       status: "initialized",
       steps: [
         {
@@ -734,17 +746,51 @@ test_final_and_pr_review_pipeline_completes_with_idempotent_pr() {
         }
       ]
     }' > "$WORKSPACES_DIR/$issue/state.json"
+  cat > "$WORKSPACES_DIR/$issue/github-parent-index.md" <<'PARENT_INDEX'
+## Ralph Run Index
+
+## Summary
+
+Compact parent index fixture only.
+
+## Artifacts
+
+- Decisions: #9100
+- PRD: #9101
+- Slice Plan: #9102
+PARENT_INDEX
+  cat > "$WORKSPACES_DIR/$issue/github-decisions-artifact.md" <<'DECISIONS_ARTIFACT'
+Ralph-Artifact: decisions
+Parent: #9021
+---
+FULL_DECISIONS_ONLY_IN_ARTIFACT
+DECISIONS_ARTIFACT
+  cat > "$WORKSPACES_DIR/$issue/github-prd-artifact.md" <<'PRD_ARTIFACT'
+Ralph-Artifact: prd
+Parent: #9021
+---
+FULL_PRD_ONLY_IN_ARTIFACT
+PRD_ARTIFACT
+  cat > "$WORKSPACES_DIR/$issue/github-slice-plan-artifact.md" <<'SLICE_PLAN_ARTIFACT'
+Ralph-Artifact: slice-plan
+Parent: #9021
+---
+FULL_SLICE_PLAN_ONLY_IN_ARTIFACT
+SLICE_PLAN_ARTIFACT
 
   output="$(PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue")"
 
   final_file="$WORKSPACES_DIR/$issue/final-review.md"
   pr_body_file="$WORKSPACES_DIR/$issue/pr-body.md"
   pr_review_file="$WORKSPACES_DIR/$issue/pr-review.md"
+  parent_index_file="$WORKSPACES_DIR/$issue/github-parent-index.md"
   review_fixes_file="$WORKSPACES_DIR/$issue/review-fixes.md"
   review_fixes_comment="$WORKSPACES_DIR/$issue/review-fixes-comment.md"
   final_status="$(jq -r '.steps[] | select(.id == "final-review") | .status' "$WORKSPACES_DIR/$issue/state.json")"
   pr_status="$(jq -r '.steps[] | select(.id == "pr-review") | .status' "$WORKSPACES_DIR/$issue/state.json")"
   rf_status="$(jq -r '.steps[] | select(.id == "review-fixes") | .status' "$WORKSPACES_DIR/$issue/state.json")"
+  pr_number="$(jq -r '.pr.number // empty' "$WORKSPACES_DIR/$issue/state.json")"
+  pr_url="$(jq -r '.pr.url // empty' "$WORKSPACES_DIR/$issue/state.json")"
 
   [[ "$final_status" == "completed" ]] || fail "expected final-review to complete, got $final_status"
   [[ "$pr_status" == "completed" ]] || fail "expected pr-review to complete, got $pr_status"
@@ -758,8 +804,17 @@ test_final_and_pr_review_pipeline_completes_with_idempotent_pr() {
   assert_contains "$(<"$pr_body_file")" "## Summary"
   assert_contains "$(<"$pr_body_file")" "Closes #9021"
   assert_contains "$(<"$pr_body_file")" "Closes #9111"
+  [[ "$(<"$pr_body_file")" != *"Closes #9100"* ]] || fail "expected PR body not to close Decisions Artifact"
+  [[ "$(<"$pr_body_file")" != *"Closes #9101"* ]] || fail "expected PR body not to close PRD Artifact"
+  [[ "$(<"$pr_body_file")" != *"Closes #9102"* ]] || fail "expected PR body not to close Slice Plan Artifact"
   assert_contains "$(<"$pr_body_file")" "Human QA Checklist"
   assert_contains "$(<"$pr_review_file")" "code-review:code-review invoked"
+  [[ "$pr_number" == "77" ]] || fail "expected PR number to be recorded in State, got $pr_number"
+  [[ "$pr_url" == "https://github.com/deepansh96/ralph/pull/77" ]] || fail "expected PR URL to be recorded in State, got $pr_url"
+  assert_contains "$(<"$parent_index_file")" "- PR: https://github.com/deepansh96/ralph/pull/77"
+  [[ "$(<"$parent_index_file")" != *"FULL_DECISIONS_ONLY_IN_ARTIFACT"* ]] || fail "expected parent index not to contain full Decisions content"
+  [[ "$(<"$parent_index_file")" != *"FULL_PRD_ONLY_IN_ARTIFACT"* ]] || fail "expected parent index not to contain full PRD content"
+  [[ "$(<"$parent_index_file")" != *"FULL_SLICE_PLAN_ONLY_IN_ARTIFACT"* ]] || fail "expected parent index not to contain full Slice Plan content"
   assert_contains "$(<"$review_fixes_file")" "Findings Evaluated"
   assert_contains "$(<"$review_fixes_file")" "Fixed"
   assert_contains "$(<"$review_fixes_comment")" "Review Fixes Assessment"

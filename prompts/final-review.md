@@ -19,7 +19,7 @@ If any operation fails irrecoverably (checkout, quality checks), set this step's
 
 ## Goal
 
-Review all implementation changes on the feature branch, verify every implemented sub-issue's acceptance criteria, run the project quality checks, update project documentation with newly discovered patterns, and write a final review summary.
+Review all implementation changes on the feature branch, read artifact-backed planning context, verify every implemented sub-issue's acceptance criteria, run the project quality checks, update project documentation with newly discovered patterns, and write a final review summary.
 
 ## Required Inputs
 
@@ -30,8 +30,26 @@ Review all implementation changes on the feature branch, verify every implemente
   `gh issue view {{ISSUE}} --repo {{REPO}}`
 - Read the current workspace state:
   `{{WORKSPACE}}/state.json`
+- From the project root, source the State helper and read artifact issue numbers:
+
+```bash
+source ./ralph-v2/scripts/state.sh
+state_ensure_artifacts {{WORKSPACE}}/state.json
+decisions_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json decisions)"
+prd_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json prd)"
+slice_plan_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json slicePlan)"
+```
+
+- Read the Decisions Artifact Issue before acceptance verification:
+  `gh issue view <decisions-artifact-issue> --repo {{REPO}}`
+- Read the PRD Artifact Issue before acceptance verification:
+  `gh issue view <prd-artifact-issue> --repo {{REPO}}`
+- Read the Slice Plan Artifact Issue before acceptance verification:
+  `gh issue view <slice-plan-artifact-issue> --repo {{REPO}}`
+- Do not rely on full planning content in the parent issue body. The parent issue is a compact Parent Issue Index; full Decisions, PRD, and Slice Plan content lives in Artifact Issues.
 - Identify completed implementation sub-issues from state steps where `type` is `implement-slice`, then read each sub-issue:
   `gh issue view <sub-issue-number> --repo {{REPO}}`
+- Ignore State artifact registry issue numbers when building the implementation sub-issue list. Artifact Issues are planning storage, not implementation slices.
 
 ## Branch
 
@@ -73,6 +91,8 @@ Do not complete this step if required checks fail. Report the failing command an
 ## Acceptance Verification
 
 Verify acceptance criteria from each sub-issue.
+
+Verify acceptance criteria from each implementation sub-issue using the Decisions Artifact Issue, PRD Artifact Issue, Slice Plan Artifact Issue, and the implementation slice issue bodies as context.
 
 For each implemented sub-issue:
 

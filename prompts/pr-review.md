@@ -20,7 +20,7 @@ If any operation fails irrecoverably (checkout, push, PR creation, code review i
 
 ## Goal
 
-Create an idempotent PR from the feature branch to the base branch, write a comprehensive PR description with a summary of changes, linked sub-issues, and a human QA checklist, run a council review for independent multi-agent feedback, then run the automated code review path for this step's assigned agent. Synthesize both reviews into a single combined review comment on the PR.
+Create an idempotent PR from the feature branch to the base branch, write a comprehensive PR description with a summary of changes, linked implementation sub-issues, and a human QA checklist, record PR metadata in State, refresh the Parent Issue Index, run a council review for independent multi-agent feedback, then run the automated code review path for this step's assigned agent. Synthesize both reviews into a single combined review comment on the PR.
 
 ## Required Inputs
 
@@ -31,10 +31,28 @@ Create an idempotent PR from the feature branch to the base branch, write a comp
   `gh issue view {{ISSUE}} --repo {{REPO}}`
 - Read the current workspace state:
   `{{WORKSPACE}}/state.json`
+- From the project root, source the State and Artifact helpers:
+
+```bash
+source ./ralph-v2/scripts/state.sh
+source ./ralph-v2/scripts/artifacts.sh
+state_ensure_artifacts {{WORKSPACE}}/state.json
+decisions_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json decisions)"
+prd_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json prd)"
+slice_plan_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json slicePlan)"
+```
+
+- Read the Decisions Artifact Issue:
+  `gh issue view <decisions-artifact-issue> --repo {{REPO}}`
+- Read the PRD Artifact Issue:
+  `gh issue view <prd-artifact-issue> --repo {{REPO}}`
+- Read the Slice Plan Artifact Issue:
+  `gh issue view <slice-plan-artifact-issue> --repo {{REPO}}`
 - Read the final review summary if it exists:
   `{{WORKSPACE}}/final-review.md`
-- Identify implementation sub-issues from state steps where `type` is `implement-slice`, then read each sub-issue:
+- Identify implementation sub-issues from State `implement-slice` Steps only, then read each sub-issue:
   `gh issue view <sub-issue-number> --repo {{REPO}}`
+- Never treat `artifacts.decisions`, `artifacts.prd`, or `artifacts.slicePlan` as implementation sub-issues.
 
 ## Branch
 
@@ -80,9 +98,17 @@ Write a PR body file in the workspace, for example:
 The PR description must include:
 
 - Summary of changes.
-- Linked parent issue and sub-issues, using GitHub closing keywords so all issues close automatically when the PR merges.
+- Linked parent issue and implementation sub-issues from State `implement-slice` Steps, using GitHub closing keywords so the parent issue and implemented slices close automatically when the PR merges.
+- The linked sub-issues list must be derived from implementation Steps, not Artifact Issues.
 - Human QA checklist.
 - Final review outcome from `{{WORKSPACE}}/final-review.md`, if available.
+
+Artifact closing safety:
+
+- Include `Closes #{{ISSUE}}` for the parent issue.
+- Include `Closes #<sub-issue>` only for implementation sub-issues discovered from State `implement-slice` Steps.
+- Never include Artifact Issues in PR closing keywords. Do not include closing keywords for Decisions, PRD, or Slice Plan Artifact Issues, even though they were read for context.
+- Artifact Issues are planning storage; never include Artifact Issues in PR closing keywords.
 
 Use this structure:
 
@@ -128,6 +154,20 @@ gh pr create --repo {{REPO}} --base {{BASE_BRANCH}} --head {{BRANCH}} --title "<
 ```
 
 Capture the PR number and URL from either the existing PR or the newly created PR.
+
+After the PR number and URL are known, record them in State using the helper. Do not hand-edit `state.json` with `jq`, `sed`, or ad hoc temp-file writes for PR metadata:
+
+```bash
+state_set_pr {{WORKSPACE}}/state.json <pr-number> <pr-url>
+```
+
+Then refresh the compact parent index so it shows the PR link:
+
+```bash
+artifact_refresh_parent_index {{WORKSPACE}}/state.json {{REPO}} {{ISSUE}}
+```
+
+`pr-review.md` must confirm the State PR metadata was written and that `artifact_refresh_parent_index` ran after PR creation or update.
 
 ## Council Code Review
 
@@ -191,6 +231,8 @@ Include:
 - PR number and URL.
 - Whether the PR was created or updated.
 - Linked sub-issues included in the body.
+- Confirmation that `state_set_pr` recorded the PR number and URL in State.
+- Confirmation that `artifact_refresh_parent_index` refreshed the parent issue with the PR link.
 - Summary of council review findings (kept and dropped).
 - Automated review source used (`code-review:code-review` or `codex review`).
 - Confirmation that the selected automated review completed successfully.
@@ -203,7 +245,9 @@ Complete normally only after:
 - The feature branch has been pushed.
 - An open PR exists from `{{BRANCH}}` to `{{BASE_BRANCH}}`.
 - Re-running the step would update the existing PR instead of creating a duplicate.
-- The PR description includes a summary of changes, `Closes #{{ISSUE}}`, closing references for every implementation sub-issue, and a human QA checklist.
+- The PR description includes a summary of changes, `Closes #{{ISSUE}}`, closing references for every implementation sub-issue, no closing references for Artifact Issues, and a human QA checklist.
+- State has `.pr.number` and `.pr.url` set through `state_set_pr`.
+- The Parent Issue Index has been refreshed through `artifact_refresh_parent_index` after PR creation or update.
 - The council review has completed and findings are saved to `{{WORKSPACE}}/council-pr-review.md`.
 - The selected automated review path for the step agent has completed successfully.
 - The combined review (council + automated review) is posted as a PR comment.

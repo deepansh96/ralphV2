@@ -19,7 +19,7 @@ If any operation fails irrecoverably (checkout, quality checks, push), set this 
 
 ## Goal
 
-Read the automated code review comments posted on the PR, evaluate each finding against the codebase, implement fixes for valid issues, dismiss invalid ones with reasoning, push all fixes as a single commit, and post a summary comment on the PR.
+Read the automated code review comments posted on the PR, evaluate each finding against the codebase and artifact-backed planning context, implement fixes for valid issues, dismiss invalid ones with reasoning, push all fixes as a single commit, and post a summary comment on the PR.
 
 ## Required Inputs
 
@@ -30,12 +30,30 @@ Read the automated code review comments posted on the PR, evaluate each finding 
   `gh issue view {{ISSUE}} --repo {{REPO}}`
 - Read the current workspace state:
   `{{WORKSPACE}}/state.json`
+- From the project root, source the State helper and read artifact issue numbers:
+
+```bash
+source ./ralph-v2/scripts/state.sh
+state_ensure_artifacts {{WORKSPACE}}/state.json
+decisions_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json decisions)"
+prd_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json prd)"
+slice_plan_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json slicePlan)"
+```
+
+- Read the Decisions Artifact Issue:
+  `gh issue view <decisions-artifact-issue> --repo {{REPO}}`
+- Read the PRD Artifact Issue:
+  `gh issue view <prd-artifact-issue> --repo {{REPO}}`
+- Read the Slice Plan Artifact Issue:
+  `gh issue view <slice-plan-artifact-issue> --repo {{REPO}}`
+- Do not rely on full planning content in the parent issue body. The parent issue is a compact Parent Issue Index; full planning context lives in Artifact Issues.
 - Read the PR review record:
   `{{WORKSPACE}}/pr-review.md`
 - Read the final review summary:
   `{{WORKSPACE}}/final-review.md`
 - Identify implementation sub-issues from state steps where `type` is `implement-slice`, then read each sub-issue:
   `gh issue view <sub-issue-number> --repo {{REPO}}`
+- Ignore State artifact registry issue numbers when identifying implementation sub-issues.
 
 ## Branch
 
@@ -83,6 +101,8 @@ gh api repos/{{REPO}}/pulls/<pr-number>/comments --paginate
 ```
 
 Identify automated review findings from the PR review step. These may come from the `code-review:code-review` plugin when `pr-review` ran on Claude, or from the combined PR comment that includes `codex review` output when `pr-review` ran on Codex. If a review comment contains multiple issues, treat each as a separate finding.
+
+When interpreting fixes, use all relevant downstream context: Decisions Artifact Issue, PRD Artifact Issue, Slice Plan Artifact Issue, implementation sub-issues, `{{WORKSPACE}}/final-review.md`, `{{WORKSPACE}}/pr-review.md`, and fetched PR comments. PR comments are the source for review findings; artifact and slice issues define scope and intent.
 
 ## Evaluate Each Finding
 
