@@ -32,9 +32,19 @@ WORKSPACE_DIR="$WORKSPACES_BASE/$ISSUE"
 ARCHIVE_DIR="$SCRIPT_DIR/archive"
 DATE="$(date +%Y-%m-%d)"
 ARCHIVE_DESTINATION="$ARCHIVE_DIR/$DATE-$ISSUE"
+STATE_FILE="$WORKSPACE_DIR/state.json"
 
 [[ -d "$WORKSPACE_DIR" ]] || die "workspace not found: $WORKSPACE_DIR"
 [[ ! -e "$ARCHIVE_DESTINATION" ]] || die "archive destination already exists: $ARCHIVE_DESTINATION"
+
+if [[ -f "$STATE_FILE" ]]; then
+  REPO="$(jq -r '.repo // empty' "$STATE_FILE" 2>/dev/null || true)"
+  if [[ -n "$REPO" ]]; then
+    if ! "$SCRIPT_DIR/scripts/artifacts.sh" artifact_close_all "$STATE_FILE" "$REPO" "$ISSUE" "Archived by Ralph cleanup for parent #$ISSUE." >/dev/null; then
+      echo "Warning: artifact closure failed; continuing with local archive" >&2
+    fi
+  fi
+fi
 
 mkdir -p "$ARCHIVE_DIR"
 mv "$WORKSPACE_DIR" "$ARCHIVE_DESTINATION"

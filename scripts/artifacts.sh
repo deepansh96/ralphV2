@@ -341,12 +341,264 @@ slice_is_eligible_implementation() {
   grep -Fxq "Parent: #$parent_issue" "$body_file" || return 1
 }
 
+artifact_issue_summary() {
+  local repo="$1"
+  local issue="$2"
+  local step_status="${3:-}"
+  local issue_json title state suffix
+
+  if ! issue_json="$(gh issue view "$issue" --repo "$repo" --json number,title,state,url 2>/dev/null)"; then
+    printf '%s\t%s\n' "" "Skipped issue #$issue: could not read issue details"
+    return 0
+  fi
+
+  title="$(jq -r '.title // ""' <<<"$issue_json" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  state="$(jq -r '.state // "UNKNOWN"' <<<"$issue_json")"
+  suffix="$state"
+  if [[ -n "$step_status" ]]; then
+    suffix="$suffix, step: $step_status"
+  fi
+
+  printf -- '- #%s - %s (%s)\t\n' "$issue" "$title" "$suffix"
+}
+
+artifact_candidate_slice_summary() {
+  local repo="$1"
+  local parent_issue="$2"
+  local issue="$3"
+  local step_status="${4:-}"
+  local issue_json body_file
+
+  if ! issue_json="$(gh issue view "$issue" --repo "$repo" --json number,title,state,body,url 2>/dev/null)"; then
+    printf '%s\t%s\n' "" "Skipped issue #$issue: could not read issue details"
+    return 0
+  fi
+
+  body_file="$(mktemp)"
+  jq -r '.body // ""' <<<"$issue_json" > "$body_file"
+  if slice_is_eligible_implementation "$body_file" "$parent_issue"; then
+    rm -f "$body_file"
+    artifact_issue_summary "$repo" "$issue" "$step_status"
+    return 0
+  fi
+
+  rm -f "$body_file"
+  printf '%s\t%s\n' "" "Skipped issue #$issue: not an eligible AFK implementation slice"
+}
+
+artifact_slice_numbers_from_file() {
+  local slices_file="$1"
+
+  [[ -f "$slices_file" ]] || return 0
+  grep -Eo '#[1-9][0-9]*' "$slices_file" | tr -d '#' | sort -n -u
+}
+
+artifact_collect_slice_lines() {
+  local state_file="$1"
+  local repo="$2"
+  local parent_issue="$3"
+  local workspace slice_file dynamic_count issue status issue_json body_file
+  local slice_lines_file="$4"
+  local notes_file="$5"
+
+  workspace="$(dirname "$state_file")"
+  slice_file="$workspace/slices.md"
+  : > "$slice_lines_file"
+  : > "$notes_file"
+
+  dynamic_count="$(jq '[.steps[]? | select(.type == "implement-slice" and (.sub_issue // empty))] | length' "$state_file")"
+  if [[ "$dynamic_count" -gt 0 ]]; then
+    while IFS=$'\t' read -r issue status; do
+      [[ -n "$issue" ]] || continue
+      artifact_issue_summary "$repo" "$issue" "$status"
+    done < <(
+      jq -r '.steps[]? | select(.type == "implement-slice" and (.sub_issue // empty)) | [(.sub_issue | tostring), (.status // "unknown")] | @tsv' "$state_file"
+    ) | while IFS=$'\t' read -r line note; do
+      if [[ -n "$line" ]]; then
+        printf '%s\n' "$line" >> "$slice_lines_file"
+      fi
+      if [[ -n "$note" ]]; then
+        printf '%s\n' "$note" >> "$notes_file"
+      fi
+    done
+    return 0
+  fi
+
+  if [[ -f "$slice_file" ]]; then
+    while IFS= read -r issue; do
+      [[ -n "$issue" ]] || continue
+      artifact_candidate_slice_summary "$repo" "$parent_issue" "$issue"
+    done < <(artifact_slice_numbers_from_file "$slice_file") | while IFS=$'\t' read -r line note; do
+      if [[ -n "$line" ]]; then
+        printf '%s\n' "$line" >> "$slice_lines_file"
+      fi
+      if [[ -n "$note" ]]; then
+        printf '%s\n' "$note" >> "$notes_file"
+      fi
+    done
+    return 0
+  fi
+
+  if issue_json="$(gh issue list --repo "$repo" --state open --search "AFK: true Parent: #$parent_issue" --json number,title,state,body,url --limit 100 2>/dev/null)"; then
+    while IFS=$'\t' read -r issue; do
+      [[ -n "$issue" ]] || continue
+      body_file="$(mktemp)"
+      jq -r --argjson number "$issue" '.[] | select(.number == $number) | .body // ""' <<<"$issue_json" > "$body_file"
+      if slice_is_eligible_implementation "$body_file" "$parent_issue"; then
+        jq -r --argjson number "$issue" '.[] | select(.number == $number) | "- #\(.number) - \(.title // "") (\(.state // "UNKNOWN"))"' <<<"$issue_json" >> "$slice_lines_file"
+      else
+        printf 'Skipped issue #%s: not an eligible AFK implementation slice\n' "$issue" >> "$notes_file"
+      fi
+      rm -f "$body_file"
+    done < <(jq -r '.[].number' <<<"$issue_json")
+  fi
+}
+
+artifact_pr_line() {
+  local state_file="$1"
+  local repo="$2"
+  local pr_url branch pr_json
+
+  pr_url="$(jq -r '.pr.url // empty' "$state_file")"
+  if [[ -n "$pr_url" ]]; then
+    printf '%s\n' "$pr_url"
+    return 0
+  fi
+
+  branch="$(jq -r '.branch // empty' "$state_file")"
+  if [[ -n "$branch" ]]; then
+    pr_json="$(gh pr list --repo "$repo" --head "$branch" --json number,url --limit 1 2>/dev/null || printf '[]')"
+    pr_url="$(jq -r '.[0].url // empty' <<<"$pr_json")"
+    if [[ -n "$pr_url" ]]; then
+      printf '%s\n' "$pr_url"
+      return 0
+    fi
+  fi
+
+  printf 'TBD\n'
+}
+
+artifact_render_artifact_line() {
+  local state_file="$1"
+  local artifact_type="$2"
+  local label="$3"
+  local issue
+
+  issue="$(state_get_artifact "$state_file" "$artifact_type")"
+  if [[ -n "$issue" ]]; then
+    printf -- '- %s: #%s\n' "$label" "$issue"
+  else
+    printf -- '- %s: TBD\n' "$label"
+  fi
+}
+
 artifact_refresh_parent_index() {
-  printf '{"action":"artifact_refresh_parent_index","status":"not_implemented"}\n'
+  local state_file="$1"
+  local repo="$2"
+  local parent_issue="$3"
+  local parent_json title status base_branch branch pr_value body_file slice_lines_file notes_file bytes
+
+  state_ensure_artifacts "$state_file" || return 1
+  if ! parent_json="$(gh issue view "$parent_issue" --repo "$repo" --json number,title,state,url 2>/dev/null)"; then
+    echo "Error: could not read parent issue #$parent_issue" >&2
+    return 1
+  fi
+
+  title="$(jq -r '.title // ("Issue #'"$parent_issue"'")' <<<"$parent_json" | tr '\n' ' ')"
+  status="$(jq -r '.status // (first(.steps[]? | select(.status == "pending") | .id) // "unknown")' "$state_file")"
+  base_branch="$(jq -r '.baseBranch // "unset"' "$state_file")"
+  branch="$(jq -r '.branch // "unset"' "$state_file")"
+  pr_value="$(artifact_pr_line "$state_file" "$repo")"
+  body_file="$(mktemp)"
+  slice_lines_file="$(mktemp)"
+  notes_file="$(mktemp)"
+
+  artifact_collect_slice_lines "$state_file" "$repo" "$parent_issue" "$slice_lines_file" "$notes_file"
+
+  {
+    printf '## Ralph Run Index\n\n'
+    printf 'This issue is the compact index for a Ralph pipeline run. Durable planning content lives in linked Artifact Issues.\n\n'
+    printf '## Summary\n\n'
+    printf '%s\n\n' "$title"
+    printf '## Routing\n\n'
+    printf -- '- Status: %s\n' "$status"
+    printf -- '- Base branch: `%s`\n' "$base_branch"
+    printf -- '- Feature branch: `%s`\n' "$branch"
+    printf -- '- PR: %s\n\n' "$pr_value"
+    printf '## Artifacts\n\n'
+    artifact_render_artifact_line "$state_file" "decisions" "Decisions"
+    artifact_render_artifact_line "$state_file" "prd" "PRD"
+    artifact_render_artifact_line "$state_file" "slicePlan" "Slice Plan"
+    printf '\n## Implementation Slices\n\n'
+    if [[ -s "$slice_lines_file" ]]; then
+      cat "$slice_lines_file"
+    else
+      printf -- '- TBD\n'
+    fi
+    printf '\n## Notes\n\n'
+    printf -- '- Artifact issues are planning storage and are not implementation slices.\n'
+    printf -- '- Only AFK implementation slice issues become `implement-slice` steps.\n'
+    if [[ -s "$notes_file" ]]; then
+      while IFS= read -r note; do
+        if [[ -n "$note" ]]; then
+          printf -- '- %s\n' "$note"
+        fi
+      done < "$notes_file"
+    fi
+  } > "$body_file"
+
+  gh issue edit "$parent_issue" --repo "$repo" --body-file "$body_file" >/dev/null
+  bytes="$(artifact_byte_count "$body_file")"
+  rm -f "$body_file" "$slice_lines_file" "$notes_file"
+  printf '{"action":"refreshed","issue":%s,"bytes":%s}\n' "$parent_issue" "$bytes"
 }
 
 artifact_close_all() {
-  printf '{"action":"artifact_close_all","status":"not_implemented"}\n'
+  local state_file="$1"
+  local repo="$2"
+  local parent_issue="$3"
+  local comment="${4:-Archived by Ralph cleanup.}"
+  local artifact_type issue issue_json body_file state closed_count skipped_count
+
+  state_ensure_artifacts "$state_file" || return 1
+  closed_count=0
+  skipped_count=0
+
+  for artifact_type in decisions prd slicePlan; do
+    issue="$(state_get_artifact "$state_file" "$artifact_type")"
+    if [[ -z "$issue" ]]; then
+      continue
+    fi
+    if [[ ! "$issue" =~ ^[1-9][0-9]*$ ]]; then
+      echo "Warning: skipping invalid registered artifact issue for $artifact_type: $issue" >&2
+      skipped_count=$((skipped_count + 1))
+      continue
+    fi
+    if ! issue_json="$(artifact_issue_json "$repo" "$issue" 2>/dev/null)"; then
+      echo "Error: could not read registered artifact issue #$issue" >&2
+      return 1
+    fi
+
+    body_file="$(mktemp)"
+    jq -r '.body // ""' <<<"$issue_json" > "$body_file"
+    if ! artifact_validate_body "$body_file" "$parent_issue" "$artifact_type" >/dev/null 2>&1; then
+      rm -f "$body_file"
+      echo "Error: registered issue #$issue is not a valid $artifact_type artifact for parent #$parent_issue" >&2
+      return 1
+    fi
+    rm -f "$body_file"
+
+    gh issue comment "$issue" --repo "$repo" --body "$comment" >/dev/null
+    state="$(jq -r '.state // ""' <<<"$issue_json")"
+    if [[ "${state,,}" == "closed" ]]; then
+      skipped_count=$((skipped_count + 1))
+      continue
+    fi
+    gh issue close "$issue" --repo "$repo" >/dev/null
+    closed_count=$((closed_count + 1))
+  done
+
+  printf '{"action":"closed-artifacts","closed":%s,"skipped":%s}\n' "$closed_count" "$skipped_count"
 }
 
 artifact_usage() {

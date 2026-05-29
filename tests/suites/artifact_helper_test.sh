@@ -98,6 +98,7 @@ case "$cmd" in
             createdAt: $created_at,
             body: ($body | fromjson),
             id: ("ISSUE_" + ($number | tostring)),
+            url: ("https://github.com/" + $repo + "/issues/" + ($number | tostring)),
             labels: []
           }' > "$(issue_file "$number")"
         log "issue create $number $title"
@@ -131,7 +132,7 @@ case "$cmd" in
           esac
         done
         if compgen -G "$fixture/issues/*.json" >/dev/null; then
-          jq -s '[.[] | {number, state, createdAt}]' "$fixture"/issues/*.json
+          jq -s '[.[] | {number, title, state, createdAt, body, url}]' "$fixture"/issues/*.json
         else
           printf '[]\n'
         fi
@@ -167,6 +168,31 @@ case "$cmd" in
           log "issue edit-body $number"
         fi
         ;;
+      comment)
+        number="$1"
+        shift
+        body=""
+        while [[ $# -gt 0 ]]; do
+          case "$1" in
+            --repo) shift 2 ;;
+            --body) body="$2"; shift 2 ;;
+            *) shift ;;
+          esac
+        done
+        file="$(issue_file "$number")"
+        [[ -f "$file" ]] || exit 1
+        log "issue comment $number $body"
+        ;;
+      close)
+        number="$1"
+        shift
+        file="$(issue_file "$number")"
+        [[ -f "$file" ]] || exit 1
+        tmp="$(mktemp)"
+        jq '.state = "CLOSED"' "$file" > "$tmp"
+        mv "$tmp" "$file"
+        log "issue close $number"
+        ;;
       reopen)
         number="$1"
         shift
@@ -176,6 +202,28 @@ case "$cmd" in
         jq '.state = "OPEN"' "$file" > "$tmp"
         mv "$tmp" "$file"
         log "issue reopen $number"
+        ;;
+      *)
+        exit 2
+        ;;
+    esac
+    ;;
+  pr)
+    sub="${1:-}"
+    shift || true
+    case "$sub" in
+      list)
+        while [[ $# -gt 0 ]]; do
+          case "$1" in
+            --repo|--head|--json|--limit) shift 2 ;;
+            *) shift ;;
+          esac
+        done
+        if [[ -f "$fixture/prs.json" ]]; then
+          cat "$fixture/prs.json"
+        else
+          printf '[]\n'
+        fi
         ;;
       *)
         exit 2
@@ -214,6 +262,36 @@ mark_issue_closed() {
   tmp_file="$(mktemp)"
   jq '.state = "CLOSED"' "$GH_FIXTURE_DIR/issues/$number.json" > "$tmp_file"
   mv "$tmp_file" "$GH_FIXTURE_DIR/issues/$number.json"
+}
+
+write_fixture_issue() {
+  local number="$1"
+  local title="$2"
+  local body="$3"
+  local state="${4:-OPEN}"
+
+  jq -n \
+    --argjson number "$number" \
+    --arg title "$title" \
+    --arg body "$body" \
+    --arg state "$state" \
+    '{
+      number: $number,
+      title: $title,
+      repo: "deepansh96/ralphV2",
+      state: $state,
+      createdAt: "2026-05-30T00:00:00Z",
+      body: $body,
+      id: ("ISSUE_" + ($number | tostring)),
+      url: ("https://github.com/deepansh96/ralphV2/issues/" + ($number | tostring)),
+      labels: []
+    }' > "$GH_FIXTURE_DIR/issues/$number.json"
+}
+
+write_fixture_prs() {
+  local json="$1"
+
+  printf '%s\n' "$json" > "$GH_FIXTURE_DIR/prs.json"
 }
 
 test_artifact_ensure_creates_marker_body_before_state_registration() {
@@ -411,10 +489,174 @@ test_artifact_predicates_and_dispatch_placeholders() {
   slice_is_eligible_implementation "$slice_body" "14" || fail "expected exact AFK/Parent slice to be eligible"
   ! slice_is_eligible_implementation "$artifact_body" "14" || fail "expected artifact issue not to be implementation eligible"
 
-  output="$(cd "$ROOT_DIR/.." && bash "$ROOT_DIR/scripts/artifacts.sh" artifact_refresh_parent_index)"
-  assert_contains "$output" '"action":"artifact_refresh_parent_index"'
-  output="$(cd "$ROOT_DIR" && bash scripts/artifacts.sh artifact_close_all)"
-  assert_contains "$output" '"action":"artifact_close_all"'
+  output="$(cd "$ROOT_DIR/.." && bash "$ROOT_DIR/scripts/artifacts.sh" artifact_is_artifact_issue "$artifact_body" "14" "decisions")"
+  [[ -z "$output" ]] || fail "expected predicate dispatch to be quiet"
+}
+
+test_artifact_refresh_parent_index_renders_compact_index_without_artifact_content() {
+  local issue state_file content_file body_file output parent_body body_size
+
+  issue="9058"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_artifact_state "$issue"
+  install_fake_artifact_gh "$WORKSPACES_DIR/fake-bin" "$WORKSPACES_DIR/artifact-gh-$issue"
+  artifact_fixture_paths "$issue"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  content_file="$WORKSPACES_DIR/$issue/content.md"
+  body_file="$WORKSPACES_DIR/$issue/body.md"
+  write_fixture_issue "14" "Split huge planning artifacts" "Original full feature request"
+  printf 'Massive PRD content that must not be copied into the parent index\n' > "$content_file"
+
+  artifact_write_body "14" "decisions" "review-decisions-1" "$content_file" "$body_file"
+  gh issue create --repo "deepansh96/ralphV2" --title "Decisions" --body-file "$body_file" >/dev/null
+  artifact_write_body "14" "prd" "create-and-review-prd" "$content_file" "$body_file"
+  gh issue create --repo "deepansh96/ralphV2" --title "PRD" --body-file "$body_file" >/dev/null
+  artifact_write_body "14" "slicePlan" "create-and-review-slices" "$content_file" "$body_file"
+  gh issue create --repo "deepansh96/ralphV2" --title "Slice Plan" --body-file "$body_file" >/dev/null
+  jq '.artifacts.decisions = 100 | .artifacts.prd = 101 | .artifacts.slicePlan = 102' "$state_file" > "$state_file.tmp"
+  mv "$state_file.tmp" "$state_file"
+
+  output="$(artifact_refresh_parent_index "$state_file" "deepansh96/ralphV2" "14")"
+  parent_body="$(issue_body 14)"
+  body_size="$(printf '%s' "$parent_body" | wc -c | tr -d '[:space:]')"
+
+  assert_contains "$output" '"action":"refreshed"'
+  assert_contains "$parent_body" "## Ralph Run Index"
+  assert_contains "$parent_body" "## Summary"
+  assert_contains "$parent_body" "Split huge planning artifacts"
+  assert_contains "$parent_body" "## Routing"
+  assert_contains "$parent_body" "- PR: TBD"
+  assert_contains "$parent_body" "## Artifacts"
+  assert_contains "$parent_body" "- Decisions: #100"
+  assert_contains "$parent_body" "- PRD: #101"
+  assert_contains "$parent_body" "- Slice Plan: #102"
+  assert_contains "$parent_body" "## Implementation Slices"
+  assert_contains "$parent_body" "## Notes"
+  [[ "$parent_body" != *"Massive PRD content"* ]] || fail "expected parent index not to copy artifact content"
+  [[ "$body_size" -lt 2048 ]] || fail "expected ordinary parent index under 2KB, got $body_size"
+}
+
+test_artifact_refresh_parent_index_uses_state_pr_before_branch_lookup() {
+  local issue state_file output parent_body
+
+  issue="9059"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_artifact_state "$issue"
+  install_fake_artifact_gh "$WORKSPACES_DIR/fake-bin" "$WORKSPACES_DIR/artifact-gh-$issue"
+  artifact_fixture_paths "$issue"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  write_fixture_issue "14" "PR routing" "Original"
+  write_fixture_prs '[{"number":88,"url":"https://github.com/deepansh96/ralphV2/pull/88"}]'
+  state_set_pr "$state_file" "77" "https://github.com/deepansh96/ralphV2/pull/77"
+
+  output="$(artifact_refresh_parent_index "$state_file" "deepansh96/ralphV2" "14")"
+  parent_body="$(issue_body 14)"
+
+  assert_contains "$output" '"action":"refreshed"'
+  assert_contains "$parent_body" "- PR: https://github.com/deepansh96/ralphV2/pull/77"
+  [[ "$parent_body" != *"/pull/88"* ]] || fail "expected state PR URL to win over branch lookup"
+}
+
+test_artifact_refresh_parent_index_reads_slices_before_preflight_and_warnings() {
+  local issue state_file parent_body
+
+  issue="9060"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_artifact_state "$issue"
+  install_fake_artifact_gh "$WORKSPACES_DIR/fake-bin" "$WORKSPACES_DIR/artifact-gh-$issue"
+  artifact_fixture_paths "$issue"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  write_fixture_issue "14" "Before preflight" "Original"
+  write_fixture_issue "200" "Eligible slice" $'AFK: true\nParent: #14\n\nBuild it.'
+  write_fixture_issue "201" "Wrong parent" $'AFK: true\nParent: #99\n\nSkip it.'
+  printf '%s\n' '- #200 - Eligible slice' '- #201 - Wrong parent' > "$WORKSPACES_DIR/$issue/slices.md"
+
+  artifact_refresh_parent_index "$state_file" "deepansh96/ralphV2" "14" >/dev/null
+  parent_body="$(issue_body 14)"
+
+  assert_contains "$parent_body" "- #200 - Eligible slice (OPEN)"
+  [[ "$parent_body" != *"#201 - Wrong parent (OPEN)"* ]] || fail "expected wrong-parent slice to be skipped"
+  assert_contains "$parent_body" "Skipped issue #201"
+}
+
+test_artifact_refresh_parent_index_uses_dynamic_steps_after_preflight() {
+  local issue state_file parent_body
+
+  issue="9061"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_artifact_state "$issue"
+  install_fake_artifact_gh "$WORKSPACES_DIR/fake-bin" "$WORKSPACES_DIR/artifact-gh-$issue"
+  artifact_fixture_paths "$issue"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  write_fixture_issue "14" "After preflight" "Original"
+  write_fixture_issue "300" "Tracked slice" $'AFK: true\nParent: #14\n\nBuild it.'
+  write_fixture_issue "301" "Also tracked" $'AFK: true\nParent: #14\n\nBuild it.'
+  write_fixture_issue "302" "Untracked discovery" $'AFK: true\nParent: #14\n\nShould not appear after preflight.'
+  jq '.steps += [
+    {
+      "id": "implement-slice-300",
+      "phase": "dynamic",
+      "type": "implement-slice",
+      "status": "pending",
+      "agent": "codex",
+      "reviewers": [],
+      "hitl": false,
+      "sub_issue": 300,
+      "metrics": null,
+      "notes": ""
+    },
+    {
+      "id": "implement-slice-301",
+      "phase": "dynamic",
+      "type": "implement-slice",
+      "status": "completed",
+      "agent": "codex",
+      "reviewers": [],
+      "hitl": false,
+      "sub_issue": 301,
+      "metrics": null,
+      "notes": ""
+    }
+  ]' "$state_file" > "$state_file.tmp"
+  mv "$state_file.tmp" "$state_file"
+
+  artifact_refresh_parent_index "$state_file" "deepansh96/ralphV2" "14" >/dev/null
+  parent_body="$(issue_body 14)"
+
+  assert_contains "$parent_body" "- #300 - Tracked slice (OPEN, step: pending)"
+  assert_contains "$parent_body" "- #301 - Also tracked (OPEN, step: completed)"
+  [[ "$parent_body" != *"#302 - Untracked discovery"* ]] || fail "expected dynamic steps to drive after-preflight rendering"
+}
+
+test_artifact_close_all_validates_comments_closes_and_skips_slices() {
+  local issue state_file content_file body_file log
+
+  issue="9062"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_artifact_state "$issue"
+  install_fake_artifact_gh "$WORKSPACES_DIR/fake-bin" "$WORKSPACES_DIR/artifact-gh-$issue"
+  artifact_fixture_paths "$issue"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  content_file="$WORKSPACES_DIR/$issue/content.md"
+  body_file="$WORKSPACES_DIR/$issue/body.md"
+  printf 'Artifact content\n' > "$content_file"
+  artifact_write_body "14" "decisions" "review-decisions-1" "$content_file" "$body_file"
+  gh issue create --repo "deepansh96/ralphV2" --title "Decisions" --body-file "$body_file" >/dev/null
+  artifact_write_body "14" "prd" "create-and-review-prd" "$content_file" "$body_file"
+  gh issue create --repo "deepansh96/ralphV2" --title "PRD" --body-file "$body_file" >/dev/null
+  mark_issue_closed "101"
+  write_fixture_issue "200" "Implementation slice" $'AFK: true\nParent: #14\n\nDo work.'
+  jq '.artifacts.decisions = 100 | .artifacts.prd = 101 | .steps += [{"id":"implement-slice-200","type":"implement-slice","sub_issue":200,"status":"completed"}]' "$state_file" > "$state_file.tmp"
+  mv "$state_file.tmp" "$state_file"
+
+  artifact_close_all "$state_file" "deepansh96/ralphV2" "14" "Archived by test." >/dev/null
+  log="$(<"$GH_FIXTURE_DIR/log")"
+
+  assert_contains "$log" "issue comment 100 Archived by test."
+  assert_contains "$log" "issue close 100"
+  assert_contains "$log" "issue comment 101 Archived by test."
+  [[ "$log" != *"issue close 101"* ]] || fail "expected already-closed artifact not to be closed again"
+  [[ "$log" != *"issue close 200"* ]] || fail "expected implementation slice not to be closed"
 }
 
 run_test test_artifact_ensure_creates_marker_body_before_state_registration
@@ -424,5 +666,10 @@ run_test test_artifact_ensure_finds_parent_scoped_candidate_preferring_open_newe
 run_test test_artifact_update_body_rejects_wrong_markers_and_oversized_body
 run_test test_artifact_link_to_parent_warns_on_graphql_fallback_without_parent_write
 run_test test_artifact_predicates_and_dispatch_placeholders
+run_test test_artifact_refresh_parent_index_renders_compact_index_without_artifact_content
+run_test test_artifact_refresh_parent_index_uses_state_pr_before_branch_lookup
+run_test test_artifact_refresh_parent_index_reads_slices_before_preflight_and_warnings
+run_test test_artifact_refresh_parent_index_uses_dynamic_steps_after_preflight
+run_test test_artifact_close_all_validates_comments_closes_and_skips_slices
 
 echo "artifact_helper_test.sh passed"
