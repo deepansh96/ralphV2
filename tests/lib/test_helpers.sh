@@ -861,7 +861,13 @@ if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
 fi
 
 workspace="$(awk '/^Workspace:/ { print $2; exit }' <<<"$prompt")"
+state_file="$workspace/state.json"
+issue="$(jq -r '.issue' "$state_file")"
+prd_file="$workspace/prd.md"
+prd_artifact_file="$workspace/github-prd-artifact.md"
 slices_file="$workspace/slices.md"
+slice_plan_artifact_file="$workspace/github-slice-plan-artifact.md"
+parent_index_file="$workspace/github-parent-index.md"
 sub_issues_file="$workspace/github-sub-issues.md"
 
 [[ "$prompt" == *"gh issue view"* ]] || exit 81
@@ -876,30 +882,129 @@ sub_issues_file="$workspace/github-sub-issues.md"
 [[ "$prompt" == *"addSubIssue"* ]] || exit 90
 [[ "$prompt" == *"AFK"* ]] || exit 91
 [[ "$prompt" == *"duplicates"* ]] || exit 92
+[[ "$prompt" == *"source ./ralph-v2/scripts/artifacts.sh"* ]] || exit 93
+[[ "$prompt" == *"PRD Artifact Issue"* ]] || exit 94
+[[ "$prompt" == *"Slice Plan Artifact Issue"* ]] || exit 95
+[[ "$prompt" == *"state_ensure_artifacts"* ]] || exit 96
+[[ "$prompt" == *"state_get_artifact"* ]] || exit 97
+[[ "$prompt" == *"artifact_ensure"* ]] || exit 98
+[[ "$prompt" == *"artifact_link_to_parent"* ]] || exit 99
+[[ "$prompt" == *"artifact_write_body"* ]] || exit 100
+[[ "$prompt" == *"artifact_update_body"* ]] || exit 101
+[[ "$prompt" == *"artifact_refresh_parent_index"* ]] || exit 102
+[[ "$prompt" == *"artifacts.prd"* ]] || exit 103
+[[ "$prompt" == *"local \`prd.md\`"* ]] || exit 104
+[[ "$prompt" == *"missing required source content"* ]] || exit 105
+[[ "$prompt" == *"PRD: #"* ]] || exit 106
+[[ "$prompt" == *"Slice Plan: #"* ]] || exit 107
+[[ "$prompt" == *"Parent: #$issue"* ]] || exit 108
+[[ "$prompt" == *"AFK: true"* ]] || exit 109
+[[ "$prompt" == *"never include \`Ralph-Artifact:\`"* ]] || exit 110
+[[ "$prompt" == *"placeholder"* ]] || exit 111
+[[ "$prompt" == *"replace the existing \`## Slice Plan Review Round"* ]] || exit 112
+[[ "$prompt" == *"Council Attribution"* ]] || exit 113
+[[ "$prompt" == *"created/reused slice issue mapping"* ]] || exit 114
+[[ "$prompt" == *"partway"* ]] || exit 115
+[[ "$prompt" == *"creates only missing slices"* ]] || exit 116
+[[ "$prompt" == *"Do not write Slice Plan content to the parent issue body"* ]] || exit 117
+
+if [[ "$(jq -r '.artifacts.prd // empty' "$state_file")" == "" ]]; then
+  [[ -f "$prd_file" ]] || exit 118
+  {
+    printf 'Ralph-Artifact: prd\n'
+    printf 'Parent: #%s\n' "$issue"
+    printf 'Owning-Step: create-and-review-prd\n'
+    printf 'Last-Updated: 2026-05-30T00:00:00Z\n'
+    printf 'WARNING: Managed by Ralph. Manual edits may be overwritten.\n'
+    printf '%s\n' '---'
+    cat "$prd_file"
+  } > "$prd_artifact_file"
+  jq '.artifacts = (.artifacts // {"decisions": null, "prd": null, "slicePlan": null})
+    | .artifacts.prd = 9101' "$state_file" > "$state_file.tmp"
+  mv "$state_file.tmp" "$state_file"
+fi
 
 if [[ ! -f "$sub_issues_file" ]]; then
   cat > "$sub_issues_file" <<'ISSUES'
 # Created Sub-Issues
 
-- #9101 Slice: prompt contract (AFK: true, linked via addSubIssue)
-- #9102 Slice: idempotent creation (AFK: true, linked via addSubIssue)
+- #9102 Slice: prompt contract
+AFK: true
+Parent: #9018
+PRD: #9101
+Slice Plan: #9104
+Body excludes artifact markers and linked via addSubIssue.
+
+- #9103 Slice: idempotent creation
+AFK: true
+Parent: #9018
+PRD: #9101
+Slice Plan: #9104
+Body excludes artifact markers and linked via addSubIssue.
 ISSUES
 fi
 
 cat > "$slices_file" <<'SLICES'
-# Slices
+## Reviewed Slice Plan
 
-## Created or reused sub-issues
+- Slice: prompt contract
+  - Build prompt instructions for Slice Plan artifact storage.
+- Slice: idempotent creation
+  - Build rerun behavior that reuses existing AFK implementation slices.
 
-- #9101 newly created and linked
-- #9102 newly created and linked
+## Slice Plan Review Round 1
+
+### Council Attribution
+
+Reviewed by: codex, gemini
+Failed: none
+
+## Created/Reused Slice Issue Mapping
+
+- #9102 newly created/reused and linked
+- #9103 newly created/reused and linked
 SLICES
+
+{
+  printf 'Ralph-Artifact: slicePlan\n'
+  printf 'Parent: #%s\n' "$issue"
+  printf 'Owning-Step: create-and-review-slices\n'
+  printf 'Last-Updated: 2026-05-30T00:00:00Z\n'
+  printf 'WARNING: Managed by Ralph. Manual edits may be overwritten.\n'
+  printf '%s\n' '---'
+  cat "$slices_file"
+} > "$slice_plan_artifact_file"
+
+cat > "$parent_index_file" <<'INDEX'
+## Ralph Run Index
+
+This issue is the compact index for a Ralph pipeline run. Durable planning content lives in linked Artifact Issues.
+
+## Artifacts
+
+- Decisions: #9100
+- PRD: #9101
+- Slice Plan: #9104
+
+## Implementation Slices
+
+- #9102 - Slice: prompt contract (OPEN)
+- #9103 - Slice: idempotent creation (OPEN)
+
+## Notes
+
+- Artifact issues are planning storage and are not implementation slices.
+INDEX
+
+jq '.artifacts = (.artifacts // {"decisions": null, "prd": null, "slicePlan": null})
+  | .artifacts.slicePlan = 9104' "$state_file" > "$state_file.tmp"
+mv "$state_file.tmp" "$state_file"
 
 printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
 jq -n -c '{
   type: "result",
   subtype: "success",
-  result: "create-and-review-slices created AFK sub-issues and linked them under parent",
+  result: "create-and-review-slices created AFK sub-issues and updated Slice Plan Artifact Issue",
   duration_ms: 444,
   usage: {
     input_tokens: 6,

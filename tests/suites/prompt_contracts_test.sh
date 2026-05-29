@@ -205,6 +205,19 @@ test_create_slices_prompt_defines_full_slice_creation_contract() {
 
   assert_contains "$prompt" "gh issue view {{ISSUE}} --repo {{REPO}}"
   assert_contains "$prompt" "Default agent: codex"
+  assert_contains "$prompt" "source ./ralph-v2/scripts/artifacts.sh"
+  assert_contains "$prompt" "PRD Artifact Issue"
+  assert_contains "$prompt" "Slice Plan Artifact Issue"
+  assert_contains "$prompt" "state_ensure_artifacts"
+  assert_contains "$prompt" "state_get_artifact"
+  assert_contains "$prompt" "artifact_ensure"
+  assert_contains "$prompt" "artifact_link_to_parent"
+  assert_contains "$prompt" "artifact_write_body"
+  assert_contains "$prompt" "artifact_update_body"
+  assert_contains "$prompt" "artifact_refresh_parent_index"
+  assert_contains "$prompt" "artifacts.prd"
+  assert_contains "$prompt" 'local `prd.md`'
+  assert_contains "$prompt" "missing required source content"
   assert_contains "$prompt" "CONTEXT.md"
   assert_contains "$prompt" "CLAUDE.md"
   assert_contains "$prompt" "docs/adr"
@@ -217,8 +230,21 @@ test_create_slices_prompt_defines_full_slice_creation_contract() {
   assert_contains "$prompt" "gh issue create"
   assert_contains "$prompt" "addSubIssue"
   assert_contains "$prompt" "AFK"
+  assert_contains "$prompt" "PRD: #"
+  assert_contains "$prompt" "Slice Plan: #"
+  assert_contains "$prompt" "Parent: #{{ISSUE}}"
+  assert_contains "$prompt" "AFK: true"
+  assert_contains "$prompt" 'never include `Ralph-Artifact:`'
   assert_contains "$prompt" "existing sub-issues"
   assert_contains "$prompt" "duplicates"
+  assert_contains "$prompt" "placeholder"
+  assert_contains "$prompt" 'replace the existing `## Slice Plan Review Round'
+  assert_contains "$prompt" "Council Attribution"
+  assert_contains "$prompt" "created/reused slice issue mapping"
+  assert_contains "$prompt" "partway"
+  assert_contains "$prompt" "creates only missing slices"
+  assert_contains "$prompt" "Do not write Slice Plan content to the parent issue body"
+  assert_contains "$prompt" "slices.md"
 }
 
 test_preflight_prompt_defines_full_preflight_workflow_contract() {

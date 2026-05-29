@@ -53,6 +53,11 @@ For each approved slice, create a GitHub issue using `gh issue create`. Use the 
 
 Create issues in dependency order (blockers first) so you can reference real issue numbers in the "Blocked by" field.
 
+If Ralph artifact-mode context is provided, distinguish the two linked issue kinds:
+
+- Artifact Issues store planning content such as Decisions, PRD, and Slice Plan. Their bodies contain `Ralph-Artifact:` provenance markers and must not be treated as implementation work.
+- AFK implementation Slice issues are work tickets. Their bodies contain exact full-line `AFK: true` and `Parent: #<parent-issue>`, include compact artifact links such as `PRD: #<issue>` and `Slice Plan: #<issue>`, and must never include `Ralph-Artifact:`.
+
 **If a parent issue exists**, add each created issue as a sub-issue of the parent using the GraphQL API:
 
 ```bash
@@ -71,6 +76,11 @@ gh issue view <number> --json id -q .id
 ```
 
 <issue-template>
+AFK: true
+Parent: #<parent-issue>
+PRD: #<prd-artifact-issue> (when available)
+Slice Plan: #<slice-plan-artifact-issue> (when available)
+
 ## What to build
 
 A concise description of this vertical slice. Describe the end-to-end behavior, not layer-by-layer implementation.

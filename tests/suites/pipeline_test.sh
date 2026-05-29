@@ -516,8 +516,8 @@ test_create_prd_pipeline_zero_review_synthesizes_decisions_artifact() {
   [[ "$(jq -r '.artifacts.prd' "$WORKSPACES_DIR/$issue/state.json")" == "9101" ]] || fail "expected state artifacts.prd to be set"
 }
 
-test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently() {
-  local issue fake_bin slices_file sub_issues_file status_value log_file issue_count
+test_create_slices_pipeline_writes_slice_plan_artifact_and_creates_linked_afk_sub_issues_idempotently() {
+  local issue fake_bin slices_file sub_issues_file slice_plan_artifact_file parent_index_file status_value log_file issue_count round_count
 
   issue="9018"
   fake_bin="$WORKSPACES_DIR/fake-bin"
@@ -533,6 +533,11 @@ test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently() {
       baseBranch: null,
       branch: null,
       status: "initialized",
+      artifacts: {
+        decisions: 9100,
+        prd: 9101,
+        slicePlan: null
+      },
       steps: [
         {
           id: "review-decisions",
@@ -574,15 +579,33 @@ test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently() {
 
   slices_file="$WORKSPACES_DIR/$issue/slices.md"
   sub_issues_file="$WORKSPACES_DIR/$issue/github-sub-issues.md"
+  slice_plan_artifact_file="$WORKSPACES_DIR/$issue/github-slice-plan-artifact.md"
+  parent_index_file="$WORKSPACES_DIR/$issue/github-parent-index.md"
   log_file="$WORKSPACES_DIR/$issue/logs/create-and-review-slices.log"
   status_value="$(jq -r '.steps[2].status' "$WORKSPACES_DIR/$issue/state.json")"
 
   [[ "$status_value" == "completed" ]] || fail "expected create-and-review-slices to complete, got $status_value"
   [[ -f "$slices_file" ]] || fail "expected final slices file"
+  [[ -f "$slice_plan_artifact_file" ]] || fail "expected Slice Plan Artifact fixture"
+  [[ -f "$parent_index_file" ]] || fail "expected compact parent index fixture"
   [[ -f "$sub_issues_file" ]] || fail "expected sub-issue fixture file"
+  assert_contains "$(<"$slice_plan_artifact_file")" "Ralph-Artifact: slicePlan"
+  assert_contains "$(<"$slice_plan_artifact_file")" "Reviewed Slice Plan"
+  assert_contains "$(<"$slice_plan_artifact_file")" "## Slice Plan Review Round 1"
+  assert_contains "$(<"$slice_plan_artifact_file")" "Reviewed by: codex, gemini"
+  assert_contains "$(<"$slice_plan_artifact_file")" "#9102"
+  assert_contains "$(<"$slice_plan_artifact_file")" "#9103"
+  assert_contains "$(<"$sub_issues_file")" "PRD: #9101"
+  assert_contains "$(<"$sub_issues_file")" "Slice Plan: #9104"
   assert_contains "$(<"$sub_issues_file")" "AFK: true"
+  assert_contains "$(<"$sub_issues_file")" "Parent: #9018"
   assert_contains "$(<"$sub_issues_file")" "addSubIssue"
+  [[ "$(<"$sub_issues_file")" != *"Ralph-Artifact:"* ]] || fail "expected AFK implementation slice bodies not to contain artifact markers"
+  assert_contains "$(<"$parent_index_file")" "## Ralph Run Index"
+  assert_contains "$(<"$parent_index_file")" "- Slice Plan: #9104"
+  [[ "$(<"$parent_index_file")" != *"Reviewed Slice Plan"* ]] || fail "expected parent index not to contain full slice plan content"
   assert_contains "$(tr '\n' ' ' < "$log_file")" "create-and-review-slices created AFK sub-issues"
+  [[ "$(jq -r '.artifacts.slicePlan' "$WORKSPACES_DIR/$issue/state.json")" == "9104" ]] || fail "expected state artifacts.slicePlan to be set"
 
   jq '.steps[2].status = "pending"' "$WORKSPACES_DIR/$issue/state.json" > "$WORKSPACES_DIR/$issue/state.json.tmp"
   mv "$WORKSPACES_DIR/$issue/state.json.tmp" "$WORKSPACES_DIR/$issue/state.json"
@@ -591,6 +614,8 @@ test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently() {
 
   issue_count="$(grep -c '^-' "$sub_issues_file")"
   [[ "$issue_count" == "2" ]] || fail "expected rerun not to create duplicate sub-issues, got $issue_count entries"
+  round_count="$(grep -c '^## Slice Plan Review Round 1$' "$slice_plan_artifact_file")"
+  [[ "$round_count" == "1" ]] || fail "expected rerun to replace slice review round sections, got $round_count"
 }
 
 test_implement_slice_pipeline_runs_codex_with_sub_issue_context() {
@@ -820,7 +845,7 @@ run_test test_failed_agent_invocation_marks_step_failed_and_exits_one
 run_test test_review_decisions_runs_after_context_check_and_blocks_then_resumes
 run_test test_create_prd_pipeline_writes_prd_artifact_and_compact_parent_index
 run_test test_create_prd_pipeline_zero_review_synthesizes_decisions_artifact
-run_test test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently
+run_test test_create_slices_pipeline_writes_slice_plan_artifact_and_creates_linked_afk_sub_issues_idempotently
 run_test test_implement_slice_pipeline_runs_codex_with_sub_issue_context
 run_test test_final_and_pr_review_pipeline_completes_with_idempotent_pr
 run_test test_pr_review_pipeline_uses_codex_review_path_when_step_agent_is_codex
