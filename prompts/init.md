@@ -35,6 +35,7 @@ If the user does not mention review rounds, use the default of 2. If the user re
 - Write exactly one state file at `ralph-v2/workspaces/{{ISSUE}}/state.json`.
 - Running init on an already-initialized workspace must not overwrite existing state. If `ralph-v2/workspaces/{{ISSUE}}/state.json` already exists, stop with a clear warning or error.
 - Set both `"baseBranch": null` and `"branch": null`. Do not infer defaults.
+- Set `"artifacts"` with `decisions`, `prd`, and `slicePlan` all `null`, and set `"pr": null`.
 - Capture `"projectRoot"` by running `git rev-parse --show-toplevel` from the project root (not from inside `ralph-v2/`). Store the absolute path.
 - Hardcode the agent defaults shown below. Do not use runtime agent detection.
 - After writing state, verify it with `jq` and confirm that `./ralph-v2/ralph.sh status --issue {{ISSUE}}` shows all steps with pending status.
@@ -50,6 +51,12 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
   "baseBranch": null,
   "branch": null,
   "projectRoot": "<absolute path from git rev-parse --show-toplevel>",
+  "artifacts": {
+    "decisions": null,
+    "prd": null,
+    "slicePlan": null
+  },
+  "pr": null,
   "status": "initialized",
   "createdAt": "<ISO-8601 UTC timestamp>",
   "steps": [

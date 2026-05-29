@@ -442,6 +442,90 @@ test_state_validate_resets_stale_in_progress_step_with_dead_pid_file() {
   assert_contains "$output" "dead-step"
 }
 
+test_state_artifact_helpers_migrate_and_remain_idempotent() {
+  local issue state_file first_json second_json
+
+  issue="9051"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_single_step_state "$issue" "artifact-step" "pending"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+
+  source "$ROOT_DIR/scripts/state.sh"
+
+  state_ensure_artifacts "$state_file"
+  first_json="$(jq -c '{artifacts, pr}' "$state_file")"
+  state_ensure_artifacts "$state_file"
+  second_json="$(jq -c '{artifacts, pr}' "$state_file")"
+
+  [[ "$first_json" == "$second_json" ]] || fail "expected artifact migration to be idempotent"
+  [[ "$(jq -r '.artifacts.decisions' "$state_file")" == "null" ]] || fail "expected decisions artifact to default null"
+  [[ "$(jq -r '.artifacts.prd' "$state_file")" == "null" ]] || fail "expected prd artifact to default null"
+  [[ "$(jq -r '.artifacts.slicePlan' "$state_file")" == "null" ]] || fail "expected slicePlan artifact to default null"
+  [[ "$(jq -r '.pr' "$state_file")" == "null" ]] || fail "expected pr to default null"
+}
+
+test_state_artifact_helpers_set_get_clear_and_set_pr() {
+  local issue state_file artifact_value pr_number pr_url
+
+  issue="9052"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_single_step_state "$issue" "artifact-step" "pending"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+
+  source "$ROOT_DIR/scripts/state.sh"
+
+  state_set_artifact "$state_file" "decisions" "123"
+  artifact_value="$(state_get_artifact "$state_file" "decisions")"
+  [[ "$artifact_value" == "123" ]] || fail "expected decisions artifact 123, got $artifact_value"
+
+  state_clear_artifact "$state_file" "decisions"
+  artifact_value="$(state_get_artifact "$state_file" "decisions")"
+  [[ -z "$artifact_value" ]] || fail "expected cleared artifact to print empty, got $artifact_value"
+
+  state_set_pr "$state_file" "77" "https://github.com/deepansh96/ralphV2/pull/77"
+  pr_number="$(jq -r '.pr.number' "$state_file")"
+  pr_url="$(jq -r '.pr.url' "$state_file")"
+  [[ "$pr_number" == "77" ]] || fail "expected PR number 77, got $pr_number"
+  [[ "$pr_url" == "https://github.com/deepansh96/ralphV2/pull/77" ]] || fail "expected PR URL to be stored"
+}
+
+test_state_artifact_helpers_reject_invalid_inputs_without_mutation() {
+  local issue state_file before output status
+
+  issue="9053"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_single_step_state "$issue" "artifact-step" "pending"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+
+  source "$ROOT_DIR/scripts/state.sh"
+  state_ensure_artifacts "$state_file"
+  before="$(jq -c '.' "$state_file")"
+
+  set +e
+  output="$(state_set_artifact "$state_file" "badType" "123" 2>&1)"
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || fail "expected invalid artifact type to fail"
+  assert_contains "$output" "invalid artifact type"
+  [[ "$(jq -c '.' "$state_file")" == "$before" ]] || fail "expected invalid artifact type not to mutate state"
+
+  set +e
+  output="$(state_set_artifact "$state_file" "prd" "not-a-number" 2>&1)"
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || fail "expected invalid artifact issue to fail"
+  assert_contains "$output" "positive integer"
+  [[ "$(jq -c '.' "$state_file")" == "$before" ]] || fail "expected invalid artifact issue not to mutate state"
+
+  set +e
+  output="$(state_set_pr "$state_file" "0" "https://example.test/pr/0" 2>&1)"
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || fail "expected invalid PR number to fail"
+  assert_contains "$output" "PR number"
+  [[ "$(jq -c '.' "$state_file")" == "$before" ]] || fail "expected invalid PR not to mutate state"
+}
+
 run_test test_run_rejects_failed_steps
 run_test test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates
 run_test test_state_add_steps_rejects_malformed_step_payloads
@@ -452,5 +536,8 @@ run_test test_run_pipeline_records_current_shell_pid_while_step_runs
 run_test test_state_validate_resets_stale_in_progress_step_without_pid_file
 run_test test_state_validate_keeps_stale_in_progress_step_with_live_pid
 run_test test_state_validate_resets_stale_in_progress_step_with_dead_pid_file
+run_test test_state_artifact_helpers_migrate_and_remain_idempotent
+run_test test_state_artifact_helpers_set_get_clear_and_set_pr
+run_test test_state_artifact_helpers_reject_invalid_inputs_without_mutation
 
 echo "state_test.sh passed"

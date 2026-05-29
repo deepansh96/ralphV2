@@ -174,3 +174,105 @@ state_add_steps() {
 
   mv "$tmp_file" "$state_file"
 }
+
+state_validate_artifact_type() {
+  case "${1:-}" in
+    decisions|prd|slicePlan) return 0 ;;
+    *)
+      echo "Error: invalid artifact type: ${1:-}" >&2
+      return 1
+      ;;
+  esac
+}
+
+state_atomic_jq() {
+  local state_file="$1"
+  shift
+  local tmp_file
+
+  tmp_file="$(mktemp "${state_file}.tmp.XXXXXX")"
+  if ! jq "$@" "$state_file" > "$tmp_file"; then
+    rm -f "$tmp_file"
+    return 1
+  fi
+
+  mv "$tmp_file" "$state_file"
+}
+
+state_ensure_artifacts() {
+  local state_file="$1"
+
+  if [[ ! -f "$state_file" ]]; then
+    echo "Error: state file not found: $state_file" >&2
+    return 1
+  fi
+
+  state_atomic_jq "$state_file" '
+    .artifacts = (
+      (if (.artifacts | type) == "object" then .artifacts else {} end)
+      | {
+          decisions: (.decisions // null),
+          prd: (.prd // null),
+          slicePlan: (.slicePlan // null)
+        }
+    )
+    | .pr = (.pr // null)
+  '
+}
+
+state_get_artifact() {
+  local state_file="$1"
+  local artifact_type="$2"
+
+  state_validate_artifact_type "$artifact_type" || return 1
+  state_ensure_artifacts "$state_file" || return 1
+  jq -r --arg type "$artifact_type" '.artifacts[$type] // empty' "$state_file"
+}
+
+state_set_artifact() {
+  local state_file="$1"
+  local artifact_type="$2"
+  local artifact_issue="$3"
+
+  state_validate_artifact_type "$artifact_type" || return 1
+  if [[ ! "$artifact_issue" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: artifact issue must be a positive integer" >&2
+    return 1
+  fi
+
+  state_ensure_artifacts "$state_file" || return 1
+  state_atomic_jq "$state_file" \
+    --arg type "$artifact_type" \
+    --argjson artifact_issue "$artifact_issue" \
+    '.artifacts[$type] = $artifact_issue'
+}
+
+state_clear_artifact() {
+  local state_file="$1"
+  local artifact_type="$2"
+
+  state_validate_artifact_type "$artifact_type" || return 1
+  state_ensure_artifacts "$state_file" || return 1
+  state_atomic_jq "$state_file" --arg type "$artifact_type" '.artifacts[$type] = null'
+}
+
+state_set_pr() {
+  local state_file="$1"
+  local pr_number="$2"
+  local pr_url="$3"
+
+  if [[ ! "$pr_number" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: PR number must be a positive integer" >&2
+    return 1
+  fi
+  if [[ -z "$pr_url" ]]; then
+    echo "Error: PR URL is required" >&2
+    return 1
+  fi
+
+  state_ensure_artifacts "$state_file" || return 1
+  state_atomic_jq "$state_file" \
+    --argjson pr_number "$pr_number" \
+    --arg pr_url "$pr_url" \
+    '.pr = {number: $pr_number, url: $pr_url}'
+}
