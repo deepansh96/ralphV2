@@ -39,7 +39,7 @@ source ./ralph-v2/scripts/artifacts.sh
 state_ensure_artifacts {{WORKSPACE}}/state.json
 decisions_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json decisions)"
 prd_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json prd)"
-slice_plan_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json slicePlan)"
+slice_plan_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json slice-plan)"
 ```
 
 - Read the Decisions Artifact Issue:
@@ -52,7 +52,7 @@ slice_plan_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json slicePl
   `{{WORKSPACE}}/final-review.md`
 - Identify implementation sub-issues from State `implement-slice` Steps only, then read each sub-issue:
   `gh issue view <sub-issue-number> --repo {{REPO}}`
-- Never treat `artifacts.decisions`, `artifacts.prd`, or `artifacts.slicePlan` as implementation sub-issues.
+- Never treat `artifacts.decisions`, `artifacts.prd`, or `artifacts["slice-plan"]` as implementation sub-issues.
 
 ## Branch
 

@@ -95,7 +95,7 @@ Top-level `state.json` fields:
   "artifacts": {
     "decisions": 10,
     "prd": 11,
-    "slicePlan": 12
+    "slice-plan": 12
   },
   "pr": null,
   "status": "initialized",

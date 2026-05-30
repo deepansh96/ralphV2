@@ -201,7 +201,7 @@ artifact_default_title() {
   case "$artifact_type" in
     decisions) printf 'Issue #%s Decisions Artifact\n' "$parent_issue" ;;
     prd) printf 'Issue #%s PRD Artifact\n' "$parent_issue" ;;
-    slicePlan) printf 'Issue #%s Slice Plan Artifact\n' "$parent_issue" ;;
+    slice-plan) printf 'Issue #%s Slice Plan Artifact\n' "$parent_issue" ;;
   esac
 }
 
@@ -317,7 +317,7 @@ artifact_link_to_parent() {
 artifact_is_artifact_issue() {
   local body_file="$1"
   local parent_issue="${2:-[0-9][0-9]*}"
-  local artifact_type="${3:-decisions|prd|slicePlan}"
+  local artifact_type="${3:-decisions|prd|slice-plan}"
 
   [[ -f "$body_file" ]] || return 1
   if [[ "$parent_issue" =~ ^[0-9]+$ && "$artifact_type" != *"|"* ]]; then
@@ -326,7 +326,7 @@ artifact_is_artifact_issue() {
   fi
 
   awk '/^---$/ { exit } { print }' "$body_file" |
-    grep -Eq '^Ralph-Artifact: (decisions|prd|slicePlan)$' &&
+    grep -Eq '^Ralph-Artifact: (decisions|prd|slice-plan)$' &&
     awk '/^---$/ { exit } { print }' "$body_file" |
     grep -Eq '^Parent: #[0-9]+$'
 }
@@ -635,7 +635,7 @@ artifact_refresh_parent_index() {
     printf '## Artifacts\n\n'
     artifact_render_artifact_line "$state_file" "decisions" "Decisions"
     artifact_render_artifact_line "$state_file" "prd" "PRD"
-    artifact_render_artifact_line "$state_file" "slicePlan" "Slice Plan"
+    artifact_render_artifact_line "$state_file" "slice-plan" "Slice Plan"
     printf '\n## Implementation Slices\n\n'
     if [[ -s "$slice_lines_file" ]]; then
       cat "$slice_lines_file"
@@ -671,7 +671,7 @@ artifact_close_all() {
   closed_count=0
   skipped_count=0
 
-  for artifact_type in decisions prd slicePlan; do
+  for artifact_type in decisions prd slice-plan; do
     issue="$(state_get_artifact "$state_file" "$artifact_type")"
     if [[ -z "$issue" ]]; then
       continue

@@ -104,7 +104,7 @@ Run a focused suite by name:
 - All commands run from the **project root**, not from inside `ralph-v2/`.
 - **Never pipe ralph commands through `head`, `tail`, or similar** — ralph spawns long-running subprocesses that produce output slowly. Piping causes buffering deadlocks. Run ralph commands directly or in background mode.
 - `state.json` is the single source of truth. Agents read it, update it, and ralph.sh dispatches based on it.
-- `state.json` owns execution state and artifact issue numbers (`artifacts.decisions`, `artifacts.prd`, `artifacts.slicePlan`). The Artifact Issues own the planning content.
+- `state.json` owns execution state and artifact issue numbers (`artifacts.decisions`, `artifacts.prd`, `artifacts["slice-plan"]`). The Artifact Issues own the planning content.
 - Review steps use a `reviewers` array (e.g. `["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"]`). Edit it per-step to add/remove council agents.
 - `create-and-review-prd` and `create-and-review-slices` have a `reviewRounds` field (0, 1, or 2, default 2) controlling how many council rounds run inside the step. Edit it per-step in state.json.
 - `create-and-review-prd` writes final PRD content to the PRD Artifact Issue and keeps `prd.md` only as a workspace recovery/audit file.

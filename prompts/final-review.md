@@ -37,7 +37,7 @@ source ./ralph-v2/scripts/state.sh
 state_ensure_artifacts {{WORKSPACE}}/state.json
 decisions_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json decisions)"
 prd_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json prd)"
-slice_plan_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json slicePlan)"
+slice_plan_artifact_issue="$(state_get_artifact {{WORKSPACE}}/state.json slice-plan)"
 ```
 
 - Read the Decisions Artifact Issue before acceptance verification:

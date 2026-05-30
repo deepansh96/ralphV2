@@ -460,7 +460,7 @@ test_state_artifact_helpers_migrate_and_remain_idempotent() {
   [[ "$first_json" == "$second_json" ]] || fail "expected artifact migration to be idempotent"
   [[ "$(jq -r '.artifacts.decisions' "$state_file")" == "null" ]] || fail "expected decisions artifact to default null"
   [[ "$(jq -r '.artifacts.prd' "$state_file")" == "null" ]] || fail "expected prd artifact to default null"
-  [[ "$(jq -r '.artifacts.slicePlan' "$state_file")" == "null" ]] || fail "expected slicePlan artifact to default null"
+  [[ "$(jq -r '.artifacts["slice-plan"]' "$state_file")" == "null" ]] || fail "expected slice-plan artifact to default null"
   [[ "$(jq -r '.pr' "$state_file")" == "null" ]] || fail "expected pr to default null"
 }
 

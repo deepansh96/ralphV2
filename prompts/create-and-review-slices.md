@@ -58,7 +58,7 @@ slice_plan_issue="$(
     "{{WORKSPACE}}/state.json" \
     "{{REPO}}" \
     "{{ISSUE}}" \
-    "slicePlan" \
+    "slice-plan" \
     "{{STEP_ID}}" \
     "{{WORKSPACE}}/slices.md" \
     "[ralph artifact] #{{ISSUE}} Slice Plan"
@@ -218,8 +218,8 @@ This step is idempotent and must recover from partway failures:
 After the final slice plan and all slice issues are reconciled, write the final Slice Plan body to `{{WORKSPACE}}/slices.md`, then create a provenance-wrapped body and update the Slice Plan Artifact Issue:
 
 ```bash
-artifact_write_body "{{ISSUE}}" "slicePlan" "{{STEP_ID}}" "{{WORKSPACE}}/slices.md" "{{WORKSPACE}}/slice-plan-artifact-body.md"
-artifact_update_body "{{WORKSPACE}}/state.json" "{{REPO}}" "{{ISSUE}}" "slicePlan" "$slice_plan_issue" "{{WORKSPACE}}/slice-plan-artifact-body.md"
+artifact_write_body "{{ISSUE}}" "slice-plan" "{{STEP_ID}}" "{{WORKSPACE}}/slices.md" "{{WORKSPACE}}/slice-plan-artifact-body.md"
+artifact_update_body "{{WORKSPACE}}/state.json" "{{REPO}}" "{{ISSUE}}" "slice-plan" "$slice_plan_issue" "{{WORKSPACE}}/slice-plan-artifact-body.md"
 artifact_refresh_parent_index "{{WORKSPACE}}/state.json" "{{REPO}}" "{{ISSUE}}"
 ```
 

@@ -723,7 +723,7 @@ DECISIONS
     printf '%s\n' '---'
     cat "$decisions_file"
   } > "$decision_artifact_file"
-  jq '.artifacts = (.artifacts // {"decisions": null, "prd": null, "slicePlan": null})
+  jq '.artifacts = (.artifacts // {"decisions": null, "prd": null, "slice-plan": null})
     | .artifacts.decisions = 9100' "$state_file" > "$state_file.tmp"
   mv "$state_file.tmp" "$state_file"
 elif [[ ! -f "$decisions_file" ]]; then
@@ -803,7 +803,7 @@ This issue is the compact index for a Ralph pipeline run. Durable planning conte
 - Artifact issues are planning storage and are not implementation slices.
 INDEX
 
-jq '.artifacts = (.artifacts // {"decisions": null, "prd": null, "slicePlan": null})
+jq '.artifacts = (.artifacts // {"decisions": null, "prd": null, "slice-plan": null})
   | .artifacts.prd = 9101' "$state_file" > "$state_file.tmp"
 mv "$state_file.tmp" "$state_file"
 
@@ -919,7 +919,7 @@ if [[ "$(jq -r '.artifacts.prd // empty' "$state_file")" == "" ]]; then
     printf '%s\n' '---'
     cat "$prd_file"
   } > "$prd_artifact_file"
-  jq '.artifacts = (.artifacts // {"decisions": null, "prd": null, "slicePlan": null})
+  jq '.artifacts = (.artifacts // {"decisions": null, "prd": null, "slice-plan": null})
     | .artifacts.prd = 9101' "$state_file" > "$state_file.tmp"
   mv "$state_file.tmp" "$state_file"
 fi
@@ -966,7 +966,7 @@ Failed: none
 SLICES
 
 {
-  printf 'Ralph-Artifact: slicePlan\n'
+  printf 'Ralph-Artifact: slice-plan\n'
   printf 'Parent: #%s\n' "$issue"
   printf 'Owning-Step: create-and-review-slices\n'
   printf 'Last-Updated: 2026-05-30T00:00:00Z\n'
@@ -996,8 +996,8 @@ This issue is the compact index for a Ralph pipeline run. Durable planning conte
 - Artifact issues are planning storage and are not implementation slices.
 INDEX
 
-jq '.artifacts = (.artifacts // {"decisions": null, "prd": null, "slicePlan": null})
-  | .artifacts.slicePlan = 9104' "$state_file" > "$state_file.tmp"
+jq '.artifacts = (.artifacts // {"decisions": null, "prd": null, "slice-plan": null})
+  | .artifacts["slice-plan"] = 9104' "$state_file" > "$state_file.tmp"
 mv "$state_file.tmp" "$state_file"
 
 printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'

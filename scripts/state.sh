@@ -177,7 +177,7 @@ state_add_steps() {
 
 state_validate_artifact_type() {
   case "${1:-}" in
-    decisions|prd|slicePlan) return 0 ;;
+    decisions|prd|slice-plan) return 0 ;;
     *)
       echo "Error: invalid artifact type: ${1:-}" >&2
       return 1
@@ -213,7 +213,7 @@ state_ensure_artifacts() {
       | {
           decisions: (.decisions // null),
           prd: (.prd // null),
-          slicePlan: (.slicePlan // null)
+          "slice-plan": (."slice-plan" // null)
         }
     )
     | .pr = (.pr // null)

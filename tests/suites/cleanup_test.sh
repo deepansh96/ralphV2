@@ -94,7 +94,7 @@ write_cleanup_state() {
       artifacts: {
         decisions: 100,
         prd: 101,
-        slicePlan: null
+        "slice-plan": null
       },
       pr: null,
       steps: [

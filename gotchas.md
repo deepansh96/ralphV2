@@ -77,7 +77,7 @@ Therefore: full planning content must be written to the appropriate
 Artifact Issue body:
   Decisions -> artifacts.decisions
   PRD -> artifacts.prd
-  Slice Plan -> artifacts.slicePlan
+  Slice Plan -> artifacts["slice-plan"]
 
 State owns execution state and artifact issue numbers. Artifact Issues
 own planning content. Do not append Decisions, PRD, Slice Plan, or council

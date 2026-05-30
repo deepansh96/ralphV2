@@ -20,7 +20,7 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   assert_contains "$prompt" '"artifacts"'
   assert_contains "$prompt" '"decisions": null'
   assert_contains "$prompt" '"prd": null'
-  assert_contains "$prompt" '"slicePlan": null'
+  assert_contains "$prompt" '"slice-plan": null'
   assert_contains "$prompt" '"pr": null'
   assert_contains "$prompt" '"status": "initialized"'
   assert_contains "$prompt" '"phase": "fixed"'

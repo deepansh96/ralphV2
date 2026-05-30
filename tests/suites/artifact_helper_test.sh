@@ -20,7 +20,7 @@ write_artifact_state() {
       artifacts: {
         decisions: null,
         prd: null,
-        slicePlan: null
+        "slice-plan": null
       },
       pr: null,
       steps: []
@@ -377,16 +377,16 @@ test_artifact_ensure_finds_parent_scoped_candidate_preferring_open_newest() {
   body_file="$WORKSPACES_DIR/$issue/body.md"
   printf 'Slice plan\n' > "$content_file"
 
-  artifact_write_body "14" "slicePlan" "create-and-review-slices" "$content_file" "$body_file"
+  artifact_write_body "14" "slice-plan" "create-and-review-slices" "$content_file" "$body_file"
   gh issue create --repo "deepansh96/ralphV2" --title "Closed slice plan" --body-file "$body_file" >/dev/null
   mark_issue_closed "100"
   gh issue create --repo "deepansh96/ralphV2" --title "Open older slice plan" --body-file "$body_file" >/dev/null
   gh issue create --repo "deepansh96/ralphV2" --title "Open newer slice plan" --body-file "$body_file" >/dev/null
 
-  selected="$(artifact_ensure "$state_file" "deepansh96/ralphV2" "14" "slicePlan" "create-and-review-slices" "$content_file")"
+  selected="$(artifact_ensure "$state_file" "deepansh96/ralphV2" "14" "slice-plan" "create-and-review-slices" "$content_file")"
 
   [[ "$selected" == "102" ]] || fail "expected newest open candidate 102, got $selected"
-  [[ "$(jq -r '.artifacts.slicePlan' "$state_file")" == "102" ]] || fail "expected selected candidate in state"
+  [[ "$(jq -r '.artifacts["slice-plan"]' "$state_file")" == "102" ]] || fail "expected selected candidate in state"
 }
 
 test_artifact_update_body_rejects_wrong_markers_and_oversized_body() {
@@ -612,9 +612,9 @@ test_artifact_refresh_parent_index_renders_compact_index_without_artifact_conten
   gh issue create --repo "deepansh96/ralphV2" --title "Decisions" --body-file "$body_file" >/dev/null
   artifact_write_body "14" "prd" "create-and-review-prd" "$content_file" "$body_file"
   gh issue create --repo "deepansh96/ralphV2" --title "PRD" --body-file "$body_file" >/dev/null
-  artifact_write_body "14" "slicePlan" "create-and-review-slices" "$content_file" "$body_file"
+  artifact_write_body "14" "slice-plan" "create-and-review-slices" "$content_file" "$body_file"
   gh issue create --repo "deepansh96/ralphV2" --title "Slice Plan" --body-file "$body_file" >/dev/null
-  jq '.artifacts.decisions = 100 | .artifacts.prd = 101 | .artifacts.slicePlan = 102' "$state_file" > "$state_file.tmp"
+  jq '.artifacts.decisions = 100 | .artifacts.prd = 101 | .artifacts["slice-plan"] = 102' "$state_file" > "$state_file.tmp"
   mv "$state_file.tmp" "$state_file"
 
   output="$(artifact_refresh_parent_index "$state_file" "deepansh96/ralphV2" "14")"

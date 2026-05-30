@@ -389,7 +389,7 @@ test_create_prd_pipeline_writes_prd_artifact_and_compact_parent_index() {
       artifacts: {
         decisions: 9100,
         prd: null,
-        slicePlan: null
+        "slice-plan": null
       },
       steps: [
         {
@@ -476,7 +476,7 @@ test_create_prd_pipeline_zero_review_synthesizes_decisions_artifact() {
       artifacts: {
         decisions: null,
         prd: null,
-        slicePlan: null
+        "slice-plan": null
       },
       steps: [
         {
@@ -536,7 +536,7 @@ test_create_slices_pipeline_writes_slice_plan_artifact_and_creates_linked_afk_su
       artifacts: {
         decisions: 9100,
         prd: 9101,
-        slicePlan: null
+        "slice-plan": null
       },
       steps: [
         {
@@ -589,7 +589,7 @@ test_create_slices_pipeline_writes_slice_plan_artifact_and_creates_linked_afk_su
   [[ -f "$slice_plan_artifact_file" ]] || fail "expected Slice Plan Artifact fixture"
   [[ -f "$parent_index_file" ]] || fail "expected compact parent index fixture"
   [[ -f "$sub_issues_file" ]] || fail "expected sub-issue fixture file"
-  assert_contains "$(<"$slice_plan_artifact_file")" "Ralph-Artifact: slicePlan"
+  assert_contains "$(<"$slice_plan_artifact_file")" "Ralph-Artifact: slice-plan"
   assert_contains "$(<"$slice_plan_artifact_file")" "Reviewed Slice Plan"
   assert_contains "$(<"$slice_plan_artifact_file")" "## Slice Plan Review Round 1"
   assert_contains "$(<"$slice_plan_artifact_file")" "Reviewed by: codex, gemini"
@@ -605,7 +605,7 @@ test_create_slices_pipeline_writes_slice_plan_artifact_and_creates_linked_afk_su
   assert_contains "$(<"$parent_index_file")" "- Slice Plan: #9104"
   [[ "$(<"$parent_index_file")" != *"Reviewed Slice Plan"* ]] || fail "expected parent index not to contain full slice plan content"
   assert_contains "$(tr '\n' ' ' < "$log_file")" "create-and-review-slices created AFK sub-issues"
-  [[ "$(jq -r '.artifacts.slicePlan' "$WORKSPACES_DIR/$issue/state.json")" == "9104" ]] || fail "expected state artifacts.slicePlan to be set"
+  [[ "$(jq -r '.artifacts["slice-plan"]' "$WORKSPACES_DIR/$issue/state.json")" == "9104" ]] || fail "expected state artifacts[\"slice-plan\"] to be set"
 
   jq '.steps[2].status = "pending"' "$WORKSPACES_DIR/$issue/state.json" > "$WORKSPACES_DIR/$issue/state.json.tmp"
   mv "$WORKSPACES_DIR/$issue/state.json.tmp" "$WORKSPACES_DIR/$issue/state.json"
@@ -639,7 +639,7 @@ test_implement_slice_pipeline_runs_codex_with_sub_issue_context() {
       artifacts: {
         decisions: 9100,
         prd: 9101,
-        slicePlan: 9102
+        "slice-plan": 9102
       },
       status: "initialized",
       steps: [
@@ -694,7 +694,7 @@ test_final_and_pr_review_pipeline_completes_with_idempotent_pr() {
       artifacts: {
         decisions: 9100,
         prd: 9101,
-        slicePlan: 9102
+        "slice-plan": 9102
       },
       pr: null,
       status: "initialized",
