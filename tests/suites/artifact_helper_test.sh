@@ -436,6 +436,34 @@ test_artifact_update_body_rejects_wrong_markers_and_oversized_body() {
   assert_contains "$output" "exceeds 60000 bytes"
 }
 
+test_artifact_update_body_validates_existing_issue_before_edit() {
+  local issue state_file content_file body_file original_body output status edited_body
+
+  issue="9070"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_artifact_state "$issue"
+  install_fake_artifact_gh "$WORKSPACES_DIR/fake-bin" "$WORKSPACES_DIR/artifact-gh-$issue"
+  artifact_fixture_paths "$issue"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  content_file="$WORKSPACES_DIR/$issue/content.md"
+  body_file="$WORKSPACES_DIR/$issue/body.md"
+  original_body="Normal user issue body that must not be overwritten"
+  printf 'Updated PRD body\n' > "$content_file"
+  artifact_write_body "14" "prd" "create-and-review-prd" "$content_file" "$body_file"
+  write_fixture_issue "100" "Normal issue" "$original_body"
+
+  set +e
+  output="$(artifact_update_body "$state_file" "deepansh96/ralphV2" "14" "prd" "100" "$body_file" 2>&1)"
+  status=$?
+  set -e
+  edited_body="$(issue_body "100")"
+
+  [[ "$status" -ne 0 ]] || fail "expected update to reject an unmarked existing issue"
+  assert_contains "$output" "not a valid prd artifact"
+  [[ "$edited_body" == "$original_body" ]] || fail "expected unmarked issue body to remain unchanged"
+  [[ "$(jq -r '.artifacts.prd' "$state_file")" == "null" ]] || fail "expected rejected update not to register artifact"
+}
+
 test_artifact_link_to_parent_warns_on_graphql_fallback_without_parent_write() {
   local issue content_file body_file output status
 
@@ -594,6 +622,29 @@ test_preflight_slice_collection_handles_zero_artifacts() {
   [[ -z "$notes" ]] || fail "expected no skip notes when only eligible slices exist, got: $notes"
 }
 
+test_preflight_slice_collection_deduplicates_candidate_issue_numbers() {
+  local issue state_file issues_json notes_file selected notes
+
+  issue="9067"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_artifact_state "$issue"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  issues_json="$WORKSPACES_DIR/$issue/issues.json"
+  notes_file="$WORKSPACES_DIR/$issue/notes.txt"
+
+  jq -n '[
+    {"number":401,"title":"Linked slice","state":"OPEN","body":"AFK: true\nParent: #14\n\nBuild."},
+    {"number":401,"title":"Marker-discovered slice","state":"OPEN","body":"AFK: true\nParent: #14\n\nBuild."},
+    {"number":402,"title":"Second slice","state":"OPEN","body":"AFK: true\nParent: #14\n\nBuild another."}
+  ]' > "$issues_json"
+
+  selected="$(artifact_collect_preflight_slices "$state_file" "14" "$issues_json" "$notes_file")"
+  notes="$(<"$notes_file")"
+
+  [[ "$selected" == $'401\n402' ]] || fail "expected duplicate candidates to be emitted once, got: $selected"
+  [[ -z "$notes" ]] || fail "expected duplicate eligible candidate not to create skip notes, got: $notes"
+}
+
 test_artifact_refresh_parent_index_renders_compact_index_without_artifact_content() {
   local issue state_file content_file body_file output parent_body body_size
 
@@ -729,6 +780,42 @@ test_artifact_refresh_parent_index_uses_dynamic_steps_after_preflight() {
   [[ "$parent_body" != *"#302 - Untracked discovery"* ]] || fail "expected dynamic steps to drive after-preflight rendering"
 }
 
+test_artifact_refresh_parent_index_includes_preflight_skip_notes_after_dynamic_steps() {
+  local issue state_file parent_body skip_notes_file
+
+  issue="9071"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  write_artifact_state "$issue"
+  install_fake_artifact_gh "$WORKSPACES_DIR/fake-bin" "$WORKSPACES_DIR/artifact-gh-$issue"
+  artifact_fixture_paths "$issue"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  skip_notes_file="$WORKSPACES_DIR/$issue/preflight-skip-notes.txt"
+  write_fixture_issue "14" "After preflight with skip notes" "Original"
+  write_fixture_issue "300" "Tracked slice" $'AFK: true\nParent: #14\n\nBuild it.'
+  jq '.steps += [
+    {
+      "id": "implement-slice-300",
+      "phase": "dynamic",
+      "type": "implement-slice",
+      "status": "pending",
+      "agent": "codex",
+      "reviewers": [],
+      "hitl": false,
+      "sub_issue": 300,
+      "metrics": null,
+      "notes": ""
+    }
+  ]' "$state_file" > "$state_file.tmp"
+  mv "$state_file.tmp" "$state_file"
+  printf 'Skipped issue #303: malformed: issue has both AFK: true and Ralph-Artifact: markers\n' > "$skip_notes_file"
+
+  artifact_refresh_parent_index "$state_file" "deepansh96/ralphV2" "14" "$skip_notes_file" >/dev/null
+  parent_body="$(issue_body 14)"
+
+  assert_contains "$parent_body" "- #300 - Tracked slice (OPEN, step: pending)"
+  assert_contains "$parent_body" "Skipped issue #303: malformed"
+}
+
 test_artifact_close_all_validates_comments_closes_and_skips_slices() {
   local issue state_file content_file body_file log
 
@@ -765,15 +852,18 @@ run_test test_artifact_ensure_reuses_state_reopens_closed_and_tolerates_label_fa
 run_test test_artifact_ensure_recovers_deleted_state_and_ignores_cross_parent_candidate
 run_test test_artifact_ensure_finds_parent_scoped_candidate_preferring_open_newest
 run_test test_artifact_update_body_rejects_wrong_markers_and_oversized_body
+run_test test_artifact_update_body_validates_existing_issue_before_edit
 run_test test_artifact_link_to_parent_warns_on_graphql_fallback_without_parent_write
 run_test test_artifact_predicates_and_dispatch_placeholders
 run_test test_slice_eligibility_requires_exact_markers_state_and_tracking
 run_test test_preflight_slice_collection_excludes_artifacts_and_reports_malformed
 run_test test_preflight_slice_collection_handles_zero_artifacts
+run_test test_preflight_slice_collection_deduplicates_candidate_issue_numbers
 run_test test_artifact_refresh_parent_index_renders_compact_index_without_artifact_content
 run_test test_artifact_refresh_parent_index_uses_state_pr_before_branch_lookup
 run_test test_artifact_refresh_parent_index_reads_slices_before_preflight_and_warnings
 run_test test_artifact_refresh_parent_index_uses_dynamic_steps_after_preflight
+run_test test_artifact_refresh_parent_index_includes_preflight_skip_notes_after_dynamic_steps
 run_test test_artifact_close_all_validates_comments_closes_and_skips_slices
 
 echo "artifact_helper_test.sh passed"

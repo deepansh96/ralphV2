@@ -40,7 +40,7 @@ Read the project context, compact Parent Issue Index, PRD Artifact Issue, Slice 
   `gh issue view {{SUB_ISSUE}} --repo {{REPO}}`
 - Read the current workspace state:
   `{{WORKSPACE}}/state.json`
-- From the project root, source the State helper and read artifact issue numbers:
+- From the project root, run this State helper snippet in bash and read artifact issue numbers. Do not source these helpers from zsh or another non-bash shell:
 
 ```bash
 source ./ralph-v2/scripts/state.sh

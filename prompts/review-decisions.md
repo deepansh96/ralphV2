@@ -16,7 +16,7 @@ Default agent: codex
 - Read project `CONTEXT.md`.
 - Read project `CLAUDE.md`.
 - Read any ADRs under `docs/adr/` if that directory exists.
-- Source the artifact helper from the project root:
+- Run artifact helper commands in bash from the project root. Do not source these helpers from zsh or another non-bash shell:
   ```bash
   source ./ralph-v2/scripts/artifacts.sh
   ```

@@ -20,9 +20,8 @@ Validate that implementation can start from an explicit base branch; create and 
   `gh issue view {{ISSUE}} --repo {{REPO}}`
 - Read `{{WORKSPACE}}/state.json`.
 - Read the sub-issues linked under the parent issue on GitHub. Prefer GitHub's sub-issue relationship data when available; also inspect issue bodies that reference `Parent: #{{ISSUE}}` so re-runs can recover from partial linkage.
-- Source the state manager before extending state:
+- Run State and Artifact helper commands in bash before extending state or filtering issues. Do not source these helpers from zsh or another non-bash shell:
   `source ./ralph-v2/scripts/state.sh`
-- Source the Artifact Helper before filtering issues:
   `source ./ralph-v2/scripts/artifacts.sh`
 
 ## Hard Stops
@@ -137,7 +136,7 @@ Use `state_add_steps "{{WORKSPACE}}/state.json" '<json-array>'` to extend the st
 After branch setup and dynamic Step setup are complete, call:
 
 ```bash
-artifact_refresh_parent_index "{{WORKSPACE}}/state.json" "{{REPO}}" "{{ISSUE}}"
+artifact_refresh_parent_index "{{WORKSPACE}}/state.json" "{{REPO}}" "{{ISSUE}}" <skip-notes-file>
 ```
 
 This refresh records branch and implementation-slice routing in the compact Parent Issue Index. If the skip-notes file contains malformed or excluded issue notes, preserve those notes in the refresh path so the operator can see why candidate issues were skipped.

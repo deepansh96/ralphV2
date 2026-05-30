@@ -271,6 +271,7 @@ artifact_update_body() {
   local artifact_type="$4"
   local artifact_issue="$5"
   local body_file="$6"
+  local issue_json current_body_file
 
   artifact_validate_type "$artifact_type" || return 1
   if [[ ! "$artifact_issue" =~ ^[1-9][0-9]*$ ]]; then
@@ -287,6 +288,19 @@ artifact_update_body() {
   fi
 
   artifact_validate_body "$body_file" "$parent_issue" "$artifact_type" || return 1
+  if ! issue_json="$(artifact_issue_json "$repo" "$artifact_issue" 2>/dev/null)"; then
+    echo "Error: could not read artifact issue #$artifact_issue before update" >&2
+    return 1
+  fi
+  current_body_file="$(mktemp)"
+  jq -r '.body // ""' <<<"$issue_json" > "$current_body_file"
+  if ! artifact_validate_body "$current_body_file" "$parent_issue" "$artifact_type" >/dev/null 2>&1; then
+    rm -f "$current_body_file"
+    echo "Error: issue #$artifact_issue is not a valid $artifact_type artifact for parent #$parent_issue" >&2
+    return 1
+  fi
+  rm -f "$current_body_file"
+
   gh issue edit "$artifact_issue" --repo "$repo" --body-file "$body_file" >/dev/null
   state_set_artifact "$state_file" "$artifact_type" "$artifact_issue"
 }
@@ -411,17 +425,23 @@ artifact_collect_preflight_slices() {
   local issues_json_file="$3"
   local notes_file="$4"
   local issue_json number state body_file already_tracked note
+  local seen_file
 
   [[ -f "$issues_json_file" ]] || {
     echo "Error: issues JSON file not found: $issues_json_file" >&2
     return 1
   }
   : > "$notes_file"
+  seen_file="$(mktemp)"
 
   while IFS= read -r issue_json; do
     [[ -n "$issue_json" ]] || continue
     number="$(jq -r '.number // empty' <<<"$issue_json")"
     [[ "$number" =~ ^[1-9][0-9]*$ ]] || continue
+    if grep -Fxq "$number" "$seen_file"; then
+      continue
+    fi
+    printf '%s\n' "$number" >> "$seen_file"
     state="$(jq -r '.state // "OPEN"' <<<"$issue_json")"
     body_file="$(mktemp)"
     jq -r '.body // ""' <<<"$issue_json" > "$body_file"
@@ -439,6 +459,8 @@ artifact_collect_preflight_slices() {
     fi
     rm -f "$body_file"
   done < <(jq -c '.[]?' "$issues_json_file")
+
+  rm -f "$seen_file"
 }
 
 artifact_issue_summary() {
@@ -603,6 +625,7 @@ artifact_refresh_parent_index() {
   local state_file="$1"
   local repo="$2"
   local parent_issue="$3"
+  local extra_notes_file="${4:-}"
   local parent_json title status base_branch branch pr_value body_file slice_lines_file notes_file bytes
 
   state_ensure_artifacts "$state_file" || return 1
@@ -621,6 +644,12 @@ artifact_refresh_parent_index() {
   notes_file="$(mktemp)"
 
   artifact_collect_slice_lines "$state_file" "$repo" "$parent_issue" "$slice_lines_file" "$notes_file"
+  if [[ -n "$extra_notes_file" && -f "$extra_notes_file" ]]; then
+    while IFS= read -r note; do
+      [[ -n "$note" ]] || continue
+      printf '%s\n' "$note" >> "$notes_file"
+    done < "$extra_notes_file"
+  fi
 
   {
     printf '## Ralph Run Index\n\n'

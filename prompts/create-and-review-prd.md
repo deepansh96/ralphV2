@@ -21,7 +21,7 @@ Do not write PRD content to the parent issue body. The parent issue body is only
 - Read the Parent Issue Index:
   `gh issue view {{ISSUE}} --repo {{REPO}}`
 - Read `{{WORKSPACE}}/state.json`.
-- Source Ralph helpers before artifact work:
+- Run Ralph helper commands in bash before artifact work. Do not source these helpers from zsh or another non-bash shell:
   `source ./ralph-v2/scripts/state.sh`
   `source ./ralph-v2/scripts/artifacts.sh`
 - Read project `CONTEXT.md`.

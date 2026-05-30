@@ -31,7 +31,7 @@ Create an idempotent PR from the feature branch to the base branch, write a comp
   `gh issue view {{ISSUE}} --repo {{REPO}}`
 - Read the current workspace state:
   `{{WORKSPACE}}/state.json`
-- From the project root, source the State and Artifact helpers:
+- From the project root, run this State and Artifact helper snippet in bash. Do not source these helpers from zsh or another non-bash shell:
 
 ```bash
 source ./ralph-v2/scripts/state.sh
