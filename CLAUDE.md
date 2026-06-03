@@ -102,6 +102,9 @@ Run a focused suite by name:
 - All commands run from the **project root**, not from inside `ralph-v2/`.
 - **Never pipe ralph commands through `head`, `tail`, or similar** — ralph spawns long-running subprocesses that produce output slowly. Piping causes buffering deadlocks.
 - In Codex automation, run long Ralph jobs in the foreground with `./ralph-v2/ralph.sh --issue N` and poll status or logs from another command.
+- When running Ralph for a user from Codex or Discord, do not silently wait on long-running foreground steps. Start a recurring timer and send progress updates at the user-requested interval, or every 10 minutes by default.
+- For each progress update, keep the foreground Ralph command running and poll `./ralph-v2/ralph.sh status --issue N` from another command. Include the active step, elapsed time, whether the process is alive, and the latest meaningful log activity. If the step completes, fails, or blocks for HITL before the timer fires, report immediately.
+- Do not spam raw logs in progress updates. Summarize what Ralph is doing in plain language.
 - Avoid `./ralph-v2/ralph.sh --issue N --background` in Codex `exec_command` sessions. The nohup wrapper can be torn down when the tool session returns, leaving a stale `in_progress` step with empty logs. Use background mode only from a persistent shell, tmux session, or equivalent terminal that will stay alive.
 - If a stale background run occurs, reset the affected step in `state.json` from `in_progress` to `pending`, clear its stale `pid` and `startedAt` fields, remove its pid file, then rerun Ralph in foreground.
 - `state.json` is the single source of truth. Agents read it, update it, and ralph.sh dispatches based on it.
