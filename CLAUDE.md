@@ -100,7 +100,10 @@ Run a focused suite by name:
 ## Key rules
 
 - All commands run from the **project root**, not from inside `ralph-v2/`.
-- **Never pipe ralph commands through `head`, `tail`, or similar** — ralph spawns long-running subprocesses that produce output slowly. Piping causes buffering deadlocks. Run ralph commands directly or in background mode.
+- **Never pipe ralph commands through `head`, `tail`, or similar** — ralph spawns long-running subprocesses that produce output slowly. Piping causes buffering deadlocks.
+- In Codex automation, run long Ralph jobs in the foreground with `./ralph-v2/ralph.sh --issue N` and poll status or logs from another command.
+- Avoid `./ralph-v2/ralph.sh --issue N --background` in Codex `exec_command` sessions. The nohup wrapper can be torn down when the tool session returns, leaving a stale `in_progress` step with empty logs. Use background mode only from a persistent shell, tmux session, or equivalent terminal that will stay alive.
+- If a stale background run occurs, reset the affected step in `state.json` from `in_progress` to `pending`, clear its stale `pid` and `startedAt` fields, remove its pid file, then rerun Ralph in foreground.
 - `state.json` is the single source of truth. Agents read it, update it, and ralph.sh dispatches based on it.
 - Review steps use a `reviewers` array (e.g. `["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"]`). Edit it per-step to add/remove council agents.
 - `create-and-review-prd` and `create-and-review-slices` have a `reviewRounds` field (0, 1, or 2, default 2) controlling how many council rounds run inside the step. Edit it per-step in state.json.
