@@ -46,7 +46,7 @@ Run specific suites by name:
 ## Workflow
 
 1. Grill the feature into a GitHub issue using the project context and decision workflow. If grilling produces speculative `CONTEXT.md` or ADR changes, keep them on a pushed `grill/*` planning branch instead of committing them directly to `main`.
-2. Run the `init.md` prompt for that issue so an agent creates `ralph-v2/workspaces/<issue>/state.json`. By default, init creates 2 review-decisions rounds. Request fewer with "with 1 review round" or "with 0 review rounds".
+2. Run the `init.md` prompt for that issue so an agent creates `ralph-v2/workspaces/<issue>/state.json`. By default, init skips review-decisions steps. Opt in with "with 1 review-decision round" or "with 2 review-decision rounds".
 3. Set `.baseBranch` explicitly in `state.json` before preflight reaches branch creation. Use the branch that already contains the grilling context: usually `main` for accepted docs, or the pushed `grill/*` planning branch for speculative feature docs.
 4. Run `./ralph-v2/ralph.sh --issue N`.
 5. If a step blocks, answer the questions in `workspaces/<issue>/hitl-<step-id>.md`, then run the same command again.
@@ -71,7 +71,7 @@ In that flow, set `.baseBranch` to `grill/issue-123-short-slug`. Ralph opens the
 During `run`, Ralph executes:
 
 ```text
-review-decisions (0-2 rounds, default 2) -> create-and-review-prd -> create-and-review-slices -> preflight -> implement-slice... -> final-review -> pr-review -> review-fixes
+review-decisions (0-2 rounds, default 0) -> create-and-review-prd -> create-and-review-slices -> preflight -> implement-slice... -> final-review -> pr-review -> review-fixes
 ```
 
 ## State
@@ -130,8 +130,8 @@ Failed steps stop the pipeline until the user explicitly resets the step to `pen
 ## Step Types
 
 - `review-decisions`: reviews issue decisions against `CONTEXT.md`, `CLAUDE.md`, and ADRs; may block for human input.
-- `create-and-review-prd`: preserves the original issue body, drafts the PRD, runs council reviews (controlled by `reviewRounds`, default 2), and updates the parent issue.
-- `create-and-review-slices`: drafts vertical AFK slices, runs council reviews (controlled by `reviewRounds`, default 2), creates GitHub sub-issues, and links them under the parent.
+- `create-and-review-prd`: preserves the original issue body, drafts the PRD, runs council reviews (controlled by `reviewRounds`, default 1), and updates the parent issue.
+- `create-and-review-slices`: drafts vertical AFK slices, runs council reviews (controlled by `reviewRounds`, default 1), creates GitHub sub-issues, and links them under the parent.
 - `preflight`: checks the working tree and `baseBranch` contract, creates/pushes the feature branch, and appends dynamic steps.
 - `implement-slice`: reads the assigned sub-issue, follows TDD, commits, pushes, and closes the sub-issue.
 - `final-review`: reviews branch changes, runs quality checks, verifies acceptance criteria, and writes `final-review.md`.

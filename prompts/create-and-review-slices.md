@@ -40,11 +40,11 @@ Draft vertical slices following the `to-issues` skill rules:
 
 Before starting, read the `reviewRounds` field for this step (`{{STEP_ID}}`) from `{{WORKSPACE}}/state.json`. This controls how many council review rounds to run:
 
-- **2 (default):** Run both Round 1 and Round 2 below.
-- **1:** Run only Round 1. Skip Round 2 entirely.
+- **1 (default):** Run only Round 1. Skip Round 2 entirely.
+- **2:** Run both Round 1 and Round 2 below.
 - **0:** Skip council review entirely. Proceed directly to sub-issue creation.
 
-If `reviewRounds` is missing, default to 2.
+If `reviewRounds` is missing, default to 1.
 
 Round 1 (skip if `reviewRounds` is 0):
 

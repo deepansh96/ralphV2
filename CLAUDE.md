@@ -32,11 +32,11 @@ Create the workspace and state file for the issue.
 Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo
 ```
 
-By default, init creates 2 review-decisions rounds and sets `reviewRounds: 2` on the PRD and slices steps. To change this:
+By default, init creates no review-decisions steps and sets `reviewRounds: 1` on the PRD and slices steps. To opt into review-decisions steps or change PRD/slice review rounds:
 
 ```
-Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 1 review round
-Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 0 review rounds
+Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 1 review-decision round
+Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 2 review-decision rounds
 Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 1 review round on PRD and 0 on slices
 ```
 
@@ -52,7 +52,7 @@ Execute the pipeline. This is the autonomous loop.
 ./ralph-v2/ralph.sh --issue N
 ```
 
-Ralph runs steps sequentially: review-decisions (0–2 rounds, default 2) → create-and-review-prd → create-and-review-slices → preflight → implement-slice(s) → final-review → pr-review → review-fixes.
+Ralph runs steps sequentially: review-decisions (0–2 rounds, default 0) → create-and-review-prd → create-and-review-slices → preflight → implement-slice(s) → final-review → pr-review → review-fixes.
 
 - Preflight creates the feature branch and appends dynamic steps (one per sub-issue slice, plus final-review, pr-review, review-fixes).
 - If a step blocks for human input, ralph stops and prints the flag file path. Answer the questions there, then re-run the same command.
@@ -100,10 +100,16 @@ Run a focused suite by name:
 ## Key rules
 
 - All commands run from the **project root**, not from inside `ralph-v2/`.
-- **Never pipe ralph commands through `head`, `tail`, or similar** — ralph spawns long-running subprocesses that produce output slowly. Piping causes buffering deadlocks. Run ralph commands directly or in background mode.
+- **Never pipe ralph commands through `head`, `tail`, or similar** — ralph spawns long-running subprocesses that produce output slowly. Piping causes buffering deadlocks.
+- In Codex automation, run long Ralph jobs in the foreground with `./ralph-v2/ralph.sh --issue N` and poll status or logs from another command.
+- When running Ralph for a user from Codex or Discord, do not silently wait on long-running foreground steps. Start a recurring timer and send progress updates at the user-requested interval, or every 10 minutes by default.
+- For each progress update, keep the foreground Ralph command running and poll `./ralph-v2/ralph.sh status --issue N` from another command. Include the active step, elapsed time, whether the process is alive, and the latest meaningful log activity. If the step completes, fails, or blocks for HITL before the timer fires, report immediately.
+- Do not spam raw logs in progress updates. Summarize what Ralph is doing in plain language.
+- Avoid `./ralph-v2/ralph.sh --issue N --background` in Codex `exec_command` sessions. The nohup wrapper can be torn down when the tool session returns, leaving a stale `in_progress` step with empty logs. Use background mode only from a persistent shell, tmux session, or equivalent terminal that will stay alive.
+- If a stale background run occurs, reset the affected step in `state.json` from `in_progress` to `pending`, clear its stale `pid` and `startedAt` fields, remove its pid file, then rerun Ralph in foreground.
 - `state.json` is the single source of truth. Agents read it, update it, and ralph.sh dispatches based on it.
 - Review steps use a `reviewers` array (e.g. `["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"]`). Edit it per-step to add/remove council agents.
-- `create-and-review-prd` and `create-and-review-slices` have a `reviewRounds` field (0, 1, or 2, default 2) controlling how many council rounds run inside the step. Edit it per-step in state.json.
+- `create-and-review-prd` and `create-and-review-slices` have a `reviewRounds` field (0, 1, or 2, default 1) controlling how many council rounds run inside the step. Edit it per-step in state.json.
 - Non-review steps have `"reviewers": []`.
 - Generated steps run on `codex` by default. Individual steps can still be edited in `state.json` to use another supported agent when needed.
 - `CONTEXT.md`, `CLAUDE.md`, and `docs/adr/` are read from the project root — not from inside `ralph-v2/`.
