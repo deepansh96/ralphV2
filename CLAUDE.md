@@ -32,11 +32,11 @@ Create the workspace and state file for the issue.
 Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo
 ```
 
-By default, init creates 2 review-decisions rounds and sets `reviewRounds: 2` on the PRD and slices steps. To change this:
+By default, init creates no review-decisions steps and sets `reviewRounds: 2` on the PRD and slices steps. To opt into review-decisions steps or change PRD/slice review rounds:
 
 ```
-Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 1 review round
-Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 0 review rounds
+Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 1 review-decision round
+Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 2 review-decision rounds
 Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 1 review round on PRD and 0 on slices
 ```
 
@@ -52,7 +52,7 @@ Execute the pipeline. This is the autonomous loop.
 ./ralph-v2/ralph.sh --issue N
 ```
 
-Ralph runs steps sequentially: review-decisions (0–2 rounds, default 2) → create-and-review-prd → create-and-review-slices → preflight → implement-slice(s) → final-review → pr-review → review-fixes.
+Ralph runs steps sequentially: review-decisions (0–2 rounds, default 0) → create-and-review-prd → create-and-review-slices → preflight → implement-slice(s) → final-review → pr-review → review-fixes.
 
 - Preflight creates the feature branch and appends dynamic steps (one per sub-issue slice, plus final-review, pr-review, review-fixes).
 - If a step blocks for human input, ralph stops and prints the flag file path. Answer the questions there, then re-run the same command.

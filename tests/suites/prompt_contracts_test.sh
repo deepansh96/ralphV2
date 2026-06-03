@@ -32,9 +32,12 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   assert_contains "$prompt" "working tree"
   assert_contains "$prompt" "grill/*"
   assert_contains "$prompt" "planning branch"
+  assert_contains "$prompt" 'default **0**'
+  assert_contains "$prompt" "Include review-decisions steps only when the user explicitly opts in"
+  assert_contains "$prompt" "If the user opts in without a count, use 1 review-decisions round"
 }
 
-test_initialized_workspace_status_shows_four_pending_fixed_steps() {
+test_initialized_workspace_status_shows_default_three_pending_fixed_steps() {
   local issue output pending_count
 
   issue="9012"
@@ -50,17 +53,6 @@ test_initialized_workspace_status_shows_four_pending_fixed_steps() {
       status: "initialized",
       createdAt: "2026-05-02T00:00:00Z",
       steps: [
-        {
-          id: "review-decisions",
-          phase: "fixed",
-          type: "review-decisions",
-          status: "pending",
-          agent: "codex",
-          reviewers: ["codex", "gemini", "kimi", "deepseek"],
-          hitl: true,
-          metrics: null,
-          notes: ""
-        },
         {
           id: "create-and-review-prd",
           phase: "fixed",
@@ -100,8 +92,7 @@ test_initialized_workspace_status_shows_four_pending_fixed_steps() {
   output="$("$RALPH" status --issue "$issue")"
   pending_count="$(grep -c "pending" <<<"$output")"
 
-  [[ "$pending_count" == "4" ]] || fail "expected 4 pending steps in status output, got $pending_count: $output"
-  assert_contains "$output" "review-decisions"
+  [[ "$pending_count" == "3" ]] || fail "expected 3 pending steps in status output, got $pending_count: $output"
   assert_contains "$output" "create-and-review-prd"
   assert_contains "$output" "create-and-review-slices"
   assert_contains "$output" "preflight"
@@ -370,7 +361,7 @@ test_grill_with_docs_skill_defines_planning_branch_contract() {
 }
 
 run_test test_init_prompt_defines_complete_workspace_initialization_contract
-run_test test_initialized_workspace_status_shows_four_pending_fixed_steps
+run_test test_initialized_workspace_status_shows_default_three_pending_fixed_steps
 run_test test_review_decisions_prompt_defines_council_filtering_and_hitl_contract
 run_test test_create_prd_prompt_defines_full_prd_workflow_contract
 run_test test_create_slices_prompt_defines_full_slice_creation_contract
