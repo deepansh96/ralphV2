@@ -35,6 +35,8 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   assert_contains "$prompt" 'default **0**'
   assert_contains "$prompt" "Include review-decisions steps only when the user explicitly opts in"
   assert_contains "$prompt" "If the user opts in without a count, use 1 review-decisions round"
+  assert_contains "$prompt" '"reviewRounds": 1'
+  assert_contains "$prompt" "Default is 1"
 }
 
 test_initialized_workspace_status_shows_default_three_pending_fixed_steps() {
@@ -143,6 +145,8 @@ test_create_prd_prompt_defines_full_prd_workflow_contract() {
   assert_contains "$prompt" "scripts/council-review.sh"
   assert_contains "$prompt" "Round 1"
   assert_contains "$prompt" "Round 2"
+  assert_contains "$prompt" "**1 (default):** Run only Round 1"
+  assert_contains "$prompt" 'If `reviewRounds` is missing, default to 1'
   assert_contains "$prompt" "incorporate"
   assert_contains "$prompt" "Compact"
   assert_contains "$prompt" "gh issue edit {{ISSUE}} --repo {{REPO}}"
@@ -168,6 +172,8 @@ test_create_slices_prompt_defines_full_slice_creation_contract() {
   assert_contains "$prompt" "scripts/council-review.sh"
   assert_contains "$prompt" "Round 1"
   assert_contains "$prompt" "Round 2"
+  assert_contains "$prompt" "**1 (default):** Run only Round 1"
+  assert_contains "$prompt" 'If `reviewRounds` is missing, default to 1'
   assert_contains "$prompt" "gh issue create"
   assert_contains "$prompt" "addSubIssue"
   assert_contains "$prompt" "AFK"

@@ -60,7 +60,7 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "status": "pending",
       "agent": "codex",
       "reviewers": ["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"],
-      "reviewRounds": 2,  // 0, 1, or 2 — controls how many council review rounds run inside this step
+      "reviewRounds": 1,  // 0, 1, or 2 — controls how many council review rounds run inside this step
       "hitl": false,
       "metrics": null,
       "notes": ""
@@ -72,7 +72,7 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "status": "pending",
       "agent": "codex",
       "reviewers": ["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"],
-      "reviewRounds": 2,  // 0, 1, or 2 — controls how many council review rounds run inside this step
+      "reviewRounds": 1,  // 0, 1, or 2 — controls how many council review rounds run inside this step
       "hitl": false,
       "metrics": null,
       "notes": ""
@@ -130,11 +130,11 @@ When the user explicitly opts into review-decisions, prepend these entries to `s
 - **2 rounds:** Include both `review-decisions-1` (`hitl: false`) and `review-decisions-2` (`hitl: true`). Total fixed steps: 5.
 
 **`reviewRounds` rules (for `create-and-review-prd` and `create-and-review-slices`):**
-- **2 (default):** Two council review rounds. Draft → council → incorporate → council → incorporate.
-- **1:** One council review round. Draft → council → incorporate → done.
+- **1 (default):** One council review round. Draft → council → incorporate → done.
+- **2:** Two council review rounds. Draft → council → incorporate → council → incorporate.
 - **0:** No council review. Draft → done.
 
-Default is 2. If the user requests fewer review rounds for these steps (e.g. "with 1 review round on PRD", "skip council on slices"), set the value accordingly. Each step's `reviewRounds` is independent.
+Default is 1. If the user requests a different number of review rounds for these steps (e.g. "with 2 review rounds on PRD", "skip council on slices"), set the value accordingly. Each step's `reviewRounds` is independent.
 
 The actual `state.json` output must be valid JSON (no comments). The comments above are for your reference only.
 
