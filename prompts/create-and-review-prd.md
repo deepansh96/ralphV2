@@ -78,11 +78,11 @@ Requirements:
 
 Before starting, read the `reviewRounds` field for this step (`{{STEP_ID}}`) from `{{WORKSPACE}}/state.json`. This controls how many council review rounds to run:
 
-- **1 (default):** Run only Round 1. Skip Round 2 entirely.
+- **0 (default):** Skip council review entirely. Proceed directly to compacting and GitHub update.
+- **1:** Run only Round 1. Skip Round 2 entirely.
 - **2:** Run both Round 1 and Round 2 below.
-- **0:** Skip council review entirely. Proceed directly to compacting and GitHub update.
 
-If `reviewRounds` is missing, default to 1.
+If `reviewRounds` is missing, default to 0.
 
 Round 1 (skip if `reviewRounds` is 0):
 

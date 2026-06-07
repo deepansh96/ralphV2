@@ -17,6 +17,7 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   assert_contains "$prompt" "must not overwrite"
   assert_contains "$prompt" '"baseBranch": null'
   assert_contains "$prompt" '"branch": null'
+  assert_contains "$prompt" '"reviewFixes": false'
   assert_contains "$prompt" '"status": "initialized"'
   assert_contains "$prompt" '"phase": "fixed"'
   assert_contains "$prompt" '"metrics": null'
@@ -35,8 +36,9 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   assert_contains "$prompt" 'default **0**'
   assert_contains "$prompt" "Include review-decisions steps only when the user explicitly opts in"
   assert_contains "$prompt" "If the user opts in without a count, use 1 review-decisions round"
-  assert_contains "$prompt" '"reviewRounds": 1'
-  assert_contains "$prompt" "Default is 1"
+  assert_contains "$prompt" '"reviewRounds": 0'
+  assert_contains "$prompt" "Default is 0"
+  assert_contains "$prompt" 'Set `reviewFixes` to true only when the user explicitly opts in'
 }
 
 test_initialized_workspace_status_shows_default_three_pending_fixed_steps() {
@@ -62,6 +64,7 @@ test_initialized_workspace_status_shows_default_three_pending_fixed_steps() {
           status: "pending",
           agent: "codex",
           reviewers: ["codex", "gemini", "kimi", "deepseek"],
+          reviewRounds: 0,
           hitl: false,
           metrics: null,
           notes: ""
@@ -73,6 +76,7 @@ test_initialized_workspace_status_shows_default_three_pending_fixed_steps() {
           status: "pending",
           agent: "codex",
           reviewers: ["codex", "gemini", "kimi", "deepseek"],
+          reviewRounds: 0,
           hitl: false,
           metrics: null,
           notes: ""
@@ -145,8 +149,8 @@ test_create_prd_prompt_defines_full_prd_workflow_contract() {
   assert_contains "$prompt" "scripts/council-review.sh"
   assert_contains "$prompt" "Round 1"
   assert_contains "$prompt" "Round 2"
-  assert_contains "$prompt" "**1 (default):** Run only Round 1"
-  assert_contains "$prompt" 'If `reviewRounds` is missing, default to 1'
+  assert_contains "$prompt" "**0 (default):** Skip council review entirely"
+  assert_contains "$prompt" 'If `reviewRounds` is missing, default to 0'
   assert_contains "$prompt" "incorporate"
   assert_contains "$prompt" "Compact"
   assert_contains "$prompt" "gh issue edit {{ISSUE}} --repo {{REPO}}"
@@ -172,8 +176,8 @@ test_create_slices_prompt_defines_full_slice_creation_contract() {
   assert_contains "$prompt" "scripts/council-review.sh"
   assert_contains "$prompt" "Round 1"
   assert_contains "$prompt" "Round 2"
-  assert_contains "$prompt" "**1 (default):** Run only Round 1"
-  assert_contains "$prompt" 'If `reviewRounds` is missing, default to 1'
+  assert_contains "$prompt" "**0 (default):** Skip council review entirely"
+  assert_contains "$prompt" 'If `reviewRounds` is missing, default to 0'
   assert_contains "$prompt" "gh issue create"
   assert_contains "$prompt" "addSubIssue"
   assert_contains "$prompt" "AFK"
@@ -206,7 +210,8 @@ test_preflight_prompt_defines_full_preflight_workflow_contract() {
   assert_contains "$prompt" "implement-slice"
   assert_contains "$prompt" "final-review"
   assert_contains "$prompt" "pr-review"
-  assert_contains "$prompt" "review-fixes"
+  assert_contains "$prompt" "optional review-fixes"
+  assert_contains "$prompt" 'Append `review-fixes` only when `reviewFixes` is exactly true'
   assert_contains "$prompt" "codex"
   assert_contains "$prompt" "sub_issue"
   assert_contains "$prompt" "idempotent"

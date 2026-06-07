@@ -32,12 +32,13 @@ Create the workspace and state file for the issue.
 Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo
 ```
 
-By default, init creates no review-decisions steps and sets `reviewRounds: 1` on the PRD and slices steps. To opt into review-decisions steps or change PRD/slice review rounds:
+By default, init creates no review-decisions steps, sets `reviewRounds: 0` on the PRD and slices steps, and sets `reviewFixes: false`. To opt into review-decisions steps, PRD/slice review rounds, or review fixes:
 
 ```
 Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 1 review-decision round
 Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 2 review-decision rounds
 Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with 1 review round on PRD and 0 on slices
+Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo with review fixes
 ```
 
 Output: `ralph-v2/workspaces/<issue>/state.json` with fixed steps (3–5 depending on review rounds) all pending.
@@ -52,9 +53,9 @@ Execute the pipeline. This is the autonomous loop.
 ./ralph-v2/ralph.sh --issue N
 ```
 
-Ralph runs steps sequentially: review-decisions (0–2 rounds, default 0) → create-and-review-prd → create-and-review-slices → preflight → implement-slice(s) → final-review → pr-review → review-fixes.
+Ralph runs steps sequentially: review-decisions (0–2 rounds, default 0) → create-and-review-prd → create-and-review-slices → preflight → implement-slice(s) → final-review → pr-review → review-fixes (optional, default off).
 
-- Preflight creates the feature branch and appends dynamic steps (one per sub-issue slice, plus final-review, pr-review, review-fixes).
+- Preflight creates the feature branch and appends dynamic steps (one per sub-issue slice, plus final-review, pr-review, and optional review-fixes).
 - If a step blocks for human input, ralph stops and prints the flag file path. Answer the questions there, then re-run the same command.
 - If a step fails, ralph stops. Fix the issue, reset the step status to `pending` in state.json, and re-run.
 - Use `--steps N` to limit how many steps run before stopping.
@@ -109,7 +110,8 @@ Run a focused suite by name:
 - If a stale background run occurs, reset the affected step in `state.json` from `in_progress` to `pending`, clear its stale `pid` and `startedAt` fields, remove its pid file, then rerun Ralph in foreground.
 - `state.json` is the single source of truth. Agents read it, update it, and ralph.sh dispatches based on it.
 - Review steps use a `reviewers` array (e.g. `["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"]`). Edit it per-step to add/remove council agents.
-- `create-and-review-prd` and `create-and-review-slices` have a `reviewRounds` field (0, 1, or 2, default 1) controlling how many council rounds run inside the step. Edit it per-step in state.json.
+- `create-and-review-prd` and `create-and-review-slices` have a `reviewRounds` field (0, 1, or 2, default 0) controlling how many council rounds run inside the step. Edit it per-step in state.json.
+- `reviewFixes` is false by default. Set top-level `reviewFixes: true` before preflight only when the user explicitly wants the optional `review-fixes` step appended after `pr-review`.
 - Non-review steps have `"reviewers": []`.
 - Generated steps run on `codex` by default. Individual steps can still be edited in `state.json` to use another supported agent when needed.
 - `CONTEXT.md`, `CLAUDE.md`, and `docs/adr/` are read from the project root — not from inside `ralph-v2/`.

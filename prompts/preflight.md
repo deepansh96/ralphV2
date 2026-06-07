@@ -12,7 +12,7 @@ Default agent: codex
 
 ## Goal
 
-Validate that implementation can start from an explicit base branch; create and push the feature branch; read the AFK implementation sub-issues from GitHub; and extend `{{WORKSPACE}}/state.json` with dynamic implementation, final review, PR review, and review-fixes steps.
+Validate that implementation can start from an explicit base branch; create and push the feature branch; read the AFK implementation sub-issues from GitHub; and extend `{{WORKSPACE}}/state.json` with dynamic implementation, final review, PR review, and optional review-fixes steps.
 
 ## Required Inputs
 
@@ -54,7 +54,9 @@ Create the feature branch from `baseBranch`.
 
 ## Dynamic Steps
 
-Read the implementation sub-issues created by the `create-and-review-slices` step and append one implementation step per sub-issue, followed by final review, PR review, and review-fixes.
+Read the implementation sub-issues created by the `create-and-review-slices` step and append one implementation step per sub-issue, followed by final review and PR review.
+
+Read the top-level `reviewFixes` field from `{{WORKSPACE}}/state.json`. If it is missing, null, or false, default to false and do not append `review-fixes`. Append `review-fixes` only when `reviewFixes` is exactly true.
 
 Each implementation step must use this shape:
 
@@ -73,7 +75,7 @@ Each implementation step must use this shape:
 }
 ```
 
-Append the final steps after all implementation steps:
+Append these final steps after all implementation steps:
 
 ```json
 {
@@ -102,6 +104,8 @@ Append the final steps after all implementation steps:
   "notes": ""
 }
 ```
+
+If `reviewFixes` is true, append this optional step after `pr-review`:
 
 ```json
 {
@@ -142,6 +146,6 @@ Confirm the status output shows the fixed pipeline plus all dynamic steps:
 - N `implement-slice` steps with `agent` set to `codex` and the correct `sub_issue` value for each GitHub sub-issue
 - `final-review` with `agent` set to `codex`
 - `pr-review` with `agent` set to `codex`
-- `review-fixes` with `agent` set to `codex`
+- `review-fixes` with `agent` set to `codex` only when `reviewFixes` is true
 
-Complete normally only after the branch is pushed, the `branch` field is updated, sub-issues are read from GitHub, and state contains the full dynamic pipeline.
+Complete normally only after the branch is pushed, the `branch` field is updated, sub-issues are read from GitHub, and state contains the full dynamic pipeline for the current opt-in settings.
