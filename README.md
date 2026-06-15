@@ -137,6 +137,7 @@ Failed steps stop the pipeline until the user explicitly resets the step to `pen
 - `implement-slice`: reads the assigned sub-issue, follows TDD, commits, pushes, and closes the sub-issue.
 - `final-review`: reviews branch changes, runs quality checks, verifies acceptance criteria, and writes `final-review.md`.
 - `pr-review`: creates or updates the PR and runs automated review using the step agent's review path (`code-review:code-review` for Claude, `codex review` for Codex).
+- `qa-slice`: optional dynamic step for local QA sub-issues. It reads relevant code, backs up the local database, runs code-informed API/browser checks, saves artifacts under `/tmp`, restores the database, comments results, and closes the QA sub-issue only on pass.
 - `review-fixes`: optional step controlled by top-level `reviewFixes`; evaluates automated review findings, implements fixes for valid issues, dismisses false positives, and posts a summary comment on the PR.
 
 ## Bundled Skills
