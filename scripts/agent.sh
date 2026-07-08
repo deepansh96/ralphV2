@@ -72,10 +72,12 @@ run_claude() {
   local prompt="$1"
   local log_file="$2"
   local project_root="${3:-}"  # accepted for forward-compatibility, currently unused
+  local model="${4:-}"
   local start_ms end_ms duration_ms status
 
   run_claude_command() {
-    claude -p "$prompt" --dangerously-skip-permissions --output-format stream-json --verbose
+    claude -p "$prompt" --dangerously-skip-permissions --output-format stream-json --verbose \
+      ${model:+--model "$model"}
   }
 
   start_ms="$(current_time_ms)"
@@ -126,12 +128,13 @@ agent_run_step() {
   local prompt="$2"
   local log_file="$3"
   local project_root="${4:-}"
-  local agent
+  local agent model
 
   agent="$(jq -r '.agent // empty' <<<"$step_json")"
+  model="$(jq -r '.model // empty' <<<"$step_json")"
   case "$agent" in
     claude)
-      run_claude "$prompt" "$log_file" "$project_root"
+      run_claude "$prompt" "$log_file" "$project_root" "$model"
       ;;
     codex)
       run_codex "$prompt" "$log_file" "$project_root"
