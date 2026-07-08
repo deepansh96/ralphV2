@@ -1,0 +1,1 @@
+{"timestamp":"2026-07-08T19:31:26.474Z","kind":"decision","message":"Installed and populated mex scaffold for Ralph v2; root AGENTS.md now routes agents into .mex/ROUTER.md while CLAUDE.md remains a symlink.","files":[".mex/ROUTER.md",".mex/context/architecture.md","AGENTS.md"],"cwd":".","source":"agent","status":"implemented"}

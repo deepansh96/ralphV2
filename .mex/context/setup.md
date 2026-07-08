@@ -1,0 +1,75 @@
+---
+name: setup
+description: Dev environment setup and commands for Ralph v2. Load when setting up the repo, running tests, or debugging local environment issues.
+triggers:
+  - "setup"
+  - "install"
+  - "environment"
+  - "getting started"
+  - "run tests"
+  - "local development"
+edges:
+  - target: context/stack.md
+    condition: when specific tool availability or version requirements matter
+  - target: context/architecture.md
+    condition: when understanding how commands move through the pipeline
+  - target: patterns/run-and-monitor-pipeline.md
+    condition: when starting or observing a real Ralph run
+  - target: patterns/recover-failed-or-stale-step.md
+    condition: when status, logs, or stale PID checks fail
+last_updated: 2026-07-09
+---
+
+# Setup
+
+## Prerequisites
+
+- `bash` with `set -euo pipefail` compatible behavior.
+- `git`, `jq`, and `gh` on PATH.
+- `gh` authenticated for the target GitHub repo.
+- `claude` CLI for context checks and Claude-owned steps.
+- `codex` CLI for default generated steps.
+- `council` CLI for council review steps.
+- Node.js 20+ only when using mex through `npx mex-agent`.
+
+## First-time Setup
+
+1. Clone this repository as `ralph-v2/` inside a target project root when using it as a project-local pipeline.
+2. Ensure the target project root has `CONTEXT.md` and `CLAUDE.md` or `AGENTS.md` with the target project's instructions.
+3. Authenticate GitHub CLI: `gh auth status`.
+4. From the project root, create a GitHub issue through the grilling flow or manually.
+5. Run the init prompt for the issue: `Read ralph-v2/prompts/init.md and execute it for issue N in repo owner/repo`.
+6. Set `.baseBranch` in `ralph-v2/workspaces/N/state.json` before preflight.
+7. Run the pipeline from the project root: `./ralph-v2/ralph.sh --issue N`.
+
+For this repository's own tests and maintenance, run commands from this repository root, where the scripts are `./ralph.sh`, `./tests/run.sh`, and `./cleanup.sh`.
+
+## Environment Variables
+
+- `RALPH_STALE_THRESHOLD` (optional) - seconds before `state_validate` considers an `in_progress` step eligible for stale PID recovery; defaults to `3600`.
+- `RALPH_RETRY_DELAYS` (optional) - retry sleep sequence for transient agent failures; defaults to `30 60 120`.
+- `RALPH_POLL_INTERVAL` (optional) - seconds between `ralph.sh poll` status checks; defaults to `30`.
+
+## Common Commands
+
+- `./tests/run.sh` - run the full deterministic shell test suite.
+- `./tests/run.sh agent pipeline prompt_contracts` - run focused suites.
+- `./ralph.sh --issue N` - run pending steps for an initialized workspace.
+- `./ralph.sh --issue N --steps 1` - run one pending step.
+- `./ralph.sh status --issue N` - print step table, duration, process state, and current activity.
+- `./ralph.sh logs --issue N` - show active step logs.
+- `./ralph.sh logs --issue N --step step-id` - show a specific step log.
+- `./cleanup.sh N` - archive `workspaces/N/` after merge.
+- `npx mex-agent check --quiet` - check `.mex/` drift without installing mex globally.
+
+## Common Issues
+
+**Dirty tree before init or preflight:** Commit accepted docs to the intended base branch, or commit speculative grilling docs to a pushed `grill/*` branch and set `.baseBranch` to that branch.
+
+**Long run appears frozen:** Do not pipe Ralph output. Keep the foreground command running and poll status or logs from another command.
+
+**Stale `in_progress` step:** Check PID files under `workspaces/<issue>/pids/`, reset the affected step to `pending` with `jq`, clear stale PID fields, remove stale pid files, and rerun.
+
+**Failed step blocks rerun:** Inspect `workspaces/<issue>/logs/<step-id>.log`, fix the root cause, set that step back to `pending`, clear metrics/notes if needed, validate with `jq`, and rerun.
+
+**Codex branch checkout fails in submodule use:** Ensure Codex runs from the target project root; `scripts/agent.sh` already wraps Codex in `(cd "$project_root" && codex ...)`.
