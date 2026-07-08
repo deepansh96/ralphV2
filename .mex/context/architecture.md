@@ -1,0 +1,57 @@
+---
+name: architecture
+description: How Ralph v2 pipeline pieces connect and flow. Load when working on system design, integrations, prompt dispatch, or state behavior.
+triggers:
+  - "architecture"
+  - "pipeline"
+  - "state"
+  - "prompt"
+  - "agent"
+  - "integration"
+edges:
+  - target: context/stack.md
+    condition: when specific shell, jq, GitHub, Claude, Codex, or council details are needed
+  - target: context/decisions.md
+    condition: when understanding why the pipeline, branch, review, or agent defaults exist
+  - target: context/conventions.md
+    condition: when editing scripts, prompts, tests, or docs in this architecture
+  - target: patterns/run-and-monitor-pipeline.md
+    condition: when executing or observing a live pipeline
+last_updated: 2026-07-09
+---
+
+# Architecture
+
+## System Overview
+
+User starts with a GitHub issue -> `prompts/init.md` creates `workspaces/<issue>/state.json` -> `ralph.sh --issue N` validates state and context -> `prompt_render` combines a step prompt with state/workspace values -> `agent_run_step` dispatches to Claude or Codex -> the agent edits project files, GitHub issues, or workspace artifacts -> `state_update_step` records completion, failure, HITL, metrics, PID, and notes -> preflight appends dynamic implementation/review steps -> cleanup archives the workspace after merge.
+
+The pipeline is issue-driven and state-driven. `ralph.sh` does not infer missing branch contracts once running; `state.json` decides which step runs next and which agent owns it.
+
+## Key Components
+
+- **`ralph.sh`** - CLI entrypoint and run loop; handles `run`, `status`, `logs`, `poll`, HITL resume, foreground/background dispatch, step limits, and shutdown reset.
+- **`scripts/state.sh`** - state access and mutation layer; validates failed/stale steps, selects pending or blocked steps, appends dynamic steps, and writes PID files.
+- **`scripts/agent.sh`** - execution adapter for `claude` and `codex`; wraps retries, logging, working directory handling, and metrics extraction.
+- **`scripts/prompt.sh`** - renders prompt templates by replacing `{{ISSUE}}`, `{{REPO}}`, `{{WORKSPACE}}`, `{{BRANCH}}`, `{{BASE_BRANCH}}`, `{{STEP_ID}}`, `{{SUB_ISSUE}}`, `{{SKILLS_DIR}}`, `{{REVIEWERS}}`, and `{{AGENT}}`.
+- **`prompts/`** - one markdown contract per step type; downstream agents follow these to initialize workspaces, create PRDs, create slices, preflight, implement, review, and fix reviews.
+- **`skills/`** - bundled task guidance for PRD conversion, issue slicing, TDD, domain context, and grilling; prompt references stay inside the repository.
+- **`tests/`** - deterministic shell suite with shared fakes for external tools; validates behavior without real GitHub, Claude, Codex, or council calls.
+
+## External Dependencies
+
+- **GitHub CLI (`gh`)** - required by init and agent prompts to read/edit issues, create sub-issues, push branches, and create/update PRs.
+- **Claude CLI (`claude`)** - used by `context_check` and by steps whose `agent` is `claude`; emits stream JSON logs consumed for metrics.
+- **Codex CLI (`codex`)** - default generated step agent; `scripts/agent.sh` runs it from the project root with danger-full-access sandbox and JSON logging.
+- **Council CLI (`council`)** - multi-agent review harness used by review prompts and `scripts/council-review.sh`.
+- **Git** - branch creation, status checks, pushes, and project-root discovery underpin preflight and agent working directories.
+- **`jq`** - required for all state manipulation, prompt rendering fields, status tables, and JSON validation.
+- **mex (`npx mex-agent`)** - repository memory scaffold under `.mex/`; use `npx mex-agent check` and `npx mex-agent sync` unless mex is installed globally.
+
+## What Does NOT Exist Here
+
+- No web service, database, daemon, or long-running server lives in this repo.
+- No package manager build step is needed for Ralph itself.
+- No runtime persistence outside Git, GitHub, per-issue workspaces, logs, and `.mex/events`.
+- No automatic recovery for failed steps; a human or agent must reset state intentionally.
+- No safe default `baseBranch`; init writes it as `null` and preflight requires an explicit value.
