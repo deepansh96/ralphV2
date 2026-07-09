@@ -31,9 +31,6 @@ Read the project context, parent issue, and assigned sub-issue; implement only t
   - `{{SKILLS_DIR}}/tdd/SKILL.md`
   - `{{SKILLS_DIR}}/tdd/tests.md`
   - `{{SKILLS_DIR}}/tdd/mocking.md`
-  - `{{SKILLS_DIR}}/tdd/deep-modules.md`
-  - `{{SKILLS_DIR}}/tdd/interface-design.md`
-  - `{{SKILLS_DIR}}/tdd/refactoring.md`
 - Read the parent issue for overall context:
   `gh issue view {{ISSUE}} --repo {{REPO}}`
 - Read the assigned sub-issue for this slice's exact requirements:
@@ -43,13 +40,21 @@ Read the project context, parent issue, and assigned sub-issue; implement only t
 
 ## Blocker Verification
 
-Before starting implementation, check whether sub-issue `#{{SUB_ISSUE}}` lists any blocked-by issues. If it does, verify each blocker is closed:
+Before starting implementation, check whether sub-issue `#{{SUB_ISSUE}}` has any open blockers, from both representations:
+
+1. Native issue dependencies — the count of open blockers:
+
+```bash
+gh api repos/{{REPO}}/issues/{{SUB_ISSUE}} --jq '.issue_dependencies_summary.blocked_by // 0'
+```
+
+2. `Blocked by` references in the sub-issue body — verify each listed blocker is closed:
 
 ```bash
 gh issue view <blocker-number> --repo {{REPO}} --json state -q '.state'
 ```
 
-If any blocker is still open, set this step's status to `failed` with a note listing the open blockers, then stop.
+If the native count is greater than zero or any body-listed blocker is still open, set this step's status to `failed` with a note listing the open blockers, then stop.
 
 ## Scope Rules
 
@@ -82,14 +87,16 @@ If the branch is already checked out, continue. If checkout fails, stop and repo
 Follow the TDD skill workflow strictly.
 
 1. Identify the public interface and behavior required by sub-issue `#{{SUB_ISSUE}}`.
-2. Write one failing test first for the next observable behavior.
-3. Run the focused test and confirm it fails for the expected reason.
-4. Implement the smallest change needed to pass that test.
-5. Run the focused test and confirm it passes.
-6. Repeat one behavior at a time until the sub-issue acceptance criteria are satisfied.
-7. Refactor only after tests are green, keeping tests focused on public behavior instead of implementation details.
+2. Identify the seams to test at: the pre-agreed seams are the ones recorded in the parent PRD's Testing Decisions. If the PRD names none, use the highest existing seam and note the choice. Do not write tests at unconfirmed seams.
+3. Write one failing test first for the next observable behavior.
+4. Run the focused test and confirm it fails for the expected reason.
+5. Implement the smallest change needed to pass that test.
+6. Run the focused test and confirm it passes.
+7. Repeat one behavior at a time until the sub-issue acceptance criteria are satisfied.
 
-Use integration-style tests through public interfaces where practical. Mock only external boundaries.
+Use integration-style tests through public interfaces where practical. Mock only external boundaries. Expected values must come from an independent source of truth — a known-good literal, a worked example, the spec — never recomputed the way the code computes them (a tautological test passes by construction and verifies nothing).
+
+Do not refactor beyond what the current slice needs; the review-slice step that follows this step owns review and cleanup.
 
 ## Quality Checks
 

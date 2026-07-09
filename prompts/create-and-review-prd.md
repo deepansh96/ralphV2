@@ -21,7 +21,7 @@ Turn the issue's grilled decisions into a complete PRD, preserve the original is
 - Read project `CONTEXT.md`.
 - Read project `CLAUDE.md`.
 - Read any ADRs under `docs/adr/` if that directory exists.
-- Read `{{SKILLS_DIR}}/to-prd/SKILL.md` if it exists. If not, follow the `to-prd` structure embedded below.
+- Read `{{SKILLS_DIR}}/to-spec/SKILL.md` if it exists. If not, follow the `to-spec` structure embedded below.
 - Explore the codebase for relevant modules, current patterns, test style, and risks before drafting.
 
 ## Preserve Original Issue
@@ -36,11 +36,13 @@ If `original-issue.md` already exists, leave it unchanged. Re-runs must preserve
 
 ## AFK Planning
 
-Sketch the modules and test plan yourself. Do not ask the user to confirm modules or test coverage during this step. Use the project vocabulary from `CONTEXT.md`, and flag ADR conflicts inside the PRD if any exist.
+Sketch the modules and test plan yourself. Do not ask the user to confirm modules, seams, or test coverage during this step. Use the project vocabulary from `CONTEXT.md`, and flag ADR conflicts inside the PRD if any exist.
+
+Sketch the testing seams per the `to-spec` skill: a seam is the public boundary tests observe behavior at. Prefer existing seams over new ones, use the highest seam possible, and keep the count low — the ideal number is one. Record the chosen seams in the Testing Decisions section; council review judges them there.
 
 ## PRD Structure
 
-Draft the PRD following the `to-prd` skill template. The final issue body must contain these sections, in this order:
+Draft the PRD following the `to-spec` skill template. The final issue body must contain these sections, in this order:
 
 ```md
 ## Decision Summary
@@ -70,8 +72,8 @@ Requirements:
 
 - `Decision Summary` is a concise, scannable list of concrete decisions from the issue and discovered context.
 - `User Stories` is a numbered list using: `As a <actor>, I want a <feature>, so that <benefit>`.
-- `Implementation Decisions` covers modules, interfaces, architecture, schemas, API contracts, and important interactions, but avoids fragile file-path or code-snippet details.
-- `Testing Decisions` explains behavior-focused tests, target modules, and relevant prior test style in the codebase.
+- `Implementation Decisions` covers modules, interfaces, architecture, schemas, API contracts, and important interactions, but avoids fragile file-path or code-snippet details. Exception: a snippet from a prototype that encodes a decision more precisely than prose (state machine, schema, type shape) may be inlined, trimmed to the decision-rich parts.
+- `Testing Decisions` names the seams tests will be written at (existing seams preferred, highest possible, as few as possible), explains behavior-focused tests, target modules, and relevant prior test style in the codebase. Expected values in tests must come from an independent source of truth, never recomputed the way the code computes them.
 - `Out of Scope` explicitly separates future work from this PRD.
 
 ## Council Review
@@ -96,7 +98,8 @@ Review the draft PRD for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on:
 4. EDGE CASES — Race conditions, error paths, or boundary conditions not addressed.
 5. INTERFACE DESIGN — Are public interfaces well-defined? Would you restructure any module boundaries?
 6. TESTING GAPS — Is the test plan sufficient? Are edge cases covered?
-7. CONFLICTS — Contradictions with CONTEXT.md, CLAUDE.md, or existing ADRs.
+7. SEAMS — Are tests planned at the highest existing seams? Are new seams justified, or is the plan introducing more seams than needed?
+8. CONFLICTS — Contradictions with CONTEXT.md, CLAUDE.md, or existing ADRs.
 For each issue found, state severity (critical/major/minor) and a concrete recommendation."
 ```
 

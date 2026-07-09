@@ -39,16 +39,34 @@ _Avoid_: evaluator, critic
 ### Planning
 
 **PRD**:
-Product Requirements Document. Written into the parent GitHub issue body by the `create-and-review-prd` step.
-_Avoid_: spec, design doc
+Product Requirements Document. Written into the parent GitHub issue body by the `create-and-review-prd` step. The bundled `to-spec` skill calls this document a spec; inside Ralph, PRD is the canonical term.
+_Avoid_: design doc; "spec" outside the skill name
 
 **Slice**:
-A vertical implementation unit that delivers one end-to-end behavior. Each slice becomes a GitHub sub-issue.
-_Avoid_: task, ticket, chunk, horizontal layer
+A vertical implementation unit that delivers one end-to-end behavior. Each slice becomes a GitHub sub-issue. The bundled `to-tickets` skill calls these tickets; inside Ralph, slice is the canonical term.
+_Avoid_: task, chunk, horizontal layer; "ticket" outside the skill name and wayfinder
+
+**Seam**:
+The public boundary a test observes behavior at. Seams are pre-agreed in the PRD's Testing Decisions; implement-slice writes tests only at those seams.
+_Avoid_: test point, hook
+
+**Blocking Edge**:
+A declared dependency between slices: the blocker must close before the blocked slice starts. Represented both as a native GitHub issue dependency and a `Blocked by: #<n>` body line.
+_Avoid_: ordering hint, soft dependency
 
 **AFK**:
 Autonomous mode where an agent works without human interaction until done or blocked. Slices are "AFK-ready" when an agent can complete them unattended.
 _Avoid_: autonomous, unattended, headless
+
+### Wayfinding
+
+**Map**:
+A single GitHub issue (label `wayfinder:map`) charting an effort too big for one session: destination, decisions so far, fog, and out-of-scope, with child ticket issues. Produced and worked by the `wayfinder` skill; never enters the pipeline itself.
+_Avoid_: plan doc, tracker board
+
+**Frontier**:
+The map's open, unblocked, unclaimed tickets — what a session can take next.
+_Avoid_: backlog, queue
 
 ### State & Workspace
 
@@ -70,8 +88,9 @@ _Avoid_: manual review, approval gate
 - A **Pipeline** contains ordered **Steps** (fixed phase first, then dynamic phase)
 - Each **Step** is executed by one **Agent**
 - Review **Steps** invoke **Council** with one or more **Reviewers**
-- The `create-and-review-slices` step produces **Slices**, each becoming a GitHub sub-issue
-- Each **Slice** maps to one `implement-slice` **Step** (dynamic phase)
+- The `create-and-review-slices` step produces **Slices**, each becoming a GitHub sub-issue with its **Blocking Edges**
+- Each **Slice** maps to one `implement-slice` **Step** followed by one `review-slice` **Step** (dynamic phase)
+- A wayfinder **Map**'s destination issue is what `init` consumes; the **Map** itself stays outside the **Pipeline**
 - A **Workspace** holds the **State** and artifacts for one pipeline run
 
 ## Example dialogue

@@ -30,7 +30,7 @@ last_updated: 2026-07-09
 - State fields use lower camelCase for JSON keys already in the schema, such as `baseBranch`, `reviewFixes`, `projectRoot`, and `createdAt`.
 - Shell functions use snake_case and are grouped by helper file, for example `state_update_step` in `scripts/state.sh`.
 - Test suite files end in `_test.sh` and live under `tests/suites/`.
-- Workflow vocabulary uses pipeline, step, step type, phase, agent, council, reviewer, PRD, slice, AFK, workspace, state, and HITL as defined in `CONTEXT.md`.
+- Workflow vocabulary uses pipeline, step, step type, phase, agent, council, reviewer, PRD, slice, seam, blocking edge, AFK, workspace, state, HITL, map, and frontier as defined in `CONTEXT.md`.
 
 ## Structure
 

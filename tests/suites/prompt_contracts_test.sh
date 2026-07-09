@@ -140,7 +140,9 @@ test_create_prd_prompt_defines_full_prd_workflow_contract() {
   assert_contains "$prompt" "CLAUDE.md"
   assert_contains "$prompt" "docs/adr"
   assert_contains "$prompt" "Explore the codebase"
-  assert_contains "$prompt" "to-prd"
+  assert_contains "$prompt" "to-spec"
+  assert_contains "$prompt" "seams"
+  assert_contains "$prompt" "SEAMS"
   assert_contains "$prompt" "Decision Summary"
   assert_contains "$prompt" "Problem Statement"
   assert_contains "$prompt" "User Stories"
@@ -170,9 +172,14 @@ test_create_slices_prompt_defines_full_slice_creation_contract() {
   assert_contains "$prompt" "CONTEXT.md"
   assert_contains "$prompt" "CLAUDE.md"
   assert_contains "$prompt" "docs/adr"
-  assert_contains "$prompt" "to-issues"
+  assert_contains "$prompt" "to-tickets"
   assert_contains "$prompt" "tracer bullets"
   assert_contains "$prompt" "horizontal"
+  assert_contains "$prompt" "Blocked by"
+  assert_contains "$prompt" "dependency order"
+  assert_contains "$prompt" "dependencies/blocked_by"
+  assert_contains "$prompt" "expand"
+  assert_contains "$prompt" "prefactor"
   assert_contains "$prompt" "scripts/council-review.sh"
   assert_contains "$prompt" "Round 1"
   assert_contains "$prompt" "Round 2"
@@ -208,6 +215,9 @@ test_preflight_prompt_defines_full_preflight_workflow_contract() {
   assert_contains "$prompt" "sub-issues"
   assert_contains "$prompt" "state_add_steps"
   assert_contains "$prompt" "implement-slice"
+  assert_contains "$prompt" '"type": "review-slice"'
+  assert_contains "$prompt" "review-slice-<sub-issue-number>"
+  assert_contains "$prompt" "each slice is reviewed before the next slice is implemented"
   assert_contains "$prompt" "final-review"
   assert_contains "$prompt" "pr-review"
   assert_contains "$prompt" "optional review-fixes"
@@ -241,9 +251,9 @@ test_implement_slice_prompt_defines_full_implementation_workflow_contract() {
   assert_contains "$prompt" "tdd/SKILL.md"
   assert_contains "$prompt" "tdd/tests.md"
   assert_contains "$prompt" "tdd/mocking.md"
-  assert_contains "$prompt" "tdd/deep-modules.md"
-  assert_contains "$prompt" "tdd/interface-design.md"
-  assert_contains "$prompt" "tdd/refactoring.md"
+  assert_contains "$prompt" "issue_dependencies_summary.blocked_by"
+  assert_contains "$prompt" "seams"
+  assert_contains "$prompt" "tautological"
   assert_contains "$prompt" "gh issue view {{ISSUE}} --repo {{REPO}}"
   assert_contains "$prompt" "gh issue view {{SUB_ISSUE}} --repo {{REPO}}"
   assert_contains "$prompt" "Write one failing test first"
@@ -253,6 +263,44 @@ test_implement_slice_prompt_defines_full_implementation_workflow_contract() {
   assert_contains "$prompt" "#{{SUB_ISSUE}}"
   assert_contains "$prompt" "git push"
   assert_contains "$prompt" "gh issue close {{SUB_ISSUE}} --repo {{REPO}}"
+}
+
+test_review_slice_prompt_defines_review_and_fix_contract() {
+  local prompt_file prompt
+
+  prompt_file="$ROOT_DIR/prompts/review-slice.md"
+  [[ -f "$prompt_file" ]] || fail "expected review-slice prompt template at $prompt_file"
+
+  prompt="$(<"$prompt_file")"
+
+  assert_contains "$prompt" "Issue: {{ISSUE}}"
+  assert_contains "$prompt" "Repo: {{REPO}}"
+  assert_contains "$prompt" "Workspace: {{WORKSPACE}}"
+  assert_contains "$prompt" "Branch: {{BRANCH}}"
+  assert_contains "$prompt" "Base branch: {{BASE_BRANCH}}"
+  assert_contains "$prompt" "Step: {{STEP_ID}}"
+  assert_contains "$prompt" "Sub-issue: {{SUB_ISSUE}}"
+  assert_contains "$prompt" "Skills: {{SKILLS_DIR}}"
+  assert_contains "$prompt" "Default agent: codex"
+  assert_contains "$prompt" "AFK"
+  assert_contains "$prompt" "code-review/SKILL.md"
+  assert_contains "$prompt" "Standards"
+  assert_contains "$prompt" "Spec"
+  assert_contains "$prompt" "smell"
+  assert_contains "$prompt" "judgement call"
+  assert_contains "$prompt" "gh issue view {{ISSUE}} --repo {{REPO}}"
+  assert_contains "$prompt" "gh issue view {{SUB_ISSUE}} --repo {{REPO}}"
+  assert_contains "$prompt" "Fixed Point"
+  assert_contains "$prompt" "git checkout {{BRANCH}}"
+  assert_contains "$prompt" "failing test"
+  assert_contains "$prompt" "Run quality checks from CLAUDE.md"
+  assert_contains "$prompt" "git commit"
+  assert_contains "$prompt" "#{{SUB_ISSUE}}"
+  assert_contains "$prompt" "git push"
+  assert_contains "$prompt" "gh issue comment {{SUB_ISSUE}} --repo {{REPO}}"
+  assert_contains "$prompt" "{{STEP_ID}}.md"
+  assert_contains "$prompt" "no findings"
+  assert_contains "$prompt" "empty commit"
 }
 
 test_final_review_prompt_defines_full_review_workflow_contract() {
@@ -310,6 +358,9 @@ test_pr_review_prompt_defines_full_pr_workflow_contract() {
   assert_contains "$prompt" "Closes #<sub-issue>"
   assert_contains "$prompt" "human QA checklist"
   assert_contains "$prompt" "code-review:code-review"
+  assert_contains "$prompt" "code-review/SKILL.md"
+  assert_contains "$prompt" "Fowler smell baseline"
+  assert_contains "$prompt" "judgement call"
   assert_contains "$prompt" "review --base"
   assert_contains "$prompt" "codex-pr-review.md"
   assert_contains "$prompt" "PR comments"
@@ -369,6 +420,9 @@ test_grill_with_docs_skill_defines_planning_branch_contract() {
   assert_contains "$skill" "git push -u origin grill/issue-<issue-number>-<slug>"
   assert_contains "$skill" "baseBranch"
   assert_contains "$skill" 'do not run `init` yet'
+  assert_contains "$skill" "Facts vs. decisions"
+  assert_contains "$skill" "Confirmation gate"
+  assert_contains "$skill" "wayfinder"
 }
 
 run_test test_init_prompt_defines_complete_workspace_initialization_contract
@@ -378,6 +432,7 @@ run_test test_create_prd_prompt_defines_full_prd_workflow_contract
 run_test test_create_slices_prompt_defines_full_slice_creation_contract
 run_test test_preflight_prompt_defines_full_preflight_workflow_contract
 run_test test_implement_slice_prompt_defines_full_implementation_workflow_contract
+run_test test_review_slice_prompt_defines_review_and_fix_contract
 run_test test_final_review_prompt_defines_full_review_workflow_contract
 run_test test_pr_review_prompt_defines_full_pr_workflow_contract
 run_test test_review_fixes_prompt_defines_full_review_fixes_workflow_contract

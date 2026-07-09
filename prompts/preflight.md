@@ -12,7 +12,7 @@ Default agent: codex
 
 ## Goal
 
-Validate that implementation can start from an explicit base branch; create and push the feature branch; read the AFK implementation sub-issues from GitHub; and extend `{{WORKSPACE}}/state.json` with dynamic implementation, final review, PR review, and optional review-fixes steps.
+Validate that implementation can start from an explicit base branch; create and push the feature branch; read the AFK implementation sub-issues from GitHub; and extend `{{WORKSPACE}}/state.json` with dynamic implementation and per-slice review steps, final review, PR review, and optional review-fixes steps.
 
 ## Required Inputs
 
@@ -54,7 +54,7 @@ Create the feature branch from `baseBranch`.
 
 ## Dynamic Steps
 
-Read the implementation sub-issues created by the `create-and-review-slices` step and append one implementation step per sub-issue, followed by final review and PR review.
+Read the implementation sub-issues created by the `create-and-review-slices` step and append one implementation step per sub-issue, each immediately followed by its review-slice step, then final review and PR review.
 
 Read the top-level `reviewFixes` field from `{{WORKSPACE}}/state.json`. If it is missing, null, or false, default to false and do not append `review-fixes`. Append `review-fixes` only when `reviewFixes` is exactly true.
 
@@ -74,6 +74,25 @@ Each implementation step must use this shape:
   "notes": ""
 }
 ```
+
+Immediately after each implementation step, append a review-slice step for the same sub-issue. It reviews the slice's diff along the Standards and Spec axes and fixes what it finds:
+
+```json
+{
+  "id": "review-slice-<sub-issue-number>",
+  "phase": "dynamic",
+  "type": "review-slice",
+  "status": "pending",
+  "agent": "codex",
+  "reviewers": [],
+  "hitl": false,
+  "sub_issue": <sub-issue-number>,
+  "metrics": null,
+  "notes": ""
+}
+```
+
+The step order must interleave: `implement-slice-A`, `review-slice-A`, `implement-slice-B`, `review-slice-B`, and so on — each slice is reviewed before the next slice is implemented.
 
 Append these final steps after all implementation steps:
 
@@ -144,6 +163,7 @@ After updating state, run:
 Confirm the status output shows the fixed pipeline plus all dynamic steps:
 
 - N `implement-slice` steps with `agent` set to `codex` and the correct `sub_issue` value for each GitHub sub-issue
+- N `review-slice` steps, one immediately after each `implement-slice` step, with the matching `sub_issue` value
 - `final-review` with `agent` set to `codex`
 - `pr-review` with `agent` set to `codex`
 - `review-fixes` with `agent` set to `codex` only when `reviewFixes` is true

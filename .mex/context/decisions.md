@@ -25,6 +25,30 @@ last_updated: 2026-07-09
 
 ## Decision Log
 
+### Review and fix every slice with a dedicated review-slice step
+**Date:** 2026-07-09
+**Status:** Active
+**Decision:** Preflight appends a `review-slice` step immediately after each `implement-slice` step. It reviews only that slice's diff along the bundled code-review skill's two axes (Standards with the Fowler smell baseline, Spec against the sub-issue and PRD) and fixes what it finds before the next slice starts.
+**Reasoning:** Per-slice review catches spec gaps and standards drift while the slice's context is fresh and the diff is small; deferring all review to `pr-review` makes findings expensive to fix. Refactoring was removed from the TDD loop upstream (mattpocock/skills v1.1.0), so the review step is where cleanup now lives.
+**Alternatives considered:** Review only at PR time (rejected: findings arrive after all slices stack), or making review-slice opt-in like review-fixes (rejected: the user wants it default-on).
+**Consequences:** Pipelines run twice as many dynamic slice steps; `prompts/review-slice.md` owns the contract; smells stay judgement calls, never hard blockers.
+
+### Declare slice dependencies as first-class blocking edges
+**Date:** 2026-07-09
+**Status:** Active
+**Decision:** `create-and-review-slices` gives every sub-issue a `Blocked by` section and wires each edge as a native GitHub issue dependency, creating issues in dependency order. `implement-slice` checks both the native `issue_dependencies_summary.blocked_by` count and the body lines.
+**Reasoning:** Adopted from mattpocock/skills v1.1.0 `to-tickets`: explicit edges make the frontier visible in GitHub's UI and open the door to parallel slice execution later. The previous rule kept blocked-by references out of sub-issues, which hid real ordering constraints.
+**Alternatives considered:** Body-text references only (rejected: invisible in the UI, no machine-checkable gate), or native dependencies only (rejected: the body line is the human-readable fallback and what implement-slice checked historically).
+**Consequences:** Repos without the dependencies API fall back to body lines; parallel slice implementation stays out of scope for now.
+
+### Adopt wayfinder as a situational planning on-ramp, not the default
+**Date:** 2026-07-09
+**Status:** Active
+**Decision:** `skills/wayfinder/` plans efforts too big for one grilling session as a map issue with child tickets on GitHub. Its destination is a decision issue that enters the pipeline through `init` unchanged; `grill-with-docs` stays the default entry for one-session features and signposts up to wayfinder.
+**Reasoning:** Mirrors upstream v1.1.0, which settles wayfinder as a situational on-ramp while the grill-led chain stays the front door. Tracker operations resolve through the `Issue tracker` pointer in `AGENTS.md` to `docs/agents/issue-tracker.md`, keeping skills tracker-agnostic.
+**Alternatives considered:** Replacing grill-with-docs with wayfinder (rejected: upstream explicitly declined this; most features fit one session).
+**Consequences:** Target repos need the `wayfinder:*` labels created once; map sessions must respect the `grill/*` branch contract because `init`/`preflight` fail on dirty trees.
+
 ### Use mex for routed agent memory
 **Date:** 2026-07-09
 **Status:** Active

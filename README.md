@@ -45,7 +45,7 @@ Run specific suites by name:
 
 ## Workflow
 
-1. Grill the feature into a GitHub issue using the project context and decision workflow. If grilling produces speculative `CONTEXT.md` or ADR changes, keep them on a pushed `grill/*` planning branch instead of committing them directly to `main`.
+1. Grill the feature into a GitHub issue using the project context and decision workflow (`skills/grill-with-docs/`). For an effort too big or foggy for one grilling session, chart a wayfinder map first (`skills/wayfinder/`): a map issue with child tickets resolved one per session, whose destination is the decision issue that enters the pipeline. If grilling produces speculative `CONTEXT.md` or ADR changes, keep them on a pushed `grill/*` planning branch instead of committing them directly to `main`.
 2. Run the `init.md` prompt for that issue so an agent creates `ralph-v2/workspaces/<issue>/state.json`. By default, init skips review-decisions steps, skips PRD/slice council review rounds, and omits review-fixes. Opt in with "with 1 review-decision round", "with 1 review round on PRD", or "with review fixes".
 3. Set `.baseBranch` explicitly in `state.json` before preflight reaches branch creation. Use the branch that already contains the grilling context: usually `main` for accepted docs, or the pushed `grill/*` planning branch for speculative feature docs.
 4. Run `./ralph-v2/ralph.sh --issue N`.
@@ -71,7 +71,7 @@ In that flow, set `.baseBranch` to `grill/issue-123-short-slug`. Ralph opens the
 During `run`, Ralph executes:
 
 ```text
-review-decisions (0-2 rounds, default 0) -> create-and-review-prd -> create-and-review-slices -> preflight -> implement-slice... -> final-review -> pr-review -> review-fixes (optional, default off)
+review-decisions (0-2 rounds, default 0) -> create-and-review-prd -> create-and-review-slices -> preflight -> (implement-slice -> review-slice)... -> final-review -> pr-review -> review-fixes (optional, default off)
 ```
 
 ## State
@@ -131,10 +131,11 @@ Failed steps stop the pipeline until the user explicitly resets the step to `pen
 ## Step Types
 
 - `review-decisions`: reviews issue decisions against `CONTEXT.md`, `CLAUDE.md`, and ADRs; may block for human input.
-- `create-and-review-prd`: preserves the original issue body, drafts the PRD, runs council reviews (controlled by `reviewRounds`, default 0), and updates the parent issue.
-- `create-and-review-slices`: drafts vertical AFK slices, runs council reviews (controlled by `reviewRounds`, default 0), creates GitHub sub-issues, and links them under the parent.
-- `preflight`: checks the working tree and `baseBranch` contract, creates/pushes the feature branch, and appends dynamic steps.
-- `implement-slice`: reads the assigned sub-issue, follows TDD, commits, pushes, and closes the sub-issue.
+- `create-and-review-prd`: preserves the original issue body, drafts the PRD following the `to-spec` skill (including the testing seams), runs council reviews (controlled by `reviewRounds`, default 0), and updates the parent issue.
+- `create-and-review-slices`: drafts vertical AFK slices following the `to-tickets` skill with explicit blocking edges (native GitHub issue dependencies plus `Blocked by` body lines), runs council reviews (controlled by `reviewRounds`, default 0), creates GitHub sub-issues, and links them under the parent.
+- `preflight`: checks the working tree and `baseBranch` contract, creates/pushes the feature branch, and appends dynamic steps — one `implement-slice` plus one `review-slice` per sub-issue, then `final-review` and `pr-review`.
+- `implement-slice`: reads the assigned sub-issue, verifies blockers are closed, follows TDD at the PRD's pre-agreed seams, commits, pushes, and closes the sub-issue.
+- `review-slice`: reviews the just-implemented slice's diff along the code-review skill's two axes (Standards with the Fowler smell baseline, Spec against the sub-issue and PRD), fixes what it finds, and pushes the fixes.
 - `final-review`: reviews branch changes, runs quality checks, verifies acceptance criteria, and writes `final-review.md`.
 - `pr-review`: creates or updates the PR and runs automated review using the step agent's review path (`code-review:code-review` for Claude, `codex review` for Codex).
 - `review-fixes`: optional step controlled by top-level `reviewFixes`; evaluates automated review findings, implements fixes for valid issues, dismisses false positives, and posts a summary comment on the PR.
@@ -143,10 +144,16 @@ Failed steps stop the pipeline until the user explicitly resets the step to `pen
 
 `ralph-v2/skills/` contains the skills used by the prompts:
 
-- `to-prd/`
-- `to-issues/`
-- `tdd/`
-- `domain/`
-- `grill-with-docs/`
+- `to-spec/` — turn grilled decisions into a spec/PRD (with testing seams)
+- `to-tickets/` — break a spec into tracer-bullet slices with blocking edges
+- `tdd/` — the red → green loop, seams, and test anti-patterns
+- `code-review/` — two-axis review (Standards with the Fowler smell baseline, Spec)
+- `domain-modeling/` — glossary and ADR discipline, plus domain awareness for consumers
+- `grilling/` — the core interview loop (facts from the code, decisions from the human)
+- `grill-with-docs/` — grilling plus inline `CONTEXT.md`/ADR updates; the default entry point
+- `wayfinder/` — map an effort too big for one session as tracker tickets; hands its destination issue to `init`
+- `research/` — investigate a question against primary sources, leave a cited note
+
+Tracker operations (sub-issues, native blocking edges, wayfinding operations) live in `docs/agents/issue-tracker.md`, referenced from the `Issue tracker` section of `AGENTS.md`.
 
 The bundle is self-contained. Skill references point at files inside `ralph-v2/skills/`, not at the user's global skill directory.

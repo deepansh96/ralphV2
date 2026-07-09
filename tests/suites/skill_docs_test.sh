@@ -7,18 +7,20 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   local required_files readme tests_readme global_skill_ref stale_refs broken_links link_records file target target_without_anchor resolved
 
   required_files=(
-    "$ROOT_DIR/skills/to-prd/SKILL.md"
-    "$ROOT_DIR/skills/to-issues/SKILL.md"
+    "$ROOT_DIR/skills/to-spec/SKILL.md"
+    "$ROOT_DIR/skills/to-tickets/SKILL.md"
     "$ROOT_DIR/skills/grill-with-docs/SKILL.md"
+    "$ROOT_DIR/skills/grilling/SKILL.md"
+    "$ROOT_DIR/skills/wayfinder/SKILL.md"
+    "$ROOT_DIR/skills/research/SKILL.md"
+    "$ROOT_DIR/skills/code-review/SKILL.md"
     "$ROOT_DIR/skills/tdd/SKILL.md"
     "$ROOT_DIR/skills/tdd/tests.md"
     "$ROOT_DIR/skills/tdd/mocking.md"
-    "$ROOT_DIR/skills/tdd/deep-modules.md"
-    "$ROOT_DIR/skills/tdd/interface-design.md"
-    "$ROOT_DIR/skills/tdd/refactoring.md"
-    "$ROOT_DIR/skills/domain/DOMAIN-AWARENESS.md"
-    "$ROOT_DIR/skills/domain/CONTEXT-FORMAT.md"
-    "$ROOT_DIR/skills/domain/ADR-FORMAT.md"
+    "$ROOT_DIR/skills/domain-modeling/SKILL.md"
+    "$ROOT_DIR/skills/domain-modeling/DOMAIN-AWARENESS.md"
+    "$ROOT_DIR/skills/domain-modeling/CONTEXT-FORMAT.md"
+    "$ROOT_DIR/skills/domain-modeling/ADR-FORMAT.md"
   )
 
   for file in "${required_files[@]}"; do
@@ -66,8 +68,11 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   assert_contains "$(<"$readme")" "state.json"
   assert_contains "$(<"$readme")" "review-decisions"
   assert_contains "$(<"$readme")" "implement-slice"
+  assert_contains "$(<"$readme")" "review-slice"
   assert_contains "$(<"$readme")" "pr-review"
   assert_contains "$(<"$readme")" "review-fixes"
+  assert_contains "$(<"$readme")" "wayfinder"
+  assert_contains "$(<"$readme")" "docs/agents/issue-tracker.md"
 
   tests_readme="$ROOT_DIR/tests/README.md"
   [[ -f "$tests_readme" ]] || fail "expected tests README"
