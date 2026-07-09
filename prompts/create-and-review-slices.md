@@ -21,20 +21,23 @@ Read the PRD from the parent GitHub issue, draft vertical implementation slices,
 - Read project `CONTEXT.md`.
 - Read project `CLAUDE.md`.
 - Read any ADRs under `docs/adr/` if that directory exists.
-- Read `{{SKILLS_DIR}}/to-issues/SKILL.md` if it exists. If not, still follow the slice rules below.
+- Read `{{SKILLS_DIR}}/to-tickets/SKILL.md` if it exists. If not, still follow the slice rules below.
 - Check existing sub-issues before creating anything so re-runs do not create duplicates.
 
 ## Slice Rules
 
-Draft vertical slices following the `to-issues` skill rules:
+Draft vertical slices following the `to-tickets` skill rules:
 
 - Use tracer bullets: each slice should deliver one end-to-end behavior that can be implemented and verified independently.
 - Do not create horizontal slices by technical layer, file type, component category, or infrastructure-only work.
 - Each slice must include a clear user-facing or operator-visible behavior, acceptance criteria, and focused test guidance.
-- Keep slices small enough for one AFK implementation step, but complete enough that the resulting code is useful.
+- Keep slices small enough for one AFK implementation step, but complete enough that the resulting code is useful — sized to fit in a single fresh context window.
+- Look for opportunities to prefactor: "make the change easy, then make the easy change." Any prefactoring becomes its own slice, sequenced first.
 - Mark every generated sub-issue as AFK.
-- Keep future work or blocked-by references out of the generated sub-issues unless the PRD explicitly requires them for this issue.
+- Give each slice its blocking edges: the `## Blocked by` section lists the slices that must complete before it can start, or "None - can start immediately". Only declare blockers that genuinely gate the slice — an unnecessary edge serializes work for no reason. Keep unrelated future work out of the generated sub-issues.
 - When referencing dependencies between slices, always use the GitHub issue number (e.g., "Blocked by #25"), never the slice ordinal (e.g., "Blocked by Slice 7"). The implement-slice step checks blockers by running `gh issue view <number>` — ordinal references will resolve to wrong issues.
+
+**Wide refactors are the exception to vertical slicing.** When the PRD contains one mechanical change whose blast radius fans across the whole codebase (a rename, a retyped shared symbol) so no vertical slice can land green, sequence it as expand–contract instead: an expand slice adds the new form beside the old; migrate slices move call sites over in batches sized by blast radius, each blocked by the expand; a contract slice deletes the old form, blocked by every migrate batch. CI stays green batch to batch because the old form survives until contract.
 
 ## Council Review
 
@@ -52,9 +55,9 @@ Round 1 (skip if `reviewRounds` is 0):
 ./ralph-v2/scripts/council-review.sh --only {{REVIEWERS}} "IMPORTANT: You are a reviewer. DO NOT modify any files, create branches, run tests, or make any changes to the codebase or config. Only read and analyze. Provide feedback as text output only.
 
 Review the draft vertical slices for GitHub issue {{ISSUE}} in repo {{REPO}}. Focus on:
-1. HORIZONTAL SLICING — Are any slices horizontal (single layer) rather than vertical (end-to-end demoable)?
+1. HORIZONTAL SLICING — Are any slices horizontal (single layer) rather than vertical (end-to-end demoable)? Exception: expand–contract slices for a wide refactor are legitimate — but check their sequencing (expand first, migrates blocked by expand, contract blocked by every migrate).
 2. MISSING WORK — Is there work that no slice covers?
-3. DEPENDENCY PROBLEMS — Wrong dependency relationships or implicit ordering constraints.
+3. DEPENDENCY PROBLEMS — Wrong, missing, or unnecessary blocking edges, or implicit ordering constraints not declared as `Blocked by`.
 4. AGENT COMPLETABILITY — Could anything block an agent from completing a slice independently in AFK mode?
 5. MERGE CONFLICT RISK — Do multiple slices touch the same files? Are write boundaries between parallel slices clear?
 6. TEST GAPS — Missing acceptance criteria or test guidance.
@@ -84,6 +87,8 @@ Verify Round 2 feedback against the codebase using the same process. Incorporate
 
 ## GitHub Sub-Issue Creation
 
+Create the sub-issues in dependency order (blockers first) so each slice's `Blocked by` line can reference real issue numbers.
+
 Create one GitHub issue per final slice using:
 
 ```bash
@@ -97,6 +102,7 @@ Each sub-issue body must include:
 - Slice summary
 - Acceptance criteria
 - Testing guidance
+- `Blocked by: #<n>` references, or "None - can start immediately"
 - Out-of-scope notes where needed
 
 After each issue is created, link it to the parent with GitHub GraphQL `addSubIssue`.
@@ -109,6 +115,24 @@ Required GraphQL flow:
 
 The mutation must use the parent issue ID and sub-issue ID; do not rely only on markdown references.
 
+## Native Blocking Edges
+
+After all sub-issues exist, wire each `Blocked by` edge as a native GitHub issue dependency so the frontier is visible in GitHub's UI:
+
+```bash
+gh api --method POST repos/{{REPO}}/issues/<blocked-number>/dependencies/blocked_by -F issue_id=<blocker-db-id>
+```
+
+`<blocker-db-id>` is the blocker's numeric database id from `gh api repos/{{REPO}}/issues/<blocker-number> --jq .id` — not the `#number` and not the GraphQL node ID.
+
+Sync the native dependencies to the final declared `Blocked by` set, in both directions:
+
+- List the existing edges first: `gh api repos/{{REPO}}/issues/<blocked-number>/dependencies/blocked_by`.
+- Add every declared edge that is missing.
+- Delete every existing edge that the final slice plan no longer declares: `gh api --method DELETE repos/{{REPO}}/issues/<blocked-number>/dependencies/blocked_by/<blocker-db-id>`. A stale native edge would keep the slice blocked forever, because implement-slice fails on any open native blocker.
+
+If the dependencies API is unavailable on this repo, keep the `Blocked by: #<n>` body lines as the only representation and note that in the output file. The body lines stay authoritative for the implement-slice blocker check either way.
+
 ## Idempotency
 
 This step is idempotent:
@@ -118,6 +142,7 @@ This step is idempotent:
 - Re-running must not create duplicate sub-issues.
 - If an intended slice already exists, update or reuse it rather than creating another issue.
 - If a sub-issue exists but is not linked under the parent, only run the `addSubIssue` mutation.
+- Re-sync native dependencies to the final declared `Blocked by` set: add missing edges and delete edges no longer declared.
 
 ## Output File
 

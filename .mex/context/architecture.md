@@ -34,8 +34,8 @@ The pipeline is issue-driven and state-driven. `ralph.sh` does not infer missing
 - **`scripts/state.sh`** - state access and mutation layer; validates failed/stale steps, selects pending or blocked steps, appends dynamic steps, and writes PID files.
 - **`scripts/agent.sh`** - execution adapter for `claude` and `codex`; wraps retries, logging, working directory handling, and metrics extraction.
 - **`scripts/prompt.sh`** - renders prompt templates by replacing `{{ISSUE}}`, `{{REPO}}`, `{{WORKSPACE}}`, `{{BRANCH}}`, `{{BASE_BRANCH}}`, `{{STEP_ID}}`, `{{SUB_ISSUE}}`, `{{SKILLS_DIR}}`, `{{REVIEWERS}}`, and `{{AGENT}}`.
-- **`prompts/`** - one markdown contract per step type; downstream agents follow these to initialize workspaces, create PRDs, create slices, preflight, implement, review, and fix reviews.
-- **`skills/`** - bundled task guidance for PRD conversion, issue slicing, TDD, domain context, and grilling; prompt references stay inside the repository.
+- **`prompts/`** - one markdown contract per step type; downstream agents follow these to initialize workspaces, create PRDs, create slices, preflight, implement, review each slice (`review-slice` reviews and fixes the slice diff), review, and fix reviews.
+- **`skills/`** - bundled task guidance synced to mattpocock/skills v1.1.0: `to-spec`, `to-tickets`, `tdd`, `code-review` (two axes plus Fowler smell baseline), `domain-modeling`, `grilling`, `grill-with-docs`, `wayfinder`, and `research`; prompt references stay inside the repository. Tracker operations live in `docs/agents/issue-tracker.md`, referenced from `AGENTS.md`.
 - **`tests/`** - deterministic shell suite with shared fakes for external tools; validates behavior without real GitHub, Claude, Codex, or council calls.
 
 ## External Dependencies

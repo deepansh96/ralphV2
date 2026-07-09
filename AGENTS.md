@@ -14,6 +14,10 @@ Read `.mex/ROUTER.md` before doing task work. Load only the context and patterns
 - Set `.baseBranch` explicitly before preflight.
 - Preserve `CLAUDE.md -> AGENTS.md`.
 
+## Issue tracker
+
+GitHub, via the `gh` CLI. Tracker operations — sub-issues, native blocking edges, wayfinding operations — live in `docs/agents/issue-tracker.md`. Skills resolve the tracker through this pointer; do not hardcode tracker commands elsewhere.
+
 ## Commands
 
 - Test: `./tests/run.sh`

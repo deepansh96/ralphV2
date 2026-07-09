@@ -612,7 +612,7 @@ issue_body_file="$workspace/github-issue-body.md"
 [[ "$prompt" == *"CLAUDE.md"* ]] || exit 73
 [[ "$prompt" == *"docs/adr"* ]] || exit 74
 [[ "$prompt" == *"Explore the codebase"* ]] || exit 75
-[[ "$prompt" == *"to-prd"* ]] || exit 76
+[[ "$prompt" == *"to-spec"* ]] || exit 76
 [[ "$prompt" == *"Round 1"* ]] || exit 77
 [[ "$prompt" == *"Round 2"* ]] || exit 78
 [[ "$prompt" == *"gh issue edit"* ]] || exit 79
@@ -717,7 +717,7 @@ sub_issues_file="$workspace/github-sub-issues.md"
 [[ "$prompt" == *"CONTEXT.md"* ]] || exit 82
 [[ "$prompt" == *"CLAUDE.md"* ]] || exit 83
 [[ "$prompt" == *"docs/adr"* ]] || exit 84
-[[ "$prompt" == *"to-issues"* ]] || exit 85
+[[ "$prompt" == *"to-tickets"* ]] || exit 85
 [[ "$prompt" == *"tracer bullets"* ]] || exit 86
 [[ "$prompt" == *"Round 1"* ]] || exit 87
 [[ "$prompt" == *"Round 2"* ]] || exit 88
@@ -902,9 +902,9 @@ prompt="$(cat)"
 [[ "$prompt" == *"tdd/SKILL.md"* ]] || exit 112
 [[ "$prompt" == *"tdd/tests.md"* ]] || exit 113
 [[ "$prompt" == *"tdd/mocking.md"* ]] || exit 114
-[[ "$prompt" == *"tdd/deep-modules.md"* ]] || exit 115
-[[ "$prompt" == *"tdd/interface-design.md"* ]] || exit 116
-[[ "$prompt" == *"tdd/refactoring.md"* ]] || exit 117
+[[ "$prompt" == *"issue_dependencies_summary.blocked_by"* ]] || exit 115
+[[ "$prompt" == *"seams"* ]] || exit 116
+[[ "$prompt" == *"tautological"* ]] || exit 117
 [[ "$prompt" == *"gh issue view 9020 --repo deepansh96/ralph"* ]] || exit 118
 [[ "$prompt" == *"gh issue view 9111 --repo deepansh96/ralph"* ]] || exit 119
 [[ "$prompt" == *"Write one failing test first"* ]] || exit 120

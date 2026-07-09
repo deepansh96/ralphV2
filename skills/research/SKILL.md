@@ -1,0 +1,12 @@
+---
+name: research
+description: Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated.
+---
+
+Investigate the question against **primary sources** — official docs, source code, specs, first-party APIs — not a secondary write-up of them. Follow every claim back to the source that owns it.
+
+1. Write the findings to a single Markdown file, citing each claim's source.
+2. Save it where the repo already keeps such notes; match the existing convention, and if there is none, put it somewhere sensible and say where.
+3. If the research resolves a wayfinder ticket, link the findings file from the ticket's resolution comment — the ticket holds the answer, the file holds the evidence.
+
+If your environment supports background agents, delegate the reading to one so the main session keeps working while it reads.

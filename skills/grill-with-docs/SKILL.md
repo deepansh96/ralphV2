@@ -4,9 +4,15 @@ description: Grilling session that challenges your plan against the existing dom
 disable-model-invocation: false
 ---
 
-Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
+Run a grilling session (see [../grilling/SKILL.md](../grilling/SKILL.md)) using the domain-modeling discipline (see [../domain-modeling/SKILL.md](../domain-modeling/SKILL.md)): interview the user relentlessly about every aspect of the plan until you reach a shared understanding, updating `CONTEXT.md` and ADRs inline as decisions crystallise.
 
-Ask the questions one at a time, waiting for feedback on each question before continuing.
+Ask the questions one at a time, waiting for feedback on each question before continuing. For each question, provide your recommended answer.
+
+**Facts vs. decisions.** If a *fact* can be found by exploring the codebase, look it up rather than asking. The *decisions* are the user's — put each one to the user and wait for their answer. Never answer a decision on the user's behalf, even when running inside another workflow.
+
+**Confirmation gate.** Do not write the final issue or enact the plan until the user confirms you have reached a shared understanding.
+
+**Too big for one session?** If the effort is clearly more than one session can hold — a greenfield project, a huge multi-part feature, fog in every direction — stop and suggest charting a map with [../wayfinder/SKILL.md](../wayfinder/SKILL.md) instead. Wayfinder breaks the planning itself into tickets and hands each one to a session this size.
 
 ## User inputs
 
@@ -14,7 +20,7 @@ Before starting the grilling, ask the user for an **issue number** (optional). I
 
 ## Before starting
 
-Explore the codebase to understand the current state of the code and existing domain terminology. Read `CONTEXT.md` and relevant ADRs if they exist. This grounds the grilling in what's actually built, not just what the user says.
+Explore the codebase to understand the current state of the code and existing domain terminology. Follow [../domain-modeling/DOMAIN-AWARENESS.md](../domain-modeling/DOMAIN-AWARENESS.md): read `CONTEXT.md` and relevant ADRs if they exist. This grounds the grilling in what's actually built, not just what the user says.
 
 If an existing issue was provided, read it and use it to inform your questions — challenge what's already written, identify gaps, and build on what's there rather than starting from scratch.
 
@@ -50,81 +56,20 @@ git push -u origin grill/issue-<issue-number>-<slug>
 
 If the user declines because the documentation belongs on the default branch, continue on the current branch but call out that these context and ADR changes should be committed and pushed before `init`.
 
-## Domain awareness
-
-During codebase exploration, also look for existing documentation:
-
-### File structure
-
-Most repos have a single context:
-
-```
-/
-├── CONTEXT.md
-├── docs/
-│   └── adr/
-│       ├── 0001-event-sourced-orders.md
-│       └── 0002-postgres-for-write-model.md
-└── src/
-```
-
-If a `CONTEXT-MAP.md` exists at the root, the repo has multiple contexts. The map points to where each one lives:
-
-```
-/
-├── CONTEXT-MAP.md
-├── docs/
-│   └── adr/                          ← system-wide decisions
-├── src/
-│   ├── ordering/
-│   │   ├── CONTEXT.md
-│   │   └── docs/adr/                 ← context-specific decisions
-│   └── billing/
-│       ├── CONTEXT.md
-│       └── docs/adr/
-```
-
-**If no `CONTEXT.md` exists, create one by the end of the session.** Even if it's incomplete — that's fine. Context is built up incrementally across sessions. Create it as soon as the first term is resolved, and keep adding to it as the grilling progresses. An incomplete `CONTEXT.md` is far more valuable than none at all.
-
-If no `docs/adr/` exists, create it when the first ADR is needed.
-
 ## During the session
 
-### Challenge against the glossary
+Apply the domain-modeling discipline from [../domain-modeling/SKILL.md](../domain-modeling/SKILL.md) throughout:
 
-When the user uses a term that conflicts with the existing language in `CONTEXT.md`, call it out immediately. "Your glossary defines 'cancellation' as X, but you seem to mean Y — which is it?"
-
-### Sharpen fuzzy language
-
-When the user uses vague or overloaded terms, propose a precise canonical term. "You're saying 'account' — do you mean the Customer or the User? Those are different things."
-
-### Discuss concrete scenarios
-
-When domain relationships are being discussed, stress-test them with specific scenarios. Invent scenarios that probe edge cases and force the user to be precise about the boundaries between concepts.
-
-### Cross-reference with code
-
-When the user states how something works, check whether the code agrees. If you find a contradiction, surface it: "Your code cancels entire Orders, but you just said partial cancellation is possible — which is right?"
-
-### Update CONTEXT.md inline
-
-When a term is resolved, update `CONTEXT.md` right there. Don't batch these up — capture them as they happen. Use the format in [CONTEXT-FORMAT.md](../domain/CONTEXT-FORMAT.md).
-
-Don't couple `CONTEXT.md` to implementation details. Only include terms that are meaningful to domain experts.
-
-### Offer ADRs with confirmation
-
-When a decision surfaces that meets all three criteria below, **ask the user before creating the ADR** — don't create it silently:
-
-1. **Hard to reverse** — the cost of changing your mind later is meaningful
-2. **Surprising without context** — a future reader will wonder "why did they do it this way?"
-3. **The result of a real trade-off** — there were genuine alternatives and you picked one for specific reasons
-
-If any of the three is missing, skip the ADR. If all three are true, ask: _"This feels like a decision worth recording as an ADR — want me to create one?"_ Use the format in [ADR-FORMAT.md](../domain/ADR-FORMAT.md).
+- **Challenge against the glossary** — call out terms that conflict with `CONTEXT.md` immediately.
+- **Sharpen fuzzy language** — propose a precise canonical term for vague or overloaded ones.
+- **Discuss concrete scenarios** — stress-test domain relationships with edge-case scenarios.
+- **Cross-reference with code** — when the user states how something works, check whether the code agrees, and surface contradictions.
+- **Update `CONTEXT.md` inline** — when a term is resolved, capture it right there using [../domain-modeling/CONTEXT-FORMAT.md](../domain-modeling/CONTEXT-FORMAT.md). Don't batch these up. If no `CONTEXT.md` exists, create one as soon as the first term is resolved — an incomplete `CONTEXT.md` is far more valuable than none at all.
+- **Offer ADRs with confirmation** — when a decision is hard to reverse, surprising without context, and the result of a real trade-off, ask: _"This feels like a decision worth recording as an ADR — want me to create one?"_ Use [../domain-modeling/ADR-FORMAT.md](../domain-modeling/ADR-FORMAT.md). If any of the three criteria is missing, skip the ADR. If no `docs/adr/` exists, create it when the first ADR is needed.
 
 ## Wrap-up
 
-Once all questions are resolved and the grilling is complete, synthesize the resolved decisions into a GitHub issue.
+Once all questions are resolved, the user has confirmed shared understanding, and the grilling is complete, synthesize the resolved decisions into a GitHub issue.
 
 The issue body must include:
 
