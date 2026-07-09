@@ -5,7 +5,7 @@ Issues, PRDs, and wayfinder maps for this repo live as GitHub issues. Use the `g
 ## Conventions
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc or `--body-file` for multi-line bodies.
-- **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
+- **Read an issue**: `gh issue view <number> --comments` for human-readable output. To filter comments with `jq` or inspect labels, request JSON instead: `gh issue view <number> --json body,comments,labels` (plain `--comments` emits formatted text that `jq` cannot parse and omits labels).
 - **List issues**: `gh issue list --state open --json number,title,body,labels,assignees` with appropriate `--label` and `--state` filters.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`

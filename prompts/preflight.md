@@ -56,6 +56,8 @@ Create the feature branch from `baseBranch`.
 
 Read the implementation sub-issues created by the `create-and-review-slices` step and append one implementation step per sub-issue, each immediately followed by its review-slice step, then final review and PR review.
 
+Order the sub-issues before building steps: sort them topologically by their blocking edges (read from native issue dependencies and `Blocked by` body lines) so every blocker's steps come before any slice it blocks; break ties by ascending issue number. Do not rely on the order GitHub returns sub-issues — the body-reference fallback in particular can return arbitrary order, and a blocked slice ordered before its blocker would fail the implement-slice blocker check on a valid plan.
+
 Read the top-level `reviewFixes` field from `{{WORKSPACE}}/state.json`. If it is missing, null, or false, default to false and do not append `review-fixes`. Append `review-fixes` only when `reviewFixes` is exactly true.
 
 Each implementation step must use this shape:

@@ -125,7 +125,13 @@ gh api --method POST repos/{{REPO}}/issues/<blocked-number>/dependencies/blocked
 
 `<blocker-db-id>` is the blocker's numeric database id from `gh api repos/{{REPO}}/issues/<blocker-number> --jq .id` — not the `#number` and not the GraphQL node ID.
 
-Before adding an edge, check it does not already exist (`gh api repos/{{REPO}}/issues/<blocked-number>/dependencies/blocked_by`). If the dependencies API is unavailable on this repo, keep the `Blocked by: #<n>` body lines as the only representation and note that in the output file. The body lines stay authoritative for the implement-slice blocker check either way.
+Sync the native dependencies to the final declared `Blocked by` set, in both directions:
+
+- List the existing edges first: `gh api repos/{{REPO}}/issues/<blocked-number>/dependencies/blocked_by`.
+- Add every declared edge that is missing.
+- Delete every existing edge that the final slice plan no longer declares: `gh api --method DELETE repos/{{REPO}}/issues/<blocked-number>/dependencies/blocked_by/<blocker-db-id>`. A stale native edge would keep the slice blocked forever, because implement-slice fails on any open native blocker.
+
+If the dependencies API is unavailable on this repo, keep the `Blocked by: #<n>` body lines as the only representation and note that in the output file. The body lines stay authoritative for the implement-slice blocker check either way.
 
 ## Idempotency
 
@@ -136,7 +142,7 @@ This step is idempotent:
 - Re-running must not create duplicate sub-issues.
 - If an intended slice already exists, update or reuse it rather than creating another issue.
 - If a sub-issue exists but is not linked under the parent, only run the `addSubIssue` mutation.
-- If a declared `Blocked by` edge has no native dependency yet, only add the missing dependency.
+- Re-sync native dependencies to the final declared `Blocked by` set: add missing edges and delete edges no longer declared.
 
 ## Output File
 

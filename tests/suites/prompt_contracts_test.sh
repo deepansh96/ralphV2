@@ -178,6 +178,8 @@ test_create_slices_prompt_defines_full_slice_creation_contract() {
   assert_contains "$prompt" "Blocked by"
   assert_contains "$prompt" "dependency order"
   assert_contains "$prompt" "dependencies/blocked_by"
+  assert_contains "$prompt" "--method DELETE"
+  assert_contains "$prompt" "delete edges no longer declared"
   assert_contains "$prompt" "expand"
   assert_contains "$prompt" "prefactor"
   assert_contains "$prompt" "scripts/council-review.sh"
@@ -214,6 +216,7 @@ test_preflight_prompt_defines_full_preflight_workflow_contract() {
   assert_contains "$prompt" "gh issue view {{ISSUE}} --repo {{REPO}}"
   assert_contains "$prompt" "sub-issues"
   assert_contains "$prompt" "state_add_steps"
+  assert_contains "$prompt" "topologically"
   assert_contains "$prompt" "implement-slice"
   assert_contains "$prompt" '"type": "review-slice"'
   assert_contains "$prompt" "review-slice-<sub-issue-number>"
