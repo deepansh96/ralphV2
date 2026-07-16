@@ -369,6 +369,12 @@ test_pr_review_prompt_defines_full_pr_workflow_contract() {
   assert_contains "$prompt" "PR comments"
   assert_contains "$prompt" "idempotent"
   assert_contains "$prompt" "Do not create duplicate PRs"
+  assert_contains "$prompt" "PR Target Branch"
+  assert_contains "$prompt" 'grill/*'
+  assert_contains "$prompt" "must not target the planning branch"
+  assert_contains "$prompt" "defaultBranchRef"
+  assert_contains "$prompt" "git merge --no-edit origin/{{BASE_BRANCH}}"
+  assert_contains "$prompt" "git merge --abort"
 }
 
 test_review_fixes_prompt_defines_full_review_fixes_workflow_contract() {

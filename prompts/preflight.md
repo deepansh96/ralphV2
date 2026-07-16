@@ -31,7 +31,7 @@ On any hard stop failure, set this step's status to `failed` in `{{WORKSPACE}}/s
 2. Run `git status --porcelain`. If the output is not empty, stop with clear guidance to commit or stash local changes before preflight. If the dirty files are grilling docs (`CONTEXT.md`, `docs/adr/`, or similar), tell the user to commit and push them to the branch that will be used as `.baseBranch`.
 3. Verify the named base branch exists locally or can be fetched from the remote before creating the feature branch.
 4. Verify the selected base branch contract:
-   - If `baseBranch` starts with `grill/`, it must exist on the remote (`git ls-remote --exit-code --heads origin {{BASE_BRANCH}}`) before feature branch creation. Ralph will create `feat/issue-{{ISSUE}}-<slug>` from that planning branch and the PR will target that planning branch.
+   - If `baseBranch` starts with `grill/`, it must exist on the remote (`git ls-remote --exit-code --heads origin {{BASE_BRANCH}}`) before feature branch creation. Ralph will create `feat/issue-{{ISSUE}}-<slug>` from that planning branch; at PR time the pr-review step merges the planning branch into the feature branch and targets the PR at the branch the planning branch was created from (the repository default branch).
    - If `baseBranch` is `main`, `master`, or the repository default branch, the user is asserting that any required grilling `CONTEXT.md` or ADR changes have already been committed and pushed or merged there.
    - For any other base branch, verify it is pushed or otherwise fetchable from `origin`; the PR will target that branch.
 

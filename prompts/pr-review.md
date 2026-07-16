@@ -20,7 +20,7 @@ If any operation fails irrecoverably (checkout, push, PR creation, code review i
 
 ## Goal
 
-Create an idempotent PR from the feature branch to the base branch, write a comprehensive PR description with a summary of changes, linked sub-issues, and a human QA checklist, run a council review for independent multi-agent feedback, then run the automated code review path for this step's assigned agent. Synthesize both reviews into a single combined review comment on the PR.
+Create an idempotent PR from the feature branch to the resolved target branch (see PR Target Branch), write a comprehensive PR description with a summary of changes, linked sub-issues, and a human QA checklist, run a council review for independent multi-agent feedback, then run the automated code review path for this step's assigned agent. Synthesize both reviews into a single combined review comment on the PR.
 
 ## Required Inputs
 
@@ -68,6 +68,31 @@ If upstream tracking is missing, push with:
 ```bash
 git push -u origin {{BRANCH}}
 ```
+
+## PR Target Branch
+
+Resolve the PR target branch before running any PR command:
+
+- If `{{BASE_BRANCH}}` does not match `grill/*`, the target branch is `{{BASE_BRANCH}}`. Use the commands below exactly as written.
+- If `{{BASE_BRANCH}}` matches `grill/*`, the feature branch is stacked on a planning branch. The PR must not target the planning branch. Instead:
+
+1. Resolve the target branch: the branch the planning branch was created from — the repository default branch:
+
+```bash
+gh repo view {{REPO}} --json defaultBranchRef -q .defaultBranchRef.name
+```
+
+2. Merge the planning branch into the feature branch so the PR carries the planning docs (`CONTEXT.md`, ADRs, issue shaping):
+
+```bash
+git fetch origin {{BASE_BRANCH}}
+git merge --no-edit origin/{{BASE_BRANCH}}
+git push
+```
+
+The merge is idempotent — if the feature branch already contains the planning branch, it is a no-op. If the merge reports conflicts, run `git merge --abort` and follow the Failure Protocol.
+
+3. In every subsequent command in this prompt, substitute the resolved target branch wherever `{{BASE_BRANCH}}` appears — the PR base, the council prompt text, and the automated review base. Do not open a PR against the planning branch.
 
 ## PR Body
 
@@ -119,6 +144,12 @@ If an open PR exists, update its title and body instead of creating another PR:
 
 ```bash
 gh pr edit <pr-number> --repo {{REPO}} --title "<title>" --body-file {{WORKSPACE}}/pr-body.md
+```
+
+When `{{BASE_BRANCH}}` matches `grill/*`, also check for an open PR from `{{BRANCH}}` that still targets the planning branch (from a run before the target branch was resolved). If one exists, retarget it instead of creating a duplicate:
+
+```bash
+gh pr edit <pr-number> --repo {{REPO}} --base <target-branch>
 ```
 
 If no open PR exists, create one:
@@ -201,7 +232,8 @@ Include:
 Complete normally only after:
 
 - The feature branch has been pushed.
-- An open PR exists from `{{BRANCH}}` to `{{BASE_BRANCH}}`.
+- An open PR exists from `{{BRANCH}}` to the resolved target branch.
+- When `{{BASE_BRANCH}}` matches `grill/*`: the planning branch has been merged into `{{BRANCH}}`, and the PR targets the branch the planning branch was created from — not the planning branch.
 - Re-running the step would update the existing PR instead of creating a duplicate.
 - The PR description includes a summary of changes, `Closes #{{ISSUE}}`, closing references for every implementation sub-issue, and a human QA checklist.
 - The council review has completed and findings are saved to `{{WORKSPACE}}/council-pr-review.md`.

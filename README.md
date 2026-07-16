@@ -66,7 +66,7 @@ main
       -> feat/issue-123-short-slug   # Ralph implementation branch
 ```
 
-In that flow, set `.baseBranch` to `grill/issue-123-short-slug`. Ralph opens the implementation PR against the planning branch. After implementation is accepted, merge the feature branch into the planning branch, then open or merge the planning branch into `main` when the whole feature is ready.
+In that flow, set `.baseBranch` to `grill/issue-123-short-slug`. At PR time, the pr-review step merges the planning branch into the feature branch (so the PR carries the planning docs) and opens the implementation PR against the branch the planning branch was created from — the repository default branch — not against the planning branch. One merge lands docs and implementation together; delete the planning branch afterwards.
 
 During `run`, Ralph executes:
 
