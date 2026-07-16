@@ -95,6 +95,7 @@ run_codex() {
   local prompt="$1"
   local log_file="$2"
   local project_root="${3:-}"
+  local model="${4:-}"
   local last_message_file start_ms end_ms duration_ms status
 
   if [[ -z "$project_root" ]]; then
@@ -103,6 +104,7 @@ run_codex() {
   last_message_file="$(mktemp)"
   run_codex_command() {
     printf '%s' "$prompt" | (cd "$project_root" && codex -a never exec \
+      ${model:+--model "$model"} \
       --skip-git-repo-check \
       --sandbox danger-full-access \
       -C "$project_root" \
@@ -137,7 +139,7 @@ agent_run_step() {
       run_claude "$prompt" "$log_file" "$project_root" "$model"
       ;;
     codex)
-      run_codex "$prompt" "$log_file" "$project_root"
+      run_codex "$prompt" "$log_file" "$project_root" "$model"
       ;;
     *)
       echo "Error: unsupported agent '$agent'" >&2

@@ -174,6 +174,59 @@ test_run_codex_retries_transient_errors_and_preserves_attempt_logs() {
   rm -f "$log_file" "$log_file".attempt-* "$metrics_file" "$count_file"
 }
 
+test_codex_step_passes_model_flag_when_set() {
+  local log_file metrics_file args_file
+
+  log_file="$(mktemp)"
+  metrics_file="$(mktemp)"
+  args_file="$(mktemp)"
+  rm -f "$log_file" "$log_file".attempt-*
+
+  (
+    source "$ROOT_DIR/scripts/metrics.sh"
+    source "$ROOT_DIR/scripts/agent.sh"
+
+    codex() {
+      printf '%s\n' "$*" > "$args_file"
+      cat >/dev/null
+      printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens":3}}'
+    }
+
+    agent_run_step '{"agent":"codex","model":"gpt-5-codex"}' "model prompt" "$log_file" "$PROJECT_ROOT" > "$metrics_file"
+  )
+
+  assert_contains "$(<"$args_file")" "--model gpt-5-codex"
+  assert_contains "$(<"$metrics_file")" '"provider": "codex"'
+
+  rm -f "$log_file" "$log_file".attempt-* "$metrics_file" "$args_file"
+}
+
+test_codex_step_omits_model_flag_when_unset() {
+  local log_file metrics_file args_file
+
+  log_file="$(mktemp)"
+  metrics_file="$(mktemp)"
+  args_file="$(mktemp)"
+  rm -f "$log_file" "$log_file".attempt-*
+
+  (
+    source "$ROOT_DIR/scripts/metrics.sh"
+    source "$ROOT_DIR/scripts/agent.sh"
+
+    codex() {
+      printf '%s\n' "$*" > "$args_file"
+      cat >/dev/null
+      printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens":3}}'
+    }
+
+    agent_run_step '{"agent":"codex"}' "no model prompt" "$log_file" "$PROJECT_ROOT" > "$metrics_file"
+  )
+
+  [[ "$(<"$args_file")" != *"--model"* ]] || fail "expected no --model flag when step has no model, got: $(<"$args_file")"
+
+  rm -f "$log_file" "$log_file".attempt-* "$metrics_file" "$args_file"
+}
+
 test_run_claude_fails_clean_json_error_without_retrying() {
   local log_file metrics_file status
 
@@ -458,6 +511,8 @@ test_unsupported_agent_marks_step_failed() {
 run_test test_claude_agent_step_renders_prompt_logs_metrics_and_summary
 run_test test_run_claude_retries_transient_error_and_preserves_attempt_logs
 run_test test_run_codex_retries_transient_errors_and_preserves_attempt_logs
+run_test test_codex_step_passes_model_flag_when_set
+run_test test_codex_step_omits_model_flag_when_unset
 run_test test_run_claude_fails_clean_json_error_without_retrying
 run_test test_run_claude_retries_empty_crash_log
 run_test test_run_claude_retries_truncated_crash_log
