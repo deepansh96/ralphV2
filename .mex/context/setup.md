@@ -17,7 +17,7 @@ edges:
     condition: when starting or observing a real Ralph run
   - target: patterns/recover-failed-or-stale-step.md
     condition: when status, logs, or stale PID checks fail
-last_updated: 2026-07-09
+last_updated: 2026-07-30
 ---
 
 # Setup
@@ -30,7 +30,7 @@ last_updated: 2026-07-09
 - `claude` CLI for context checks and Claude-owned steps.
 - `codex` CLI for default generated steps.
 - `council` CLI for council review steps.
-- Node.js 20+ only when using mex through `npx mex-agent`.
+- Node.js 20+ for the isolated Codex review and mex.
 
 ## First-time Setup
 
@@ -70,6 +70,6 @@ For this repository's own tests and maintenance, run commands from this reposito
 
 **Stale `in_progress` step:** Check PID files under `workspaces/<issue>/pids/`, reset the affected step to `pending` with `jq`, clear stale PID fields, remove stale pid files, and rerun.
 
-**Failed step blocks rerun:** Inspect `workspaces/<issue>/logs/<step-id>.log`, fix the root cause, set that step back to `pending`, clear metrics/notes if needed, validate with `jq`, and rerun.
+**Failed step:** Ralph first runs pending `alwaysRun` cleanup, then exits non-zero. Inspect `workspaces/<issue>/logs/<step-id>.log`, fix the root cause, set that step back to `pending`, clear metrics/notes if needed, validate with `jq`, and rerun.
 
 **Codex branch checkout fails in submodule use:** Ensure Codex runs from the target project root; `scripts/agent.sh` already wraps Codex in `(cd "$project_root" && codex ...)`.

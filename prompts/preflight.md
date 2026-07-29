@@ -12,7 +12,10 @@ Default agent: codex
 
 ## Goal
 
-Validate that implementation can start from an explicit base branch; create and push the feature branch; read the AFK implementation sub-issues from GitHub; and extend `{{WORKSPACE}}/state.json` with dynamic implementation and per-slice review steps, final review, PR review, and optional review-fixes steps.
+Validate that implementation can start from an explicit base branch; create and
+push the feature branch; read the AFK implementation sub-issues from GitHub;
+and append the dynamic implementation, checks, PR, QA, review, and cleanup
+steps.
 
 ## Required Inputs
 
@@ -31,7 +34,7 @@ On any hard stop failure, set this step's status to `failed` in `{{WORKSPACE}}/s
 2. Run `git status --porcelain`. If the output is not empty, stop with clear guidance to commit or stash local changes before preflight. If the dirty files are grilling docs (`CONTEXT.md`, `docs/adr/`, or similar), tell the user to commit and push them to the branch that will be used as `.baseBranch`.
 3. Verify the named base branch exists locally or can be fetched from the remote before creating the feature branch.
 4. Verify the selected base branch contract:
-   - If `baseBranch` starts with `grill/`, it must exist on the remote (`git ls-remote --exit-code --heads origin {{BASE_BRANCH}}`) before feature branch creation. Ralph will create `feat/issue-{{ISSUE}}-<slug>` from that planning branch; at PR time the pr-review step merges the planning branch into the feature branch and targets the PR at the branch the planning branch was created from (the repository default branch).
+   - If `baseBranch` starts with `grill/`, it must exist on the remote (`git ls-remote --exit-code --heads origin {{BASE_BRANCH}}`) before feature branch creation. Ralph will create `feat/issue-{{ISSUE}}-<slug>` from that planning branch; at PR time the pr-creation step merges the planning branch into the feature branch and targets the PR at the branch the planning branch was created from (the repository default branch).
    - If `baseBranch` is `main`, `master`, or the repository default branch, the user is asserting that any required grilling `CONTEXT.md` or ADR changes have already been committed and pushed or merged there.
    - For any other base branch, verify it is pushed or otherwise fetchable from `origin`; the PR will target that branch.
 
@@ -54,11 +57,11 @@ Create the feature branch from `baseBranch`.
 
 ## Dynamic Steps
 
-Read the implementation sub-issues created by the `create-and-review-slices` step and append one implementation step per sub-issue, each immediately followed by its review-slice step, then final review and PR review.
+Read the implementation sub-issues created by the
+`create-and-review-slices` step and append one implementation step per
+sub-issue, followed by the terminal steps below.
 
 Order the sub-issues before building steps: sort them topologically by their blocking edges (read from native issue dependencies and `Blocked by` body lines) so every blocker's steps come before any slice it blocks; break ties by ascending issue number. Do not rely on the order GitHub returns sub-issues — the body-reference fallback in particular can return arbitrary order, and a blocked slice ordered before its blocker would fail the implement-slice blocker check on a valid plan.
-
-Read the top-level `reviewFixes` field from `{{WORKSPACE}}/state.json`. If it is missing, null, or false, default to false and do not append `review-fixes`. Append `review-fixes` only when `reviewFixes` is exactly true.
 
 Each implementation step must use this shape:
 
@@ -77,32 +80,13 @@ Each implementation step must use this shape:
 }
 ```
 
-Immediately after each implementation step, append a review-slice step for the same sub-issue. It reviews the slice's diff along the Standards and Spec axes and fixes what it finds:
+Append these steps after all implementation steps, in this exact order:
 
 ```json
 {
-  "id": "review-slice-<sub-issue-number>",
+  "id": "final-checks",
   "phase": "dynamic",
-  "type": "review-slice",
-  "status": "pending",
-  "agent": "codex",
-  "reviewers": [],
-  "hitl": false,
-  "sub_issue": <sub-issue-number>,
-  "metrics": null,
-  "notes": ""
-}
-```
-
-The step order must interleave: `implement-slice-A`, `review-slice-A`, `implement-slice-B`, `review-slice-B`, and so on — each slice is reviewed before the next slice is implemented.
-
-Append these final steps after all implementation steps:
-
-```json
-{
-  "id": "final-review",
-  "phase": "dynamic",
-  "type": "final-review",
+  "type": "final-checks",
   "status": "pending",
   "agent": "codex",
   "reviewers": [],
@@ -114,29 +98,70 @@ Append these final steps after all implementation steps:
 
 ```json
 {
-  "id": "pr-review",
+  "id": "pr-creation",
   "phase": "dynamic",
-  "type": "pr-review",
+  "type": "pr-creation",
   "status": "pending",
   "agent": "codex",
-  "reviewers": ["codex", "gemini", "kimi", "deepseek", "claude-opus", "claude-sonnet"],
+  "reviewers": [],
   "hitl": false,
   "metrics": null,
   "notes": ""
 }
 ```
 
-If `reviewFixes` is true, append this optional step after `pr-review`:
-
 ```json
 {
-  "id": "review-fixes",
+  "id": "prepare-qa-checklist",
   "phase": "dynamic",
-  "type": "review-fixes",
+  "type": "prepare-qa-checklist",
   "status": "pending",
   "agent": "codex",
   "reviewers": [],
   "hitl": false,
+  "metrics": null,
+  "notes": ""
+}
+```
+
+```json
+{
+  "id": "runthrough-qa-checklist",
+  "phase": "dynamic",
+  "type": "runthrough-qa-checklist",
+  "status": "pending",
+  "agent": "codex",
+  "reviewers": [],
+  "hitl": false,
+  "metrics": null,
+  "notes": ""
+}
+```
+
+```json
+{
+  "id": "multi-axis-pr-review",
+  "phase": "dynamic",
+  "type": "multi-axis-pr-review",
+  "status": "pending",
+  "agent": "codex",
+  "reviewers": [],
+  "hitl": false,
+  "metrics": null,
+  "notes": ""
+}
+```
+
+```json
+{
+  "id": "cleanup-local-resources",
+  "phase": "dynamic",
+  "type": "cleanup-local-resources",
+  "status": "pending",
+  "agent": "codex",
+  "reviewers": [],
+  "hitl": false,
+  "alwaysRun": true,
   "metrics": null,
   "notes": ""
 }
@@ -154,6 +179,13 @@ Preflight must be safe to re-run.
 - If some dynamic steps are missing, append only the missing steps in the correct order.
 - Preserve existing completed, in-progress, blocked, failed, and pending statuses for steps already present.
 
+Initialize `{{WORKSPACE}}/local-resources.json` to this valid JSON when it does
+not exist. Do not overwrite an existing ledger:
+
+```json
+{"processes":[],"containers":[],"tempPaths":[],"sessions":[]}
+```
+
 ## Verification
 
 After updating state, run:
@@ -165,9 +197,13 @@ After updating state, run:
 Confirm the status output shows the fixed pipeline plus all dynamic steps:
 
 - N `implement-slice` steps with `agent` set to `codex` and the correct `sub_issue` value for each GitHub sub-issue
-- N `review-slice` steps, one immediately after each `implement-slice` step, with the matching `sub_issue` value
-- `final-review` with `agent` set to `codex`
-- `pr-review` with `agent` set to `codex`
-- `review-fixes` with `agent` set to `codex` only when `reviewFixes` is true
+- no `review-slice` or `review-fixes` steps
+- `final-checks`, `pr-creation`, `prepare-qa-checklist`,
+  `runthrough-qa-checklist`, and `multi-axis-pr-review` with `agent` set to
+  `codex`
+- `cleanup-local-resources` last, with `agent` set to `codex` and
+  `alwaysRun: true`
 
-Complete normally only after the branch is pushed, the `branch` field is updated, sub-issues are read from GitHub, and state contains the full dynamic pipeline for the current opt-in settings.
+Complete normally only after the branch is pushed, the `branch` field is
+updated, sub-issues are read from GitHub, the resource ledger exists, and
+state contains the full dynamic pipeline.

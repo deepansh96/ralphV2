@@ -7,7 +7,7 @@ triggers:
   - "prompt contract"
   - "preflight"
   - "implement-slice"
-  - "review-fixes"
+  - "cleanup-local-resources"
 edges:
   - target: context/architecture.md
     condition: when mapping the new behavior into the run loop and state flow
@@ -15,7 +15,7 @@ edges:
     condition: when editing shell, prompts, state fields, or tests
   - target: context/decisions.md
     condition: when changing default agent, branch, review, or HITL policy
-last_updated: 2026-07-09
+last_updated: 2026-07-30
 ---
 
 # Change Pipeline Behavior

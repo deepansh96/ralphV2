@@ -20,7 +20,7 @@ edges:
     condition: when installing or validating local command availability
   - target: patterns/change-pipeline-behavior.md
     condition: when a stack choice affects a new or changed pipeline step
-last_updated: 2026-07-09
+last_updated: 2026-07-30
 ---
 
 # Stack
@@ -39,12 +39,13 @@ last_updated: 2026-07-09
 - **`gh`** - GitHub API access; prompts rely on issue body edits, issue views, sub-issue creation, and PR operations.
 - **`claude` CLI** - used for context completeness checks and optional Claude-owned steps.
 - **`codex` CLI** - default step executor for generated state; run from project root in `scripts/agent.sh`.
-- **`council` CLI** - fan-out review runner for decision, PRD, slice, and review-fix workflows.
+- **Node.js** - runs the bundled isolated Codex App Server reviewer in `skills/run-codex-review/scripts/review.mjs`.
+- **`council` CLI** - fan-out review runner for decision, PRD, and slice-planning workflows.
 - **Shell test fakes** - tests fake `claude`, `codex`, `gh`, and `council`; never make deterministic tests depend on real services.
 
 ## What We Deliberately Do NOT Use
 
-- No Node, Python, or compiled app runtime for the core pipeline; keep shell changes shell-native unless a real need appears.
+- No Python or compiled app runtime for the core pipeline; Node is limited to the bundled isolated Codex reviewer and mex.
 - No real external services in tests; use fake commands under `tests/lib/`.
 - No background mode from Codex automation; foreground Ralph plus separate status polling is safer.
 - No implicit branch defaults; `.baseBranch` must be set explicitly before preflight.
@@ -52,6 +53,6 @@ last_updated: 2026-07-09
 
 ## Version Constraints
 
-- `jq`, `git`, and `gh` must be available on PATH for normal operation.
+- `jq`, `git`, `gh`, and Node.js must be available on PATH for the full pipeline.
 - `claude`, `codex`, and `council` must be available only for steps or prompts that invoke them.
 - mex requires Node.js 20+ when using `npx mex-agent`.

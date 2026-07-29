@@ -1,6 +1,8 @@
 # Ralph v2
 
-Ralph v2 is a GitHub issue-driven pipeline that grills, plans, implements, reviews, and opens a PR for one feature.
+Ralph v2 is a GitHub issue-driven pipeline that grills, plans, implements,
+checks, opens a PR, runs local QA, reviews, and cleans local resources for one
+feature.
 
 ## Start Here
 

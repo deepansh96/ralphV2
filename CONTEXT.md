@@ -36,6 +36,24 @@ _Avoid_: committee, panel
 An agent participating in a council review. Each review step lists its reviewers in the `reviewers` array.
 _Avoid_: evaluator, critic
 
+**Review Axis**:
+One independent perspective applied to a PR by the multi-axis review step. Each axis is defined by one bundled review skill.
+_Avoid_: council member, review round
+
+### Local QA
+
+**Local QA Checklist**:
+A PR comment containing manual behavior checks that can be executed entirely on the local machine with external boundaries stubbed.
+_Avoid_: test plan, deployed QA
+
+**Local Resource**:
+A process, container, browser session, computer-use session, temporary file, or worktree change created by a pipeline step and owned by that pipeline.
+_Avoid_: arbitrary local process, user file
+
+**Always-Run Step**:
+A cleanup step that Ralph executes after normal completion or after another step fails.
+_Avoid_: finally block, post-merge cleanup
+
 ### Planning
 
 **PRD**:
@@ -87,9 +105,11 @@ _Avoid_: manual review, approval gate
 - A **Pipeline** run processes exactly one GitHub issue
 - A **Pipeline** contains ordered **Steps** (fixed phase first, then dynamic phase)
 - Each **Step** is executed by one **Agent**
-- Review **Steps** invoke **Council** with one or more **Reviewers**
+- Council review **Steps** invoke **Council** with one or more **Reviewers**
 - The `create-and-review-slices` step produces **Slices**, each becoming a GitHub sub-issue with its **Blocking Edges**
-- Each **Slice** maps to one `implement-slice` **Step** followed by one `review-slice` **Step** (dynamic phase)
+- Each **Slice** maps to one `implement-slice` **Step** in the dynamic phase
+- The post-implementation **Steps** check the branch, create the PR, prepare and execute the **Local QA Checklist**, and run four **Review Axes**
+- `cleanup-local-resources` is an **Always-Run Step** that removes pipeline-owned **Local Resources**
 - A wayfinder **Map**'s destination issue is what `init` consumes; the **Map** itself stays outside the **Pipeline**
 - A **Workspace** holds the **State** and artifacts for one pipeline run
 
@@ -103,4 +123,4 @@ _Avoid_: manual review, approval gate
 
 ## Flagged ambiguities
 
-- "review" can mean council review (multi-agent), code-review plugin (Claude sub-agents), or the general concept. Use **council review** or **code-review plugin** when specificity matters.
+- "review" can mean council review, one **Review Axis**, the consolidated multi-axis PR review, or the general concept. Name the specific review when it matters.

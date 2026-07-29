@@ -18,7 +18,7 @@ edges:
     condition: when editing a step prompt, script helper, or test suite
   - target: patterns/recover-failed-or-stale-step.md
     condition: when changing state recovery or PID behavior
-last_updated: 2026-07-09
+last_updated: 2026-07-30
 ---
 
 # Conventions
@@ -27,7 +27,7 @@ last_updated: 2026-07-09
 
 - Step types use kebab-case and map directly to `prompts/<step-type>.md`.
 - Step IDs are stable strings such as `create-and-review-prd`, `preflight`, or `implement-slice-14`.
-- State fields use lower camelCase for JSON keys already in the schema, such as `baseBranch`, `reviewFixes`, `projectRoot`, and `createdAt`.
+- State fields use lower camelCase for JSON keys already in the schema, such as `baseBranch`, `projectRoot`, `createdAt`, and `alwaysRun`.
 - Shell functions use snake_case and are grouped by helper file, for example `state_update_step` in `scripts/state.sh`.
 - Test suite files end in `_test.sh` and live under `tests/suites/`.
 - Workflow vocabulary uses pipeline, step, step type, phase, agent, council, reviewer, PRD, slice, seam, blocking edge, AFK, workspace, state, HITL, map, and frontier as defined in `CONTEXT.md`.

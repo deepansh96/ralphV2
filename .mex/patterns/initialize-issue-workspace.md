@@ -11,10 +11,10 @@ edges:
   - target: context/setup.md
     condition: when checking prerequisites or first-time setup commands
   - target: context/decisions.md
-    condition: when reasoning about baseBranch, review rounds, or reviewFixes defaults
+    condition: when reasoning about baseBranch or review-round defaults
   - target: context/conventions.md
     condition: when editing or validating state JSON
-last_updated: 2026-07-09
+last_updated: 2026-07-30
 ---
 
 # Initialize Issue Workspace
@@ -30,7 +30,7 @@ Load `context/setup.md`, `context/decisions.md`, and `context/conventions.md`. R
 3. Run or follow `prompts/init.md` for the issue and repo.
 4. Create exactly one `workspaces/N/state.json`; do not overwrite an existing initialized workspace.
 5. Keep `"baseBranch": null` and `"branch": null` during init unless the user separately tells you to set `baseBranch` after init.
-6. Set review-decision steps, PRD/slice `reviewRounds`, and `reviewFixes` only when explicitly requested.
+6. Set review-decision steps and PRD/slice `reviewRounds` only when explicitly requested.
 7. Validate with `jq . workspaces/N/state.json`.
 8. Confirm `./ralph.sh status --issue N` shows all steps pending.
 
@@ -52,7 +52,7 @@ Load `context/setup.md`, `context/decisions.md`, and `context/conventions.md`. R
 ## Debug
 
 - If `gh issue view` fails, check repo owner/name and authentication.
-- If status fails, validate JSON and verify required fields: `issue`, `repo`, `baseBranch`, `branch`, `reviewFixes`, `projectRoot`, `status`, `createdAt`, and `steps`.
+- If status fails, validate JSON and verify required fields: `issue`, `repo`, `baseBranch`, `branch`, `projectRoot`, `status`, `createdAt`, and `steps`.
 - If preflight later fails, check `baseBranch` and clean-tree status first.
 
 ## Update Scaffold

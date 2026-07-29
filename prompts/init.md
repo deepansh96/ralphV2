@@ -35,7 +35,6 @@ If the user does not mention review-decisions rounds, use the default of 0. Incl
 - Write exactly one state file at `ralph-v2/workspaces/{{ISSUE}}/state.json`.
 - Running init on an already-initialized workspace must not overwrite existing state. If `ralph-v2/workspaces/{{ISSUE}}/state.json` already exists, stop with a clear warning or error.
 - Set both `"baseBranch": null` and `"branch": null`. Do not infer defaults.
-- Set `"reviewFixes": false` unless the user explicitly opts into the review-fixes step.
 - Capture `"projectRoot"` by running `git rev-parse --show-toplevel` from the project root (not from inside `ralph-v2/`). Store the absolute path.
 - Hardcode the agent defaults shown below. Do not use runtime agent detection.
 - After writing state, verify it with `jq` and confirm that `./ralph-v2/ralph.sh status --issue {{ISSUE}}` shows all steps with pending status.
@@ -50,7 +49,6 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
   "repo": "{{REPO}}",
   "baseBranch": null,
   "branch": null,
-  "reviewFixes": false,
   "projectRoot": "<absolute path from git rev-parse --show-toplevel>",
   "status": "initialized",
   "createdAt": "<ISO-8601 UTC timestamp>",
@@ -137,12 +135,6 @@ When the user explicitly opts into review-decisions, prepend these entries to `s
 - **2:** Two council review rounds. Draft → council → incorporate → council → incorporate.
 
 Default is 0. If the user requests a different number of review rounds for these steps (e.g. "with 1 review round on PRD", "with 2 review rounds on slices"), set the value accordingly. Each step's `reviewRounds` is independent.
-
-**`reviewFixes` rule:**
-- **false (default):** Preflight omits the `review-fixes` step. The pipeline ends after `pr-review`.
-- **true:** Preflight appends `review-fixes` after `pr-review`.
-
-Set `reviewFixes` to true only when the user explicitly opts in, e.g. "include review fixes" or "run review-fixes after PR review".
 
 The actual `state.json` output must be valid JSON (no comments). The comments above are for your reference only.
 

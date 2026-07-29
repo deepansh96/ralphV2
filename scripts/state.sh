@@ -15,9 +15,18 @@ state_validate() {
     return 1
   fi
 
-  if jq -e '.steps[]? | select(.status == "failed")' "$state_file" >/dev/null; then
+  if jq -e '.steps[]? | select(.status == "failed")' "$state_file" >/dev/null \
+    && ! jq -e '.steps[]? | select(.alwaysRun == true and (.status == "pending" or .status == "in_progress"))' "$state_file" >/dev/null; then
     echo "Error: state has failed steps; set status to pending or completed before re-running" >&2
     return 1
+  fi
+
+  if ! jq -e '.steps[]? | select(.status == "failed")' "$state_file" >/dev/null \
+    && jq -e '.steps[]? | select(.status == "pending" and .alwaysRun != true)' "$state_file" >/dev/null; then
+    while IFS= read -r step_id; do
+      [[ -n "$step_id" ]] || continue
+      state_update_step "$state_file" "$step_id" "pending"
+    done < <(jq -r '.steps[]? | select(.status == "completed" and .alwaysRun == true) | .id' "$state_file")
   fi
 
   stale_threshold="${RALPH_STALE_THRESHOLD:-3600}"
@@ -65,7 +74,13 @@ state_get_current_step() {
   local state_file="$1"
   local step
 
-  step="$(jq -c 'first(.steps[]? | select(.status == "pending")) // empty' "$state_file")"
+  step="$(jq -c '
+    if any(.steps[]?; .status == "failed") then
+      first(.steps[]? | select(.status == "pending" and .alwaysRun == true)) // empty
+    else
+      first(.steps[]? | select(.status == "pending")) // empty
+    end
+  ' "$state_file")"
   [[ -n "$step" ]] || return 1
   printf '%s\n' "$step"
 }

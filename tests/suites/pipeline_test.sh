@@ -539,126 +539,16 @@ test_implement_slice_pipeline_runs_codex_with_sub_issue_context() {
   assert_contains "$output" "codex"
 }
 
-test_final_and_pr_review_pipeline_completes_with_idempotent_pr() {
-  local issue fake_bin output final_file pr_body_file pr_review_file create_count final_status pr_status pr_status_after_rerun
+test_post_implementation_pipeline_completes_with_idempotent_pr_comments() {
+  local issue fake_bin output pr_status cleanup_status create_count qa_count review_count
 
   issue="9021"
   fake_bin="$WORKSPACES_DIR/fake-bin"
   write_valid_context
   rm -rf "${WORKSPACES_DIR:?}/$issue" "$fake_bin"
-  install_fake_final_and_pr_review_claude "$fake_bin"
+  install_fake_post_implementation_claude "$fake_bin"
   mkdir -p "$WORKSPACES_DIR/$issue/logs"
-  jq -n \
-    --arg issue "$issue" \
-    '{
-      issue: ($issue | tonumber),
-      repo: "deepansh96/ralph",
-      baseBranch: "main",
-      branch: "feat/issue-9021-final-pr-workflow",
-      status: "initialized",
-      steps: [
-        {
-          id: "implement-slice-9111",
-          phase: "dynamic",
-          type: "implement-slice",
-          agent: "codex",
-          reviewers: [],
-          hitl: false,
-          status: "completed",
-          sub_issue: 9111,
-          metrics: {},
-          notes: ""
-        },
-        {
-          id: "final-review",
-          phase: "dynamic",
-          type: "final-review",
-          agent: "claude",
-          reviewers: [],
-          hitl: false,
-          status: "pending",
-          metrics: {},
-          notes: ""
-        },
-        {
-          id: "pr-review",
-          phase: "dynamic",
-          type: "pr-review",
-          agent: "claude",
-          reviewers: ["codex", "gemini", "kimi", "deepseek"],
-          hitl: false,
-          status: "pending",
-          metrics: {},
-          notes: ""
-        },
-        {
-          id: "review-fixes",
-          phase: "dynamic",
-          type: "review-fixes",
-          agent: "claude",
-          reviewers: [],
-          hitl: false,
-          status: "pending",
-          metrics: {},
-          notes: ""
-        }
-      ]
-    }' > "$WORKSPACES_DIR/$issue/state.json"
-
-  output="$(PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue")"
-
-  final_file="$WORKSPACES_DIR/$issue/final-review.md"
-  pr_body_file="$WORKSPACES_DIR/$issue/pr-body.md"
-  pr_review_file="$WORKSPACES_DIR/$issue/pr-review.md"
-  review_fixes_file="$WORKSPACES_DIR/$issue/review-fixes.md"
-  review_fixes_comment="$WORKSPACES_DIR/$issue/review-fixes-comment.md"
-  final_status="$(jq -r '.steps[] | select(.id == "final-review") | .status' "$WORKSPACES_DIR/$issue/state.json")"
-  pr_status="$(jq -r '.steps[] | select(.id == "pr-review") | .status' "$WORKSPACES_DIR/$issue/state.json")"
-  rf_status="$(jq -r '.steps[] | select(.id == "review-fixes") | .status' "$WORKSPACES_DIR/$issue/state.json")"
-
-  [[ "$final_status" == "completed" ]] || fail "expected final-review to complete, got $final_status"
-  [[ "$pr_status" == "completed" ]] || fail "expected pr-review to complete, got $pr_status"
-  [[ "$rf_status" == "completed" ]] || fail "expected review-fixes to complete, got $rf_status"
-  [[ -f "$final_file" ]] || fail "expected final-review.md to exist"
-  [[ -f "$pr_body_file" ]] || fail "expected PR body file"
-  [[ -f "$pr_review_file" ]] || fail "expected PR review record"
-  [[ -f "$review_fixes_file" ]] || fail "expected review-fixes.md to exist"
-  [[ -f "$review_fixes_comment" ]] || fail "expected review-fixes-comment.md to exist"
-  assert_contains "$(<"$final_file")" "Acceptance criteria verification"
-  assert_contains "$(<"$pr_body_file")" "## Summary"
-  assert_contains "$(<"$pr_body_file")" "Closes #9021"
-  assert_contains "$(<"$pr_body_file")" "Closes #9111"
-  assert_contains "$(<"$pr_body_file")" "Human QA Checklist"
-  assert_contains "$(<"$pr_review_file")" "code-review:code-review invoked"
-  assert_contains "$(<"$review_fixes_file")" "Findings Evaluated"
-  assert_contains "$(<"$review_fixes_file")" "Fixed"
-  assert_contains "$(<"$review_fixes_comment")" "Review Fixes Assessment"
-  assert_contains "$output" "final-review"
-  assert_contains "$output" "pr-review"
-  assert_contains "$output" "review-fixes"
-
-  jq '(.steps[] | select(.id == "pr-review") | .status) = "pending"
-    | (.steps[] | select(.id == "review-fixes") | .status) = "pending"' "$WORKSPACES_DIR/$issue/state.json" > "$WORKSPACES_DIR/$issue/state.json.tmp"
-  mv "$WORKSPACES_DIR/$issue/state.json.tmp" "$WORKSPACES_DIR/$issue/state.json"
-
-  PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" >/dev/null
-
-  pr_status_after_rerun="$(jq -r '.steps[] | select(.id == "pr-review") | .status' "$WORKSPACES_DIR/$issue/state.json")"
-  create_count="$(<"$WORKSPACES_DIR/$issue/github-pr-create-count")"
-  [[ "$pr_status_after_rerun" == "completed" ]] || fail "expected pr-review rerun to complete, got $pr_status_after_rerun"
-  [[ "$create_count" == "1" ]] || fail "expected rerun not to create duplicate PRs, got create count $create_count"
-  assert_contains "$(<"$pr_review_file")" "Action: updated"
-}
-
-test_pr_review_pipeline_uses_codex_review_path_when_step_agent_is_codex() {
-  local issue fake_bin output status_value input_tokens output_tokens pr_review_file codex_review_file log_file
-
-  issue="9050"
-  fake_bin="$WORKSPACES_DIR/fake-bin"
-  write_valid_context
-  rm -rf "${WORKSPACES_DIR:?}/$issue" "$fake_bin"
-  install_fake_codex_pr_review "$fake_bin"
-  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  printf '%s\n' '{"processes":[],"containers":[],"tempPaths":[],"sessions":[]}' > "$WORKSPACES_DIR/$issue/local-resources.json"
   jq -n \
     --arg issue "$issue" \
     --arg project_root "$PROJECT_ROOT" \
@@ -666,44 +556,87 @@ test_pr_review_pipeline_uses_codex_review_path_when_step_agent_is_codex() {
       issue: ($issue | tonumber),
       repo: "deepansh96/ralph",
       baseBranch: "main",
-      branch: "feat/issue-9050-codex-pr-review",
+      branch: "feat/issue-9021-post-implementation",
       projectRoot: $project_root,
       status: "initialized",
       steps: [
-        {
-          id: "pr-review",
-          phase: "dynamic",
-          type: "pr-review",
-          agent: "codex",
-          reviewers: ["codex", "gemini"],
-          hitl: false,
-          status: "pending",
-          metrics: {},
-          notes: ""
-        }
+        {id: "implement-slice-9111", phase: "dynamic", type: "implement-slice", agent: "codex", status: "completed", sub_issue: 9111},
+        {id: "final-checks", phase: "dynamic", type: "final-checks", agent: "claude", status: "pending"},
+        {id: "pr-creation", phase: "dynamic", type: "pr-creation", agent: "claude", status: "pending"},
+        {id: "prepare-qa-checklist", phase: "dynamic", type: "prepare-qa-checklist", agent: "claude", status: "pending"},
+        {id: "runthrough-qa-checklist", phase: "dynamic", type: "runthrough-qa-checklist", agent: "claude", status: "pending"},
+        {id: "multi-axis-pr-review", phase: "dynamic", type: "multi-axis-pr-review", agent: "claude", status: "pending"},
+        {id: "cleanup-local-resources", phase: "dynamic", type: "cleanup-local-resources", agent: "claude", alwaysRun: true, status: "pending"}
       ]
     }' > "$WORKSPACES_DIR/$issue/state.json"
 
   output="$(PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue")"
 
-  status_value="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
-  input_tokens="$(jq -r '.steps[0].metrics.input_tokens' "$WORKSPACES_DIR/$issue/state.json")"
-  output_tokens="$(jq -r '.steps[0].metrics.output_tokens' "$WORKSPACES_DIR/$issue/state.json")"
-  pr_review_file="$WORKSPACES_DIR/$issue/pr-review.md"
-  codex_review_file="$WORKSPACES_DIR/$issue/codex-pr-review.md"
-  log_file="$WORKSPACES_DIR/$issue/logs/pr-review.log"
+  pr_status="$(jq -r '.steps[] | select(.id == "pr-creation") | .status' "$WORKSPACES_DIR/$issue/state.json")"
+  cleanup_status="$(jq -r '.steps[] | select(.id == "cleanup-local-resources") | .status' "$WORKSPACES_DIR/$issue/state.json")"
+  [[ "$pr_status" == "completed" ]] || fail "expected pr-creation to complete"
+  [[ "$cleanup_status" == "completed" ]] || fail "expected cleanup to complete"
+  [[ -f "$WORKSPACES_DIR/$issue/final-checks.md" ]] || fail "expected final-checks artifact"
+  [[ -f "$WORKSPACES_DIR/$issue/pr-creation.md" ]] || fail "expected pr-creation artifact"
+  [[ -f "$WORKSPACES_DIR/$issue/cleanup-local-resources.md" ]] || fail "expected cleanup artifact"
+  assert_contains "$(<"$WORKSPACES_DIR/$issue/pr-body.md")" "Closes #9021"
+  [[ "$(<"$WORKSPACES_DIR/$issue/pr-body.md")" != *"QA Checklist"* ]] || fail "expected PR body without QA"
+  assert_contains "$(<"$WORKSPACES_DIR/$issue/github-qa-comment.md")" "[PASS]"
+  assert_contains "$(<"$WORKSPACES_DIR/$issue/github-multi-axis-comment.md")" "ralph:multi-axis-review"
+  assert_contains "$output" "cleanup-local-resources"
 
-  [[ "$status_value" == "completed" ]] || fail "expected codex pr-review step to complete, got $status_value"
-  [[ "$input_tokens" == "31" ]] || fail "expected codex pr-review input_tokens metric, got $input_tokens"
-  [[ "$output_tokens" == "29" ]] || fail "expected codex pr-review output_tokens metric, got $output_tokens"
-  [[ -f "$pr_review_file" ]] || fail "expected pr-review.md to exist"
-  [[ -f "$codex_review_file" ]] || fail "expected codex-pr-review.md to exist"
-  [[ -f "$log_file" ]] || fail "expected pr-review log to exist"
-  assert_contains "$(<"$pr_review_file")" "Automated review source: codex review"
-  assert_contains "$(<"$codex_review_file")" "No findings"
-  assert_contains "$(tr '\n' ' ' < "$log_file")" "turn.completed"
-  assert_contains "$output" "pr-review"
-  assert_contains "$output" "codex"
+  jq '(.steps[] | select(.id == "pr-creation" or .id == "prepare-qa-checklist" or .id == "multi-axis-pr-review" or .id == "cleanup-local-resources") | .status) = "pending"' \
+    "$WORKSPACES_DIR/$issue/state.json" > "$WORKSPACES_DIR/$issue/state.json.tmp"
+  mv "$WORKSPACES_DIR/$issue/state.json.tmp" "$WORKSPACES_DIR/$issue/state.json"
+
+  PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" >/dev/null
+
+  create_count="$(<"$WORKSPACES_DIR/$issue/github-pr-create-count")"
+  qa_count="$(<"$WORKSPACES_DIR/$issue/qa-comment-count")"
+  review_count="$(<"$WORKSPACES_DIR/$issue/multi-axis-comment-count")"
+  [[ "$create_count" == "1" ]] || fail "expected one PR creation"
+  [[ "$qa_count" == "1" ]] || fail "expected one QA comment"
+  [[ "$review_count" == "1" ]] || fail "expected one multi-axis comment"
+  assert_contains "$(<"$WORKSPACES_DIR/$issue/pr-creation.md")" "updated"
+}
+
+test_cleanup_runs_after_an_earlier_step_fails() {
+  local issue fake_bin status final_status skipped_status cleanup_status
+
+  issue="9052"
+  fake_bin="$WORKSPACES_DIR/fake-bin"
+  write_valid_context
+  rm -rf "${WORKSPACES_DIR:?}/$issue" "$fake_bin"
+  install_fake_failure_then_cleanup_claude "$fake_bin"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  jq -n \
+    --arg project_root "$PROJECT_ROOT" \
+    '{
+      issue: 9052,
+      repo: "deepansh96/ralph",
+      baseBranch: "main",
+      branch: "feat/issue-9052-cleanup",
+      projectRoot: $project_root,
+      steps: [
+        {id: "final-checks", type: "final-checks", agent: "claude", status: "pending"},
+        {id: "pr-creation", type: "pr-creation", agent: "claude", status: "pending"},
+        {id: "cleanup-local-resources", type: "cleanup-local-resources", agent: "claude", status: "pending", alwaysRun: true}
+      ]
+    }' > "$WORKSPACES_DIR/$issue/state.json"
+
+  set +e
+  PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" >/dev/null
+  status=$?
+  set -e
+
+  final_status="$(jq -r '.steps[] | select(.id == "final-checks") | .status' "$WORKSPACES_DIR/$issue/state.json")"
+  skipped_status="$(jq -r '.steps[] | select(.id == "pr-creation") | .status' "$WORKSPACES_DIR/$issue/state.json")"
+  cleanup_status="$(jq -r '.steps[] | select(.id == "cleanup-local-resources") | .status' "$WORKSPACES_DIR/$issue/state.json")"
+  [[ "$status" -ne 0 ]] || fail "expected pipeline to preserve the original failure"
+  [[ "$final_status" == "failed" ]] || fail "expected final-checks to fail"
+  [[ "$skipped_status" == "pending" ]] || fail "expected normal later steps to remain pending"
+  [[ "$cleanup_status" == "completed" ]] || fail "expected cleanup to run after failure"
+  [[ -f "$WORKSPACES_DIR/$issue/cleanup-ran" ]] || fail "expected cleanup agent to run"
 }
 
 run_test test_run_completes_pending_agent_step
@@ -716,7 +649,7 @@ run_test test_review_decisions_runs_after_context_check_and_blocks_then_resumes
 run_test test_create_prd_pipeline_preserves_original_and_updates_single_prd_body
 run_test test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently
 run_test test_implement_slice_pipeline_runs_codex_with_sub_issue_context
-run_test test_final_and_pr_review_pipeline_completes_with_idempotent_pr
-run_test test_pr_review_pipeline_uses_codex_review_path_when_step_agent_is_codex
+run_test test_post_implementation_pipeline_completes_with_idempotent_pr_comments
+run_test test_cleanup_runs_after_an_earlier_step_fails
 
 echo "pipeline_test.sh passed"

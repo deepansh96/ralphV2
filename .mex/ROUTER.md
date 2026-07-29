@@ -14,7 +14,7 @@ edges:
     condition: when setting up the repo, running tests, or debugging environment issues
   - target: patterns/INDEX.md
     condition: when starting a concrete task, especially init, run, recovery, or pipeline changes
-last_updated: 2026-07-09
+last_updated: 2026-07-30
 ---
 
 # Session Bootstrap
@@ -28,8 +28,8 @@ Then read this file fully before doing anything else in this session.
 **Working:**
 - Core CLI entrypoint `ralph.sh` supports `run`, `status`, `logs`, and `poll` for issue workspaces.
 - Pipeline state lives in `workspaces/<issue>/state.json` with fixed steps, dynamic steps, metrics, HITL flags, and stale PID recovery.
-- Prompt templates in `prompts/` render step-specific instructions and dispatch through `scripts/agent.sh` to Claude or Codex. Preflight pairs every `implement-slice` with a `review-slice` step that reviews and fixes the slice's diff.
-- Bundled skills in `skills/` (synced to mattpocock/skills v1.1.0) provide spec/ticket planning (`to-spec`, `to-tickets`), TDD, two-axis code review with the Fowler smell baseline, domain modeling, grilling, wayfinder, and research guidance without depending on global skill installs. Slices carry first-class blocking edges (native GitHub issue dependencies plus `Blocked by` body lines). Tracker operations live in `docs/agents/issue-tracker.md` behind the `Issue tracker` pointer in `AGENTS.md`.
+- Prompt templates in `prompts/` render step-specific instructions and dispatch through `scripts/agent.sh` to Claude or Codex. Preflight appends implementation steps followed by final checks, PR creation, local QA preparation/execution, four-axis PR review, and always-run local-resource cleanup.
+- Bundled skills in `skills/` provide spec/ticket planning, TDD, domain modeling, grilling, wayfinder, research, and the four independent PR review axes without depending on global skill installs. Slices carry first-class blocking edges (native GitHub issue dependencies plus `Blocked by` body lines). Tracker operations live in `docs/agents/issue-tracker.md` behind the `Issue tracker` pointer in `AGENTS.md`.
 - Deterministic shell tests under `tests/suites/` fake external tools and cover CLI, state, prompts, agents, council, polling, cleanup, and docs.
 - mex scaffold is installed under `.mex/`; `CLAUDE.md` is a symlink to root `AGENTS.md`.
 

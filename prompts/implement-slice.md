@@ -96,7 +96,13 @@ Follow the TDD skill workflow strictly.
 
 Use integration-style tests through public interfaces where practical. Mock only external boundaries. Expected values must come from an independent source of truth — a known-good literal, a worked example, the spec — never recomputed the way the code computes them (a tautological test passes by construction and verifies nothing).
 
-Do not refactor beyond what the current slice needs; the review-slice step that follows this step owns review and cleanup.
+Do not refactor beyond what the current slice needs.
+
+Before starting a local process, container, browser/computer-use session, or
+creating a temporary path, append enough ownership information to
+`{{WORKSPACE}}/local-resources.json` for `cleanup-local-resources` to remove it
+safely. Use names prefixed with `ralph-{{ISSUE}}-` where supported, and clean
+resources started by this step before completing.
 
 ## Quality Checks
 

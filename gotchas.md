@@ -43,13 +43,15 @@ mainline docs, merge or push them to main and use main as .baseBranch.
 4. RESETTING FAILED STEPS
 ---------------------------
 To retry a failed step:
-  1. Edit state.json: set "status": "pending"
-  2. Set "metrics": null
-  3. Set "notes": ""
-  4. Validate JSON: jq . state.json > /dev/null
-  5. Clean up partial artifacts (draft files, .council/ directories)
+  1. Let cleanup-local-resources finish.
+  2. Edit state.json: set the failed step's "status" to "pending"
+  3. Set "metrics": null
+  4. Set "notes": ""
+  5. Validate JSON: jq . state.json > /dev/null
 
-IMPORTANT: Manual edits to state.json can leave malformed JSON — e.g.,
+Ralph rearms completed always-run cleanup when normal work is retried.
+
+IMPORTANT: Manual edits to state.json can leave malformed JSON, for example
 leftover fields from the old metrics block. Always validate with jq.
 
 
@@ -109,11 +111,9 @@ From the issue #266 run:
   create-and-review-slices:         ~37 min  (slices + 2 council rounds)
   preflight:                        ~2 min
   implement-slice (codex):          ~6-9 min each
-  final-review:                     ~6 min
-  pr-review (with council):         ~22 min
-  review-fixes:                     ~3 min
+  post-implementation steps:        not yet benchmarked after the QA/review split
 
-  Total for 12 steps:               ~2.4 hours, ~$19
+  Historical total before split:    ~2.4 hours, ~$19
 
 
 9. HITL (HUMAN-IN-THE-LOOP) FLOW

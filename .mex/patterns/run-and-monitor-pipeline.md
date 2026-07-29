@@ -15,7 +15,7 @@ edges:
     condition: when understanding run-loop behavior or step state
   - target: patterns/recover-failed-or-stale-step.md
     condition: when a step fails, blocks, or becomes stale
-last_updated: 2026-07-09
+last_updated: 2026-07-30
 ---
 
 # Run And Monitor Pipeline
@@ -32,7 +32,7 @@ Load `context/setup.md` and `context/architecture.md`. Confirm the issue workspa
 4. Use `--steps N` only when intentionally limiting progress.
 5. For progress updates, leave the foreground run alive and poll from another command: `./ralph.sh status --issue N`.
 6. Summarize active step, elapsed time, process alive/dead, and latest meaningful activity. Do not paste raw logs unless asked.
-7. If the step blocks or fails, report immediately and follow `recover-failed-or-stale-step.md`.
+7. If a step fails, keep monitoring until pending always-run cleanup finishes, then report the failure and follow `recover-failed-or-stale-step.md`. Report blocked steps immediately.
 
 ## Gotchas
 
@@ -40,6 +40,7 @@ Load `context/setup.md` and `context/architecture.md`. Confirm the issue workspa
 - Avoid `--background` inside Codex tool sessions; the wrapper can die and leave stale state.
 - `logs --issue N` follows the active step; use `--step step-id` for a specific log.
 - Context completeness check runs before the first completed step and requires `CONTEXT.md`.
+- A failed normal step can be followed by `cleanup-local-resources`; the pipeline still exits non-zero after cleanup.
 
 ## Verify
 
