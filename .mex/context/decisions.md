@@ -36,10 +36,10 @@ last_updated: 2026-07-30
 ### Split post-implementation checks, PR creation, local QA, and review
 **Date:** 2026-07-30
 **Status:** Active
-**Decision:** Remove per-slice review and review-fixes. After all implementation slices, run `final-checks`, `pr-creation`, `prepare-qa-checklist`, `runthrough-qa-checklist`, `multi-axis-pr-review`, and `cleanup-local-resources`. The last step has `alwaysRun: true`, so it runs after success or an earlier failure.
+**Decision:** Remove per-slice review and review-fixes. After all implementation slices, run `final-checks`, `pr-creation`, `prepare-qa-checklist`, `runthrough-qa-checklist`, `multi-axis-pr-review`, and `cleanup-local-resources`. Init creates the last step with `alwaysRun: true`; the scheduler defers it behind normal work so it can still run after success or any earlier failure.
 **Reasoning:** Each concern now has one auditable step and one prompt. PR creation stays free of QA/review behavior, local QA is visible and updated in one PR comment, and four specialized skills review the completed PR independently. Cleanup must cover resources and rough files from any pipeline step, including failed runs.
 **Alternatives considered:** Keep the combined PR review and optional fixes (rejected: it mixes PR creation, QA planning, review, and remediation), or keep per-slice review (rejected: the requested review boundary is the completed PR).
-**Consequences:** Review findings are reported but not automatically fixed. The runner skips normal pending steps after a failure, runs pending `alwaysRun` cleanup, and still exits non-zero with the original failure recorded.
+**Consequences:** Review findings are reported but not automatically fixed. The four review axes use two waves to fit the four-agent limit. The runner skips normal pending steps after a failure, runs pending `alwaysRun` cleanup, and still exits non-zero with the original failure recorded, including step-limited runs.
 
 ### Declare slice dependencies as first-class blocking edges
 **Date:** 2026-07-09

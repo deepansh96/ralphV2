@@ -78,7 +78,9 @@ state_get_current_step() {
     if any(.steps[]?; .status == "failed") then
       first(.steps[]? | select(.status == "pending" and .alwaysRun == true)) // empty
     else
-      first(.steps[]? | select(.status == "pending")) // empty
+      first(.steps[]? | select(.status == "pending" and .alwaysRun != true))
+        // first(.steps[]? | select(.status == "pending" and .alwaysRun == true))
+        // empty
     end
   ' "$state_file")"
   [[ -n "$step" ]] || return 1

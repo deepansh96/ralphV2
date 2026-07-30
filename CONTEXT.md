@@ -109,7 +109,8 @@ _Avoid_: manual review, approval gate
 - The `create-and-review-slices` step produces **Slices**, each becoming a GitHub sub-issue with its **Blocking Edges**
 - Each **Slice** maps to one `implement-slice` **Step** in the dynamic phase
 - The post-implementation **Steps** check the branch, create the PR, prepare and execute the **Local QA Checklist**, and run four **Review Axes**
-- `cleanup-local-resources` is an **Always-Run Step** that removes pipeline-owned **Local Resources**
+- `cleanup-local-resources` is an **Always-Run Step** created during init and
+  deferred until normal work ends; it removes pipeline-owned **Local Resources**
 - A wayfinder **Map**'s destination issue is what `init` consumes; the **Map** itself stays outside the **Pipeline**
 - A **Workspace** holds the **State** and artifacts for one pipeline run
 

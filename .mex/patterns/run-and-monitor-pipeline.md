@@ -38,6 +38,8 @@ Load `context/setup.md` and `context/architecture.md`. Confirm the issue workspa
 
 - Do not pipe `./ralph.sh --issue N` through `head`, `tail`, or similar commands.
 - Avoid `--background` inside Codex tool sessions; the wrapper can die and leave stale state.
+- `poll` exits non-zero when the recorded wrapper dies with pending work, even
+  when no step is currently active.
 - `logs --issue N` follows the active step; use `--step step-id` for a specific log.
 - Context completeness check runs before the first completed step and requires `CONTEXT.md`.
 - A failed normal step can be followed by `cleanup-local-resources`; the pipeline still exits non-zero after cleanup.

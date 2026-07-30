@@ -47,6 +47,18 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
           status: "completed",
           metrics: {},
           notes: ""
+        },
+        {
+          id: "cleanup-local-resources",
+          phase: "fixed",
+          type: "cleanup-local-resources",
+          agent: "codex",
+          reviewers: [],
+          hitl: false,
+          alwaysRun: true,
+          status: "pending",
+          metrics: null,
+          notes: ""
         }
       ]
     }' > "$state_file"
@@ -132,26 +144,14 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
       "status": "pending",
       "metrics": null,
       "notes": ""
-    },
-    {
-      "id": "cleanup-local-resources",
-      "phase": "dynamic",
-      "type": "cleanup-local-resources",
-      "agent": "codex",
-      "reviewers": [],
-      "hitl": false,
-      "alwaysRun": true,
-      "status": "pending",
-      "metrics": null,
-      "notes": ""
     }
   ]'
 
   ids="$(jq -r '.steps[].id' "$state_file" | tr '\n' ' ')"
-  agents="$(jq -r '.steps[] | select(.phase == "dynamic") | "\(.type):\(.agent)"' "$state_file" | tr '\n' ' ')"
+  agents="$(jq -r '.steps[] | "\(.type):\(.agent)"' "$state_file" | tr '\n' ' ')"
   sub_issues="$(jq -r '.steps[] | select(.type == "implement-slice") | .sub_issue' "$state_file" | tr '\n' ' ')"
 
-  assert_contains "$ids" "preflight implement-slice-9101 implement-slice-9102 final-checks pr-creation prepare-qa-checklist runthrough-qa-checklist multi-axis-pr-review cleanup-local-resources"
+  assert_contains "$ids" "preflight cleanup-local-resources implement-slice-9101 implement-slice-9102 final-checks pr-creation prepare-qa-checklist runthrough-qa-checklist multi-axis-pr-review"
   assert_contains "$agents" "implement-slice:codex"
   assert_contains "$agents" "final-checks:codex"
   assert_contains "$agents" "pr-creation:codex"
@@ -192,9 +192,9 @@ test_state_get_current_step_prioritizes_always_run_cleanup_after_failure() {
   jq -n '{
     issue: 9051,
     steps: [
+      {id: "cleanup-local-resources", type: "cleanup-local-resources", status: "pending", alwaysRun: true},
       {id: "failed-step", type: "stub", status: "failed"},
-      {id: "skipped-step", type: "stub", status: "pending"},
-      {id: "cleanup-local-resources", type: "cleanup-local-resources", status: "pending", alwaysRun: true}
+      {id: "skipped-step", type: "stub", status: "pending"}
     ]
   }' > "$state_file"
 
@@ -203,6 +203,27 @@ test_state_get_current_step_prioritizes_always_run_cleanup_after_failure() {
 
   [[ "$(jq -r '.id' <<<"$current")" == "cleanup-local-resources" ]] || fail "expected cleanup to run after failure"
   state_validate "$state_file"
+}
+
+test_state_get_current_step_defers_always_run_cleanup_until_normal_work_finishes() {
+  local issue state_file current
+
+  issue="9053"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  jq -n '{
+    issue: 9053,
+    steps: [
+      {id: "cleanup-local-resources", type: "cleanup-local-resources", status: "pending", alwaysRun: true},
+      {id: "normal-step", type: "stub", status: "pending"}
+    ]
+  }' > "$state_file"
+
+  source "$ROOT_DIR/scripts/state.sh"
+  current="$(state_get_current_step "$state_file")"
+
+  [[ "$(jq -r '.id' <<<"$current")" == "normal-step" ]] || fail "expected normal work before cleanup"
 }
 
 test_state_validate_rearms_completed_cleanup_when_normal_work_retries() {
@@ -530,6 +551,7 @@ test_state_validate_resets_stale_in_progress_step_with_dead_pid_file() {
 run_test test_run_rejects_failed_steps
 run_test test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates
 run_test test_state_get_current_step_prioritizes_always_run_cleanup_after_failure
+run_test test_state_get_current_step_defers_always_run_cleanup_until_normal_work_finishes
 run_test test_state_validate_rearms_completed_cleanup_when_normal_work_retries
 run_test test_state_add_steps_rejects_malformed_step_payloads
 run_test test_state_update_step_sets_started_at_on_in_progress

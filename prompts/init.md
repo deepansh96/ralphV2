@@ -33,6 +33,8 @@ If the user does not mention review-decisions rounds, use the default of 0. Incl
   - Do not stash grilling docs unless the user explicitly wants `init` and downstream agents to ignore them.
 - Create `ralph-v2/workspaces/{{ISSUE}}/`.
 - Write exactly one state file at `ralph-v2/workspaces/{{ISSUE}}/state.json`.
+- Initialize `ralph-v2/workspaces/{{ISSUE}}/local-resources.json` with
+  `{"processes":[],"containers":[],"tempPaths":[],"sessions":[]}`.
 - Running init on an already-initialized workspace must not overwrite existing state. If `ralph-v2/workspaces/{{ISSUE}}/state.json` already exists, stop with a clear warning or error.
 - Set both `"baseBranch": null` and `"branch": null`. Do not infer defaults.
 - Capture `"projectRoot"` by running `git rev-parse --show-toplevel` from the project root (not from inside `ralph-v2/`). Store the absolute path.
@@ -87,6 +89,18 @@ Write `ralph-v2/workspaces/{{ISSUE}}/state.json` with this shape:
       "hitl": false,
       "metrics": null,
       "notes": ""
+    },
+    {
+      "id": "cleanup-local-resources",
+      "phase": "fixed",
+      "type": "cleanup-local-resources",
+      "status": "pending",
+      "agent": "codex",
+      "reviewers": [],
+      "hitl": false,
+      "alwaysRun": true,
+      "metrics": null,
+      "notes": ""
     }
   ]
 }
@@ -125,9 +139,13 @@ When the user explicitly opts into review-decisions, prepend these entries to `s
 ```
 
 **Review-decisions round rules:**
-- **0 rounds (default):** Omit both review-decisions steps. Steps start at `create-and-review-prd`. Total fixed steps: 3.
-- **1 round:** Include only `review-decisions-1` with `hitl: true`. Total fixed steps: 4.
-- **2 rounds:** Include both `review-decisions-1` (`hitl: false`) and `review-decisions-2` (`hitl: true`). Total fixed steps: 5.
+- **0 rounds (default):** Omit both review-decisions steps. Steps start at `create-and-review-prd`. Total fixed steps: 4.
+- **1 round:** Include only `review-decisions-1` with `hitl: true`. Total fixed steps: 5.
+- **2 rounds:** Include both `review-decisions-1` (`hitl: false`) and `review-decisions-2` (`hitl: true`). Total fixed steps: 6.
+
+`cleanup-local-resources` is present from initialization so it can run after
+any earlier failure. Ralph defers this `alwaysRun` step until normal pending
+work finishes.
 
 **`reviewRounds` rules (for `create-and-review-prd` and `create-and-review-slices`):**
 - **0 (default):** No council review. Draft → done.
@@ -146,7 +164,8 @@ The actual `state.json` output must be valid JSON (no comments). The comments ab
 4. If `ralph-v2/workspaces/{{ISSUE}}/state.json` exists, stop. Do not silently overwrite it.
 5. Create `ralph-v2/workspaces/{{ISSUE}}/`.
 6. Write `state.json` using the schema above. Use a current UTC ISO-8601 timestamp for `createdAt`.
-7. Validate the file with `jq`.
-8. Run `./ralph-v2/ralph.sh status --issue {{ISSUE}}` and confirm all steps show `pending` status.
+7. Write `local-resources.json` using the empty ledger above.
+8. Validate both JSON files with `jq`.
+9. Run `./ralph-v2/ralph.sh status --issue {{ISSUE}}` and confirm all steps show `pending` status.
 
 Do not run any pipeline step. This prompt only initializes the workspace state.

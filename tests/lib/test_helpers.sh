@@ -1054,7 +1054,7 @@ Summary: 1 passed.
 QA_COMMENT
     ;;
   multi-axis-pr-review)
-    [[ "$prompt" == *"exactly four parallel"* ]] || exit 207
+    [[ "$prompt" == *"two waves"* ]] || exit 207
     [[ "$prompt" == *"matt-pocock-code-review/SKILL.md"* ]] || exit 208
     [[ "$prompt" == *"ponytail-review/SKILL.md"* ]] || exit 209
     [[ "$prompt" == *"run-codex-review/SKILL.md"* ]] || exit 210
@@ -1127,7 +1127,7 @@ fi
 
 workspace="$(awk '/^Workspace:/ { print $2; exit }' <<<"$prompt")"
 step_id="$(awk '/^Step:/ { print $2; exit }' <<<"$prompt")"
-if [[ "$step_id" == "final-checks" ]]; then
+if [[ "$step_id" == "create-and-review-prd" ]]; then
   exit 42
 fi
 [[ "$step_id" == "cleanup-local-resources" ]] || exit 43

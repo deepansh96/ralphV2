@@ -195,6 +195,9 @@ run_pipeline() {
     (( ++steps_run ))
     if [[ "$step_limit" -gt 0 && "$steps_run" -ge "$step_limit" ]]; then
       printf "Step limit reached (%d/%d). Stopping.\n" "$steps_run" "$step_limit"
+      if jq -e '.steps[]? | select(.status == "failed")' "$state_file" >/dev/null; then
+        return 1
+      fi
       return 0
     fi
   done
@@ -256,15 +259,26 @@ poll_pipeline() {
       return 0
     fi
 
+    if [[ -f "$wrapper_pid_file" ]]; then
+      wrapper_pid="$(<"$wrapper_pid_file")"
+    else
+      wrapper_pid=""
+    fi
+    if [[ -n "$wrapper_pid" ]] && ! kill -0 "$wrapper_pid" 2>/dev/null; then
+      state_validate "$state_file" >/dev/null 2>&1 || true
+      if [[ -n "$step" ]]; then
+        step_id="$(jq -r '.id' <<<"$step")"
+        printf "Wrapper PID %s is dead while step %s is still in progress.\n" "$wrapper_pid" "$step_id" >&2
+      else
+        printf "Wrapper PID %s is dead with %s steps pending.\n" "$wrapper_pid" "$pending_count" >&2
+      fi
+      return 1
+    fi
+
     if [[ -n "$step" ]]; then
       step_id="$(jq -r '.id' <<<"$step")"
       started_at="$(jq -r '.started_at // empty' <<<"$step")"
       pid="$(jq -r '.pid // empty' <<<"$step")"
-      if [[ -f "$wrapper_pid_file" ]]; then
-        wrapper_pid="$(<"$wrapper_pid_file")"
-      else
-        wrapper_pid=""
-      fi
 
       elapsed_display="-"
       if [[ "$started_at" =~ ^[0-9]+$ ]]; then
@@ -277,12 +291,6 @@ poll_pipeline() {
         pid_status="alive"
       fi
       printf "Step %s elapsed %s PID %s.\n" "$step_id" "$elapsed_display" "$pid_status"
-
-      if [[ -n "$wrapper_pid" ]] && ! kill -0 "$wrapper_pid" 2>/dev/null; then
-        state_validate "$state_file" >/dev/null 2>&1 || true
-        printf "Wrapper PID %s is dead while step %s is still in progress.\n" "$wrapper_pid" "$step_id" >&2
-        return 1
-      fi
     else
       printf "No active step; %s pending.\n" "$pending_count"
     fi

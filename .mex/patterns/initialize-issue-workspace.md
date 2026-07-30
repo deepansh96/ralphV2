@@ -28,10 +28,12 @@ Load `context/setup.md`, `context/decisions.md`, and `context/conventions.md`. R
 1. Confirm prerequisites: `command -v gh`, `gh auth status`, and a clean `git status --porcelain`.
 2. Read the issue with `gh issue view N --repo owner/repo`.
 3. Run or follow `prompts/init.md` for the issue and repo.
-4. Create exactly one `workspaces/N/state.json`; do not overwrite an existing initialized workspace.
+4. Create exactly one `workspaces/N/state.json` plus its empty
+   `local-resources.json` ledger; do not overwrite an existing initialized
+   workspace.
 5. Keep `"baseBranch": null` and `"branch": null` during init unless the user separately tells you to set `baseBranch` after init.
 6. Set review-decision steps and PRD/slice `reviewRounds` only when explicitly requested.
-7. Validate with `jq . workspaces/N/state.json`.
+7. Validate both JSON files with `jq`.
 8. Confirm `./ralph.sh status --issue N` shows all steps pending.
 
 ## Gotchas
@@ -40,12 +42,15 @@ Load `context/setup.md`, `context/decisions.md`, and `context/conventions.md`. R
 - `baseBranch` is required before preflight but intentionally not inferred during init.
 - Review-decision rounds and PRD/slice review rounds are separate knobs.
 - Generated steps default to `codex`; do not use runtime agent detection.
+- Init includes pending `cleanup-local-resources`; the scheduler defers it
+  behind normal work.
 
 ## Verify
 
 - [ ] `git status --porcelain` was checked before creating state.
 - [ ] Existing `workspaces/N/state.json` was not overwritten.
 - [ ] `jq . workspaces/N/state.json` passes.
+- [ ] `jq . workspaces/N/local-resources.json` passes.
 - [ ] `baseBranch` is `null` immediately after init unless explicitly set afterward.
 - [ ] `./ralph.sh status --issue N` works and shows pending steps.
 

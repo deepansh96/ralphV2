@@ -25,6 +25,9 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   assert_contains "$prompt" "create-and-review-prd"
   assert_contains "$prompt" "create-and-review-slices"
   assert_contains "$prompt" "preflight"
+  assert_contains "$prompt" '"type": "cleanup-local-resources"'
+  assert_contains "$prompt" '"alwaysRun": true'
+  assert_contains "$prompt" "local-resources.json"
   assert_contains "$prompt" "ralph.sh status --issue {{ISSUE}}"
   assert_contains "$prompt" '"projectRoot"'
   assert_contains "$prompt" "git rev-parse --show-toplevel"
@@ -40,7 +43,7 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   [[ "$prompt" != *"reviewFixes"* ]] || fail "expected init to omit removed reviewFixes option"
 }
 
-test_initialized_workspace_status_shows_default_three_pending_fixed_steps() {
+test_initialized_workspace_status_shows_default_four_pending_fixed_steps() {
   local issue output pending_count
 
   issue="9012"
@@ -90,6 +93,18 @@ test_initialized_workspace_status_shows_default_three_pending_fixed_steps() {
           hitl: false,
           metrics: null,
           notes: ""
+        },
+        {
+          id: "cleanup-local-resources",
+          phase: "fixed",
+          type: "cleanup-local-resources",
+          status: "pending",
+          agent: "codex",
+          reviewers: [],
+          hitl: false,
+          alwaysRun: true,
+          metrics: null,
+          notes: ""
         }
       ]
     }' > "$WORKSPACES_DIR/$issue/state.json"
@@ -97,10 +112,11 @@ test_initialized_workspace_status_shows_default_three_pending_fixed_steps() {
   output="$("$RALPH" status --issue "$issue")"
   pending_count="$(grep -c "pending" <<<"$output")"
 
-  [[ "$pending_count" == "3" ]] || fail "expected 3 pending steps in status output, got $pending_count: $output"
+  [[ "$pending_count" == "4" ]] || fail "expected 4 pending steps in status output, got $pending_count: $output"
   assert_contains "$output" "create-and-review-prd"
   assert_contains "$output" "create-and-review-slices"
   assert_contains "$output" "preflight"
+  assert_contains "$output" "cleanup-local-resources"
 }
 
 test_review_decisions_prompt_defines_council_filtering_and_hitl_contract() {
@@ -225,6 +241,7 @@ test_preflight_prompt_defines_full_preflight_workflow_contract() {
   assert_contains "$prompt" "cleanup-local-resources"
   assert_contains "$prompt" '"alwaysRun": true'
   assert_contains "$prompt" "local-resources.json"
+  [[ "$prompt" != *'"type": "cleanup-local-resources"'* ]] || fail "expected preflight not to append cleanup-local-resources"
   [[ "$prompt" != *'"type": "review-slice"'* ]] || fail "expected preflight to omit review-slice"
   [[ "$prompt" != *'"type": "review-fixes"'* ]] || fail "expected preflight to omit review-fixes"
   assert_contains "$prompt" "codex"
@@ -298,8 +315,12 @@ test_pr_creation_prompt_defines_idempotent_pr_only_contract() {
 
   assert_contains "$prompt" "git push -u origin {{BRANCH}}"
   assert_contains "$prompt" "gh pr list"
+  assert_contains "$prompt" "--head {{BRANCH}} --state open"
+  assert_contains "$prompt" "--json number,url,baseRefName"
   assert_contains "$prompt" "gh pr edit"
   assert_contains "$prompt" "gh pr create"
+  assert_contains "$prompt" "If more than one exists"
+  assert_contains "$prompt" "same-head PR targets a different"
   assert_contains "$prompt" "defaultBranchRef"
   assert_contains "$prompt" "git merge --no-edit"
   assert_contains "$prompt" "Closes #{{ISSUE}}"
@@ -355,7 +376,11 @@ test_multi_axis_pr_review_prompt_defines_four_skill_vote_contract() {
 
   prompt="$(<"$prompt_file")"
 
-  assert_contains "$prompt" "exactly four parallel"
+  assert_contains "$prompt" "two waves"
+  assert_contains "$prompt" "Wave 1"
+  assert_contains "$prompt" "Wait for wave 1 to finish"
+  assert_contains "$prompt" "wave 2 in parallel"
+  [[ "$prompt" != *"exactly four parallel"* ]] || fail "expected bounded two-wave review scheduling"
   assert_contains "$prompt" "matt-pocock-code-review/SKILL.md"
   assert_contains "$prompt" "ponytail-review/SKILL.md"
   assert_contains "$prompt" "run-codex-review/SKILL.md"
@@ -419,7 +444,7 @@ test_grill_with_docs_skill_defines_planning_branch_contract() {
 }
 
 run_test test_init_prompt_defines_complete_workspace_initialization_contract
-run_test test_initialized_workspace_status_shows_default_three_pending_fixed_steps
+run_test test_initialized_workspace_status_shows_default_four_pending_fixed_steps
 run_test test_review_decisions_prompt_defines_council_filtering_and_hitl_contract
 run_test test_create_prd_prompt_defines_full_prd_workflow_contract
 run_test test_create_slices_prompt_defines_full_slice_creation_contract

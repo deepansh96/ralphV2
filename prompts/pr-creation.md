@@ -55,9 +55,20 @@ The body contains only:
 
 Do not include a review section or QA checklist.
 
-Use `gh pr list` to find an open PR for the head branch and resolved target.
-Update it with `gh pr edit`; otherwise create it with `gh pr create`. If an
-older PR targets a `grill/*` branch, retarget it instead of creating another.
+List open PRs by head branch only:
+
+```bash
+gh pr list --repo {{REPO}} --head {{BRANCH}} --state open \
+  --json number,url,baseRefName
+```
+
+- If none exists, create one with `gh pr create`.
+- If exactly one exists, use `gh pr edit` to retarget it to the resolved
+  target when needed, then update its title and body.
+- If more than one exists, fail clearly instead of guessing.
+
+Do not create a second PR because an existing same-head PR targets a different
+base branch.
 
 Write `{{WORKSPACE}}/pr-creation.md` with the PR number, URL, target branch,
 whether it was created or updated, and linked issues. Fail on checkout, merge,

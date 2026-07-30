@@ -228,6 +228,44 @@ test_poll_detects_dead_wrapper_pid_and_exits_one() {
   [[ "$status_value" == "pending" ]] || fail "expected stale detection to reset step to pending, got $status_value"
 }
 
+test_poll_detects_dead_wrapper_when_only_cleanup_is_pending() {
+  local issue state_file output status dead_pid
+
+  issue="9046"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  dead_pid="999999"
+
+  jq -n \
+    --arg issue "$issue" \
+    '{
+      issue: ($issue | tonumber),
+      steps: [
+        {
+          id: "failed-step",
+          type: "stub",
+          status: "failed"
+        },
+        {
+          id: "cleanup-local-resources",
+          type: "cleanup-local-resources",
+          status: "pending",
+          alwaysRun: true
+        }
+      ]
+    }' > "$state_file"
+  printf '%s\n' "$dead_pid" > "$WORKSPACES_DIR/$issue/step-runner.pid"
+
+  set +e
+  output="$(RALPH_POLL_INTERVAL=0.05 "$RALPH" poll --issue "$issue" 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 1 ]] || fail "expected poll to exit 1 when dead wrapper leaves cleanup pending, got $status: $output"
+  assert_contains "$output" "Wrapper PID $dead_pid is dead with 1 steps pending"
+}
+
 test_background_run_respects_steps_limit() {
   local issue fake_bin state_file output status first_status second_status
 
@@ -290,6 +328,7 @@ run_test test_poll_blocks_until_step_completes_then_exits_zero
 run_test test_poll_exits_one_when_step_fails
 run_test test_poll_exits_zero_when_step_is_blocked_for_hitl
 run_test test_poll_detects_dead_wrapper_pid_and_exits_one
+run_test test_poll_detects_dead_wrapper_when_only_cleanup_is_pending
 run_test test_background_run_respects_steps_limit
 
 echo "background_poll_test.sh passed"

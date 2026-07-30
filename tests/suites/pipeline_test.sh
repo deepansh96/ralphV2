@@ -600,8 +600,8 @@ test_post_implementation_pipeline_completes_with_idempotent_pr_comments() {
   assert_contains "$(<"$WORKSPACES_DIR/$issue/pr-creation.md")" "updated"
 }
 
-test_cleanup_runs_after_an_earlier_step_fails() {
-  local issue fake_bin status final_status skipped_status cleanup_status
+test_cleanup_runs_after_an_early_step_fails_with_step_limit() {
+  local issue fake_bin status planning_status skipped_status cleanup_status
 
   issue="9052"
   fake_bin="$WORKSPACES_DIR/fake-bin"
@@ -618,22 +618,22 @@ test_cleanup_runs_after_an_earlier_step_fails() {
       branch: "feat/issue-9052-cleanup",
       projectRoot: $project_root,
       steps: [
-        {id: "final-checks", type: "final-checks", agent: "claude", status: "pending"},
-        {id: "pr-creation", type: "pr-creation", agent: "claude", status: "pending"},
-        {id: "cleanup-local-resources", type: "cleanup-local-resources", agent: "claude", status: "pending", alwaysRun: true}
+        {id: "cleanup-local-resources", phase: "fixed", type: "cleanup-local-resources", agent: "claude", status: "pending", alwaysRun: true},
+        {id: "create-and-review-prd", phase: "fixed", type: "create-and-review-prd", agent: "claude", reviewers: [], reviewRounds: 0, hitl: false, status: "pending"},
+        {id: "preflight", phase: "fixed", type: "preflight", agent: "claude", status: "pending"}
       ]
     }' > "$WORKSPACES_DIR/$issue/state.json"
 
   set +e
-  PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" >/dev/null
+  PATH="$fake_bin:$PATH" "$RALPH" --issue "$issue" --steps 1 >/dev/null
   status=$?
   set -e
 
-  final_status="$(jq -r '.steps[] | select(.id == "final-checks") | .status' "$WORKSPACES_DIR/$issue/state.json")"
-  skipped_status="$(jq -r '.steps[] | select(.id == "pr-creation") | .status' "$WORKSPACES_DIR/$issue/state.json")"
+  planning_status="$(jq -r '.steps[] | select(.id == "create-and-review-prd") | .status' "$WORKSPACES_DIR/$issue/state.json")"
+  skipped_status="$(jq -r '.steps[] | select(.id == "preflight") | .status' "$WORKSPACES_DIR/$issue/state.json")"
   cleanup_status="$(jq -r '.steps[] | select(.id == "cleanup-local-resources") | .status' "$WORKSPACES_DIR/$issue/state.json")"
   [[ "$status" -ne 0 ]] || fail "expected pipeline to preserve the original failure"
-  [[ "$final_status" == "failed" ]] || fail "expected final-checks to fail"
+  [[ "$planning_status" == "failed" ]] || fail "expected early planning step to fail"
   [[ "$skipped_status" == "pending" ]] || fail "expected normal later steps to remain pending"
   [[ "$cleanup_status" == "completed" ]] || fail "expected cleanup to run after failure"
   [[ -f "$WORKSPACES_DIR/$issue/cleanup-ran" ]] || fail "expected cleanup agent to run"
@@ -650,6 +650,6 @@ run_test test_create_prd_pipeline_preserves_original_and_updates_single_prd_body
 run_test test_create_slices_pipeline_creates_linked_afk_sub_issues_idempotently
 run_test test_implement_slice_pipeline_runs_codex_with_sub_issue_context
 run_test test_post_implementation_pipeline_completes_with_idempotent_pr_comments
-run_test test_cleanup_runs_after_an_earlier_step_fails
+run_test test_cleanup_runs_after_an_early_step_fails_with_step_limit
 
 echo "pipeline_test.sh passed"

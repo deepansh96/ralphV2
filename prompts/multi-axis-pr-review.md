@@ -21,13 +21,21 @@ diff is non-empty.
 
 ## Four Reviews
 
-Spawn exactly four parallel read-only subagents. Each receives the PR scope,
-requirements sources, base/head revisions, and one skill to load:
+Run the four read-only review agents in two waves so the parent and all
+subagents stay within the four-agent concurrency limit. Each review agent
+receives the PR scope, requirements sources, base/head revisions, and one
+skill to load.
 
-1. `{{SKILLS_DIR}}/matt-pocock-code-review/SKILL.md`
-2. `{{SKILLS_DIR}}/ponytail-review/SKILL.md`
-3. `{{SKILLS_DIR}}/run-codex-review/SKILL.md`
-4. `{{SKILLS_DIR}}/supe-review-code-changes/SKILL.md`
+Wave 1:
+
+1. Run `{{SKILLS_DIR}}/matt-pocock-code-review/SKILL.md` alone. It spawns its
+   own Standards and Spec subagents.
+
+Wait for wave 1 to finish, then run wave 2 in parallel:
+
+1. `{{SKILLS_DIR}}/ponytail-review/SKILL.md`
+2. `{{SKILLS_DIR}}/run-codex-review/SKILL.md`
+3. `{{SKILLS_DIR}}/supe-review-code-changes/SKILL.md`
 
 For the isolated Codex review, use:
 
@@ -38,7 +46,7 @@ node "{{SKILLS_DIR}}/run-codex-review/scripts/review.mjs" \
 ```
 
 Subagents must not edit files, branches, state, or GitHub. They return findings
-only to the parent. All four reviews must finish successfully.
+only to the parent. All four top-level reviews must finish successfully.
 
 ## Consolidate
 

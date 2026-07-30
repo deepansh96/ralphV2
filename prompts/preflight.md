@@ -14,8 +14,7 @@ Default agent: codex
 
 Validate that implementation can start from an explicit base branch; create and
 push the feature branch; read the AFK implementation sub-issues from GitHub;
-and append the dynamic implementation, checks, PR, QA, review, and cleanup
-steps.
+and append the dynamic implementation, checks, PR, QA, and review steps.
 
 ## Required Inputs
 
@@ -152,21 +151,6 @@ Append these steps after all implementation steps, in this exact order:
 }
 ```
 
-```json
-{
-  "id": "cleanup-local-resources",
-  "phase": "dynamic",
-  "type": "cleanup-local-resources",
-  "status": "pending",
-  "agent": "codex",
-  "reviewers": [],
-  "hitl": false,
-  "alwaysRun": true,
-  "metrics": null,
-  "notes": ""
-}
-```
-
 Use `state_add_steps "{{WORKSPACE}}/state.json" '<json-array>'` to extend the state file. `state_add_steps` prevents duplicate step IDs and writes atomically.
 
 ## Idempotency
@@ -179,12 +163,9 @@ Preflight must be safe to re-run.
 - If some dynamic steps are missing, append only the missing steps in the correct order.
 - Preserve existing completed, in-progress, blocked, failed, and pending statuses for steps already present.
 
-Initialize `{{WORKSPACE}}/local-resources.json` to this valid JSON when it does
-not exist. Do not overwrite an existing ledger:
-
-```json
-{"processes":[],"containers":[],"tempPaths":[],"sessions":[]}
-```
+The fixed `cleanup-local-resources` step and `local-resources.json` ledger were
+created during init. Do not append another cleanup step or overwrite the
+ledger.
 
 ## Verification
 
@@ -201,8 +182,8 @@ Confirm the status output shows the fixed pipeline plus all dynamic steps:
 - `final-checks`, `pr-creation`, `prepare-qa-checklist`,
   `runthrough-qa-checklist`, and `multi-axis-pr-review` with `agent` set to
   `codex`
-- `cleanup-local-resources` last, with `agent` set to `codex` and
-  `alwaysRun: true`
+- one fixed `cleanup-local-resources` step with `agent` set to `codex` and
+  `"alwaysRun": true`; Ralph's scheduler defers it until all normal work ends
 
 Complete normally only after the branch is pushed, the `branch` field is
 updated, sub-issues are read from GitHub, the resource ledger exists, and
