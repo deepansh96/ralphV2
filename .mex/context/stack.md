@@ -20,7 +20,7 @@ edges:
     condition: when installing or validating local command availability
   - target: patterns/change-pipeline-behavior.md
     condition: when a stack choice affects a new or changed pipeline step
-last_updated: 2026-07-30
+last_updated: 2026-07-31
 ---
 
 # Stack
@@ -37,8 +37,8 @@ last_updated: 2026-07-30
 
 - **`jq`** - mandatory JSON mutation and validation tool; do not replace with fragile sed/awk JSON edits.
 - **`gh`** - GitHub API access; prompts rely on issue body edits, issue views, sub-issue creation, and PR operations.
-- **`claude` CLI** - used for context completeness checks and optional Claude-owned steps.
-- **`codex` CLI** - default step executor for generated state; run from project root in `scripts/agent.sh`.
+- **`claude` CLI** - used for context completeness checks and optional Claude-owned steps; per-step model and `reasoningEffort` map to `--model` and `--effort`.
+- **`codex` CLI** - default step executor for generated state; run from project root in `scripts/agent.sh`, with per-step model and `reasoningEffort` mapped to `--model` and `model_reasoning_effort`.
 - **Node.js** - runs the bundled isolated Codex App Server reviewer in `skills/run-codex-review/scripts/review.mjs`.
 - **`council` CLI** - fan-out review runner for decision, PRD, and slice-planning workflows.
 - **Shell test fakes** - tests fake `claude`, `codex`, `gh`, and `council`; never make deterministic tests depend on real services.

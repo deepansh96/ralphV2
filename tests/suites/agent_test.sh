@@ -174,7 +174,7 @@ test_run_codex_retries_transient_errors_and_preserves_attempt_logs() {
   rm -f "$log_file" "$log_file".attempt-* "$metrics_file" "$count_file"
 }
 
-test_codex_step_passes_model_flag_when_set() {
+test_codex_step_passes_model_and_reasoning_effort_when_set() {
   local log_file metrics_file args_file
 
   log_file="$(mktemp)"
@@ -187,15 +187,20 @@ test_codex_step_passes_model_flag_when_set() {
     source "$ROOT_DIR/scripts/agent.sh"
 
     codex() {
-      printf '%s\n' "$*" > "$args_file"
+      printf '%s\n' "$@" > "$args_file"
       cat >/dev/null
       printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens":3}}'
     }
 
-    agent_run_step '{"agent":"codex","model":"gpt-5-codex"}' "model prompt" "$log_file" "$PROJECT_ROOT" > "$metrics_file"
+    agent_run_step '{"agent":"codex","model":"gpt-5-codex","reasoningEffort":"ultra"}' \
+      "model prompt" "$log_file" "$PROJECT_ROOT" > "$metrics_file"
   )
 
-  assert_contains "$(<"$args_file")" "--model gpt-5-codex"
+  grep -Fx -- "--model" "$args_file" >/dev/null || fail "expected separate --model argument"
+  grep -Fx -- "gpt-5-codex" "$args_file" >/dev/null || fail "expected model value"
+  grep -Fx -- "--config" "$args_file" >/dev/null || fail "expected separate --config argument"
+  grep -Fx -- 'model_reasoning_effort="ultra"' "$args_file" >/dev/null \
+    || fail "expected Codex ultra reasoning effort"
   assert_contains "$(<"$metrics_file")" '"provider": "codex"'
 
   rm -f "$log_file" "$log_file".attempt-* "$metrics_file" "$args_file"
@@ -214,7 +219,7 @@ test_codex_step_omits_model_flag_when_unset() {
     source "$ROOT_DIR/scripts/agent.sh"
 
     codex() {
-      printf '%s\n' "$*" > "$args_file"
+      printf '%s\n' "$@" > "$args_file"
       cat >/dev/null
       printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens":3}}'
     }
@@ -222,9 +227,62 @@ test_codex_step_omits_model_flag_when_unset() {
     agent_run_step '{"agent":"codex"}' "no model prompt" "$log_file" "$PROJECT_ROOT" > "$metrics_file"
   )
 
-  [[ "$(<"$args_file")" != *"--model"* ]] || fail "expected no --model flag when step has no model, got: $(<"$args_file")"
+  ! grep -Fx -- "--model" "$args_file" >/dev/null || fail "expected no --model flag"
+  ! grep -Fx -- "--config" "$args_file" >/dev/null || fail "expected no reasoning config"
 
   rm -f "$log_file" "$log_file".attempt-* "$metrics_file" "$args_file"
+}
+
+test_claude_step_passes_reasoning_effort_when_set() {
+  local log_file metrics_file args_file
+
+  log_file="$(mktemp)"
+  metrics_file="$(mktemp)"
+  args_file="$(mktemp)"
+  rm -f "$log_file" "$log_file".attempt-*
+
+  (
+    source "$ROOT_DIR/scripts/metrics.sh"
+    source "$ROOT_DIR/scripts/agent.sh"
+
+    claude() {
+      printf '%s\n' "$@" > "$args_file"
+      printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+      printf '%s\n' '{"type":"result","subtype":"success","result":"done","duration_ms":1,"usage":{"input_tokens":1,"output_tokens":1},"total_cost_usd":0}'
+    }
+
+    agent_run_step '{"agent":"claude","reasoningEffort":"xhigh"}' \
+      "reasoning prompt" "$log_file" "$PROJECT_ROOT" > "$metrics_file"
+  )
+
+  grep -Fx -- "--effort" "$args_file" >/dev/null || fail "expected separate --effort argument"
+  grep -Fx -- "xhigh" "$args_file" >/dev/null || fail "expected Claude xhigh effort"
+  assert_contains "$(<"$metrics_file")" '"provider": "claude"'
+
+  rm -f "$log_file" "$log_file".attempt-* "$metrics_file" "$args_file"
+}
+
+test_agent_rejects_unsupported_reasoning_effort() {
+  local log_file output status
+
+  log_file="$(mktemp)"
+  rm -f "$log_file"
+
+  (
+    source "$ROOT_DIR/scripts/metrics.sh"
+    source "$ROOT_DIR/scripts/agent.sh"
+
+    set +e
+    output="$(agent_run_step '{"agent":"claude","reasoningEffort":"ultra"}' \
+      "invalid effort" "$log_file" "$PROJECT_ROOT" 2>&1)"
+    status=$?
+    set -e
+
+    [[ "$status" -eq 1 ]] || fail "expected unsupported effort to fail"
+    assert_contains "$output" "unsupported reasoning effort 'ultra' for agent 'claude'"
+  )
+
+  rm -f "$log_file"
 }
 
 test_run_claude_fails_clean_json_error_without_retrying() {
@@ -511,8 +569,10 @@ test_unsupported_agent_marks_step_failed() {
 run_test test_claude_agent_step_renders_prompt_logs_metrics_and_summary
 run_test test_run_claude_retries_transient_error_and_preserves_attempt_logs
 run_test test_run_codex_retries_transient_errors_and_preserves_attempt_logs
-run_test test_codex_step_passes_model_flag_when_set
+run_test test_codex_step_passes_model_and_reasoning_effort_when_set
 run_test test_codex_step_omits_model_flag_when_unset
+run_test test_claude_step_passes_reasoning_effort_when_set
+run_test test_agent_rejects_unsupported_reasoning_effort
 run_test test_run_claude_fails_clean_json_error_without_retrying
 run_test test_run_claude_retries_empty_crash_log
 run_test test_run_claude_retries_truncated_crash_log

@@ -14,7 +14,7 @@ edges:
     condition: when setting up the repo, running tests, or debugging environment issues
   - target: patterns/INDEX.md
     condition: when starting a concrete task, especially init, run, recovery, or pipeline changes
-last_updated: 2026-07-30
+last_updated: 2026-07-31
 ---
 
 # Session Bootstrap
@@ -27,7 +27,7 @@ Then read this file fully before doing anything else in this session.
 
 **Working:**
 - Core CLI entrypoint `ralph.sh` supports `run`, `status`, `logs`, and `poll` for issue workspaces.
-- Pipeline state lives in `workspaces/<issue>/state.json` with fixed steps, dynamic steps, metrics, HITL flags, and stale PID recovery.
+- Pipeline state lives in `workspaces/<issue>/state.json` with fixed steps, dynamic steps, optional per-step model/reasoning overrides, metrics, HITL flags, and stale PID recovery.
 - Prompt templates in `prompts/` render step-specific instructions and dispatch through `scripts/agent.sh` to Claude or Codex. Init installs always-run local-resource cleanup; preflight appends implementation steps followed by final checks, PR creation, local QA preparation/execution, and four-axis PR review.
 - Bundled skills in `skills/` provide spec/ticket planning, TDD, domain modeling, grilling, wayfinder, research, and the four independent PR review axes without depending on global skill installs. Slices carry first-class blocking edges (native GitHub issue dependencies plus `Blocked by` body lines). Tracker operations live in `docs/agents/issue-tracker.md` behind the `Issue tracker` pointer in `AGENTS.md`.
 - Deterministic shell tests under `tests/suites/` fake external tools and cover CLI, state, prompts, agents, council, polling, cleanup, and docs.

@@ -125,6 +125,8 @@ Each step has this shape:
   "type": "implement-slice",
   "status": "pending",
   "agent": "codex",
+  "model": "<provider-model>",
+  "reasoningEffort": "high",
   "reviewers": [],
   "hitl": false,
   "sub_issue": 14,
@@ -133,7 +135,14 @@ Each step has this shape:
 }
 ```
 
-Generated steps use `"agent": "codex"` by default. You can edit an individual step's `agent` in `state.json` before it runs if a different supported agent should own that step.
+Generated steps use `"agent": "codex"` by default. Before a step runs, you can
+edit its optional `model` and `reasoningEffort` fields in `state.json`:
+
+- Codex: `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `ultra`
+- Claude: `low`, `medium`, `high`, `xhigh`, or `max`
+
+Effort availability still depends on the selected model and account. Omit
+either field to use that CLI's configured default.
 
 Step statuses are:
 
