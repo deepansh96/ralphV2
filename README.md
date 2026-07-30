@@ -153,7 +153,7 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
 - `review-decisions`: reviews issue decisions against `CONTEXT.md`, `CLAUDE.md`, and ADRs; may block for human input.
 - `create-and-review-prd`: preserves the original issue body, drafts the PRD following the `to-spec` skill (including the testing seams), runs council reviews (controlled by `reviewRounds`, default 0), and updates the parent issue.
 - `create-and-review-slices`: drafts vertical AFK slices following the `to-tickets` skill with explicit blocking edges (native GitHub issue dependencies plus `Blocked by` body lines), runs council reviews (controlled by `reviewRounds`, default 0), creates GitHub sub-issues, and links them under the parent.
-- `preflight`: checks the working tree and `baseBranch` contract, creates/pushes the feature branch, and appends the dynamic implementation and post-implementation steps.
+- `preflight`: backfills missing cleanup artifacts for older initialized workspaces, checks the working tree and `baseBranch` contract, creates/pushes the feature branch, and appends the dynamic implementation and post-implementation steps.
 - `implement-slice`: reads the assigned sub-issue, verifies blockers are closed, follows TDD at the PRD's pre-agreed seams, commits, pushes, and closes the sub-issue.
 - `final-checks`: reads the complete branch diff, runs project checks, verifies every slice's acceptance criteria, and writes `final-checks.md` without changing product code.
 - `pr-creation`: pushes the feature branch and idempotently creates or updates a PR with a summary and issue-closing links.

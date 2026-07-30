@@ -16,14 +16,47 @@ Validate that implementation can start from an explicit base branch; create and
 push the feature branch; read the AFK implementation sub-issues from GitHub;
 and append the dynamic implementation, checks, PR, QA, and review steps.
 
+## Cleanup Compatibility
+
+Before any operation that can hard stop, make older initialized workspaces safe.
+Source the state manager:
+
+```bash
+source ./ralph-v2/scripts/state.sh
+```
+
+If `state.json` has no step with id `cleanup-local-resources`, add this one
+with `state_add_steps`:
+
+```json
+{
+  "id": "cleanup-local-resources",
+  "phase": "fixed",
+  "type": "cleanup-local-resources",
+  "status": "pending",
+  "agent": "codex",
+  "reviewers": [],
+  "hitl": false,
+  "alwaysRun": true,
+  "metrics": null,
+  "notes": ""
+}
+```
+
+If `{{WORKSPACE}}/local-resources.json` does not exist, initialize it with:
+
+```json
+{"processes":[],"containers":[],"tempPaths":[],"sessions":[]}
+```
+
+Do not modify an existing cleanup step or overwrite an existing ledger.
+
 ## Required Inputs
 
 - Read the parent issue:
   `gh issue view {{ISSUE}} --repo {{REPO}}`
 - Read `{{WORKSPACE}}/state.json`.
 - Read the sub-issues linked under the parent issue on GitHub. Prefer GitHub's sub-issue relationship data when available; also inspect issue bodies that reference `Parent: #{{ISSUE}}` so re-runs can recover from partial linkage.
-- Source the state manager before extending state:
-  `source ./ralph-v2/scripts/state.sh`
 
 ## Hard Stops
 
@@ -163,9 +196,9 @@ Preflight must be safe to re-run.
 - If some dynamic steps are missing, append only the missing steps in the correct order.
 - Preserve existing completed, in-progress, blocked, failed, and pending statuses for steps already present.
 
-The fixed `cleanup-local-resources` step and `local-resources.json` ledger were
-created during init. Do not append another cleanup step or overwrite the
-ledger.
+New workspaces receive `cleanup-local-resources` and `local-resources.json`
+during init. The compatibility check above adds only artifacts missing from an
+older initialized workspace.
 
 ## Verification
 

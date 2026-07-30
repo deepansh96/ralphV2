@@ -137,12 +137,13 @@ After writing the output file, append the review findings to the **issue body** 
 
 1. Read the current issue body into a temp file:
    ```bash
-   gh issue view {{ISSUE}} --repo {{REPO}} --json body -q .body > /tmp/issue-body-{{ISSUE}}.md
+   gh issue view {{ISSUE}} --repo {{REPO}} --json body -q .body > /tmp/ralph-{{ISSUE}}-issue-body.md
    ```
 2. Append a summary of the major findings, recommendations, and council attribution to the temp file.
 3. Update the issue body:
    ```bash
-   gh issue edit {{ISSUE}} --repo {{REPO}} --body-file /tmp/issue-body-{{ISSUE}}.md
+   gh issue edit {{ISSUE}} --repo {{REPO}} --body-file /tmp/ralph-{{ISSUE}}-issue-body.md
+   rm -f /tmp/ralph-{{ISSUE}}-issue-body.md
    ```
 
 ## Blocking Protocol

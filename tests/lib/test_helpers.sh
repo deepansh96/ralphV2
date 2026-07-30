@@ -1073,7 +1073,7 @@ REVIEW_COMMENT
     ;;
   cleanup-local-resources)
     [[ "$prompt" == *"after an earlier step fails"* ]] || exit 212
-    rm -f "$workspace/local-resources.json"
+    printf '%s\n' '{"processes":[],"containers":[],"tempPaths":[],"sessions":[]}' > "$workspace/local-resources.json"
     cat > "$workspace/cleanup-local-resources.md" <<'CLEANUP'
 # Cleanup Local Resources
 

@@ -133,6 +133,8 @@ test_review_decisions_prompt_defines_council_filtering_and_hitl_contract() {
   assert_contains "$prompt" "CLAUDE.md"
   assert_contains "$prompt" "docs/adr"
   assert_contains "$prompt" "scripts/council-review.sh"
+  assert_contains "$prompt" "/tmp/ralph-{{ISSUE}}-issue-body.md"
+  assert_contains "$prompt" "rm -f /tmp/ralph-{{ISSUE}}-issue-body.md"
   assert_contains "$prompt" "Major feedback"
   assert_contains "$prompt" "nitpick"
   assert_contains "$prompt" "{{STEP_ID}}.md"
@@ -241,7 +243,8 @@ test_preflight_prompt_defines_full_preflight_workflow_contract() {
   assert_contains "$prompt" "cleanup-local-resources"
   assert_contains "$prompt" '"alwaysRun": true'
   assert_contains "$prompt" "local-resources.json"
-  [[ "$prompt" != *'"type": "cleanup-local-resources"'* ]] || fail "expected preflight not to append cleanup-local-resources"
+  assert_contains "$prompt" 'If `state.json` has no step with id `cleanup-local-resources`'
+  assert_contains "$prompt" "Do not modify an existing cleanup step or overwrite an existing ledger"
   [[ "$prompt" != *'"type": "review-slice"'* ]] || fail "expected preflight to omit review-slice"
   [[ "$prompt" != *'"type": "review-fixes"'* ]] || fail "expected preflight to omit review-fixes"
   assert_contains "$prompt" "codex"
@@ -408,6 +411,9 @@ test_cleanup_local_resources_prompt_defines_owned_always_run_contract() {
   assert_contains "$prompt" "project worktree"
   assert_contains "$prompt" "Never use"
   assert_contains "$prompt" "ralph-{{ISSUE}}-"
+  assert_contains "$prompt" '{"processes":[],"containers":[],"tempPaths":[],"sessions":[]}'
+  assert_contains "$prompt" "Keep any entry whose resource could not be cleaned"
+  [[ "$prompt" != *"Delete the resource ledger"* ]] || fail "expected cleanup to preserve an empty ledger"
   assert_contains "$prompt" 'Do not invoke the post-merge `cleanup.sh`'
   assert_contains "$prompt" "cleanup-local-resources.md"
 }

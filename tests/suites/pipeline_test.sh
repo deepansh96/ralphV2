@@ -576,6 +576,9 @@ test_post_implementation_pipeline_completes_with_idempotent_pr_comments() {
   cleanup_status="$(jq -r '.steps[] | select(.id == "cleanup-local-resources") | .status' "$WORKSPACES_DIR/$issue/state.json")"
   [[ "$pr_status" == "completed" ]] || fail "expected pr-creation to complete"
   [[ "$cleanup_status" == "completed" ]] || fail "expected cleanup to complete"
+  jq -e '. == {"processes":[],"containers":[],"tempPaths":[],"sessions":[]}' \
+    "$WORKSPACES_DIR/$issue/local-resources.json" >/dev/null \
+    || fail "expected cleanup to preserve an empty resource ledger"
   [[ -f "$WORKSPACES_DIR/$issue/final-checks.md" ]] || fail "expected final-checks artifact"
   [[ -f "$WORKSPACES_DIR/$issue/pr-creation.md" ]] || fail "expected pr-creation artifact"
   [[ -f "$WORKSPACES_DIR/$issue/cleanup-local-resources.md" ]] || fail "expected cleanup artifact"

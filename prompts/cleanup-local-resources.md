@@ -24,7 +24,9 @@ This step runs after success and after an earlier step fails.
    `git reset --hard`, never alter commits, and never delete an unknown change.
 8. Check for resources named with the `ralph-{{ISSUE}}-` prefix that were
    missed by the ledger and clean them.
-9. Delete the resource ledger after its entries are handled.
+9. After all known entries are handled successfully, replace the ledger with:
+   `{"processes":[],"containers":[],"tempPaths":[],"sessions":[]}`.
+   Keep any entry whose resource could not be cleaned.
 
 Do not invoke the post-merge `cleanup.sh`; it archives the workspace and is a
 separate operation.
