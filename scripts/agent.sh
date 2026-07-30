@@ -41,7 +41,7 @@ agent_validate_reasoning_effort() {
   [[ -n "$effort" ]] || return 0
 
   case "$agent:$effort" in
-    codex:minimal|codex:low|codex:medium|codex:high|codex:xhigh|codex:max|codex:ultra)
+    codex:low|codex:medium|codex:high|codex:xhigh|codex:max|codex:ultra)
       return 0
       ;;
     claude:low|claude:medium|claude:high|claude:xhigh|claude:max)

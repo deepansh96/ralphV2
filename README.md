@@ -138,7 +138,7 @@ Each step has this shape:
 Generated steps use `"agent": "codex"` by default. Before a step runs, you can
 edit its optional `model` and `reasoningEffort` fields in `state.json`:
 
-- Codex: `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `ultra`
+- Codex: `low`, `medium`, `high`, `xhigh`, `max`, or `ultra`
 - Claude: `low`, `medium`, `high`, `xhigh`, or `max`
 
 Effort availability still depends on the selected model and account. Omit
