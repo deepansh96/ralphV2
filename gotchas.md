@@ -44,15 +44,18 @@ mainline docs, merge or push them to main and use main as .baseBranch.
 ---------------------------
 To retry a failed step:
   1. Let cleanup-local-resources finish.
-  2. Edit state.json: set the failed step's "status" to "pending"
-  3. Set "metrics": null
-  4. Set "notes": ""
-  5. Validate JSON: jq . state.json > /dev/null
+  2. Reset only that step with jq, then validate the result:
+
+     state_file="workspaces/<issue>/state.json"
+     step_id="<failed-step-id>"
+     jq --arg id "$step_id" \
+       '(.steps[] | select(.id == $id)) |= (.status = "pending" | .metrics = null | .notes = "")' \
+       "$state_file" > "$state_file.tmp" && mv "$state_file.tmp" "$state_file"
+     jq . "$state_file" > /dev/null
 
 Ralph rearms completed always-run cleanup when normal work is retried.
 
-IMPORTANT: Manual edits to state.json can leave malformed JSON, for example
-leftover fields from the old metrics block. Always validate with jq.
+IMPORTANT: Always mutate and validate state.json with jq.
 
 
 5. CODEX CWD IN SUBMODULE SETUP

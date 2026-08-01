@@ -364,6 +364,10 @@ test_runthrough_qa_checklist_prompt_defines_execution_and_progress_contract() {
   assert_contains "$prompt" "free local ports"
   assert_contains "$prompt" "Stub all external calls"
   assert_contains "$prompt" "local databases"
+  assert_contains "$prompt" 'check out `{{BRANCH}}`'
+  assert_contains "$prompt" "actual PR head revision"
+  assert_contains "$prompt" "git rev-parse HEAD"
+  assert_contains "$prompt" 'empty `git status --porcelain`'
   assert_contains "$prompt" "[PASS]"
   assert_contains "$prompt" "[FAIL]"
   assert_contains "$prompt" "[BLOCKED]"

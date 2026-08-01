@@ -16,9 +16,12 @@ Mode: AFK, no HITL
 
 - Read the whole PR, its diff, the parent issue, linked sub-issues, and project
   instructions.
+- Fetch origin, check out `{{BRANCH}}`, resolve the actual PR head revision,
+  and verify `git rev-parse HEAD` equals it.
+- Require an empty `git status --porcelain`. Fail before QA if the checkout is
+  stale or the worktree contains uncommitted changes.
 - Find the PR comment containing `<!-- ralph:qa-checklist -->`.
 - Turn every checklist item into a todo and work through them in order.
-- Capture the starting `git status --porcelain`.
 
 ## Local-Only Rules
 
@@ -48,6 +51,6 @@ After all items, add a concise summary to the same comment: what passed,
 failed, or was blocked; issues found; and possible fix directions.
 
 Clean resources started by this step before completing, including on failure.
-Verify the worktree matches its starting state. Product failures and blocked
-items are reported but do not fail this step; fail only if the checklist
-cannot be read or the QA workflow itself cannot be completed and reported.
+Verify the worktree is still clean. Product failures and blocked items are
+reported but do not fail this step; fail only if the checklist cannot be read
+or the QA workflow itself cannot be completed and reported.
