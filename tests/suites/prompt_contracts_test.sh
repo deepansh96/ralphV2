@@ -244,6 +244,7 @@ test_preflight_prompt_defines_full_preflight_workflow_contract() {
   assert_contains "$prompt" '"alwaysRun": true'
   assert_contains "$prompt" "local-resources.json"
   assert_contains "$prompt" 'If `state.json` has no step with id `cleanup-local-resources`'
+  assert_contains "$prompt" $'```json\n[\n{\n  "id": "cleanup-local-resources"'
   assert_contains "$prompt" "Do not modify an existing cleanup step or overwrite an existing ledger"
   [[ "$prompt" != *'"type": "review-slice"'* ]] || fail "expected preflight to omit review-slice"
   [[ "$prompt" != *'"type": "review-fixes"'* ]] || fail "expected preflight to omit review-fixes"

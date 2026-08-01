@@ -95,6 +95,7 @@ async function main() {
 
   let nextId = 1;
   let stderr = "";
+  let stopError = null;
   const pending = new Map();
   const completed = new Map();
   const deltas = new Map();
@@ -156,12 +157,16 @@ async function main() {
   });
 
   const exited = new Promise((_, reject) => {
-    child.once("error", reject);
+    child.once("error", (error) => {
+      stopError ||= error;
+      reject(error);
+    });
     child.once("exit", (code, signal) => {
       const error = new Error(
         `codex app-server exited before review completion (${signal || `code ${code}`})` +
           (stderr.trim() ? `\n${stderr.trim()}` : "")
       );
+      stopError ||= error;
       for (const waiter of pending.values()) waiter.reject(error);
       pending.clear();
       reject(error);
@@ -170,16 +175,18 @@ async function main() {
 
   const waitForTurn = async (turnId) => {
     while (!completed.has(turnId)) {
+      if (stopError) throw stopError;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     return completed.get(turnId);
   };
 
   const timeout = new Promise((_, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`Review timed out after ${options.timeoutMs / 1000} seconds`)),
-      options.timeoutMs
-    );
+    const timer = setTimeout(() => {
+      const error = new Error(`Review timed out after ${options.timeoutMs / 1000} seconds`);
+      stopError ||= error;
+      reject(error);
+    }, options.timeoutMs);
     timer.unref();
   });
 

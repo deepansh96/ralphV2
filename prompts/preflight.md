@@ -29,6 +29,7 @@ If `state.json` has no step with id `cleanup-local-resources`, add this one
 with `state_add_steps`:
 
 ```json
+[
 {
   "id": "cleanup-local-resources",
   "phase": "fixed",
@@ -41,6 +42,7 @@ with `state_add_steps`:
   "metrics": null,
   "notes": ""
 }
+]
 ```
 
 If `{{WORKSPACE}}/local-resources.json` does not exist, initialize it with:
