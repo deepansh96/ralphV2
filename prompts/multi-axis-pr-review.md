@@ -17,7 +17,8 @@ Mode: AFK, no HITL
 
 Read the whole PR, actual base and head revisions, complete diff, parent issue,
 linked sub-issues, local QA comment, and repository instructions. Confirm the
-diff is non-empty.
+diff is non-empty. Before launching reviews, verify `git rev-parse HEAD` equals
+the actual PR head revision. Fail instead of reviewing a different local head.
 
 ## Four Reviews
 

@@ -389,6 +389,8 @@ test_multi_axis_pr_review_prompt_defines_four_skill_vote_contract() {
   assert_contains "$prompt" "run-codex-review/SKILL.md"
   assert_contains "$prompt" "supe-review-code-changes/SKILL.md"
   assert_contains "$prompt" "run-codex-review/scripts/review.mjs"
+  assert_contains "$prompt" "git rev-parse HEAD"
+  assert_contains "$prompt" "actual PR head revision"
   assert_contains "$prompt" "KEEP"
   assert_contains "$prompt" "DISCARD"
   assert_contains "$prompt" "Deduplicate"
