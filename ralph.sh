@@ -150,7 +150,7 @@ run_pipeline() {
 
     if ! prompt="$(prompt_render "$template_file" "$state_file" "$workspace" "$step" "$SCRIPT_DIR/skills")"; then
       state_update_step "$state_file" "$step_id" "failed"
-      return 1
+      continue
     fi
     if [[ "$is_hitl_resume" == "true" ]]; then
       prompt="$(prompt_append_hitl_resume "$prompt" "$flag_file" "$answers")"
@@ -176,13 +176,13 @@ run_pipeline() {
 
     if [[ "$agent_status" -ne 0 ]]; then
       state_update_step "$state_file" "$step_id" "failed"
-      return 1
+      continue
     fi
 
     current_status="$(state_get_step_status "$state_file" "$step_id")"
     if [[ "$current_status" == "failed" ]]; then
       state_update_step "$state_file" "$step_id" "failed" "$metrics_json"
-      return 1
+      continue
     fi
     if [[ "$current_status" == "blocked" ]]; then
       state_update_step "$state_file" "$step_id" "blocked" "$metrics_json"
@@ -195,11 +195,17 @@ run_pipeline() {
     (( ++steps_run ))
     if [[ "$step_limit" -gt 0 && "$steps_run" -ge "$step_limit" ]]; then
       printf "Step limit reached (%d/%d). Stopping.\n" "$steps_run" "$step_limit"
+      if jq -e '.steps[]? | select(.status == "failed")' "$state_file" >/dev/null; then
+        return 1
+      fi
       return 0
     fi
   done
 
   metrics_print_summary "$state_file"
+  if jq -e '.steps[]? | select(.status == "failed")' "$state_file" >/dev/null; then
+    return 1
+  fi
 }
 
 run_pipeline_background() {
@@ -230,7 +236,11 @@ poll_pipeline() {
   wrapper_pid_file="$workspace/step-runner.pid"
 
   while true; do
-    if step="$(jq -c 'first(.steps[]? | select(.status == "failed")) // empty' "$state_file")" && [[ -n "$step" ]]; then
+    if step="$(jq -c '
+      if any(.steps[]?; .status == "failed")
+        and all(.steps[]?; .alwaysRun != true or (.status != "pending" and .status != "in_progress"))
+      then first(.steps[]? | select(.status == "failed")) else empty end
+    ' "$state_file")" && [[ -n "$step" ]]; then
       step_id="$(jq -r '.id' <<<"$step")"
       printf "Step %s failed.\n" "$step_id" >&2
       return 1
@@ -249,15 +259,26 @@ poll_pipeline() {
       return 0
     fi
 
+    if [[ -f "$wrapper_pid_file" ]]; then
+      wrapper_pid="$(<"$wrapper_pid_file")"
+    else
+      wrapper_pid=""
+    fi
+    if [[ -n "$wrapper_pid" ]] && ! kill -0 "$wrapper_pid" 2>/dev/null; then
+      state_validate "$state_file" >/dev/null 2>&1 || true
+      if [[ -n "$step" ]]; then
+        step_id="$(jq -r '.id' <<<"$step")"
+        printf "Wrapper PID %s is dead while step %s is still in progress.\n" "$wrapper_pid" "$step_id" >&2
+      else
+        printf "Wrapper PID %s is dead with %s steps pending.\n" "$wrapper_pid" "$pending_count" >&2
+      fi
+      return 1
+    fi
+
     if [[ -n "$step" ]]; then
       step_id="$(jq -r '.id' <<<"$step")"
       started_at="$(jq -r '.started_at // empty' <<<"$step")"
       pid="$(jq -r '.pid // empty' <<<"$step")"
-      if [[ -f "$wrapper_pid_file" ]]; then
-        wrapper_pid="$(<"$wrapper_pid_file")"
-      else
-        wrapper_pid=""
-      fi
 
       elapsed_display="-"
       if [[ "$started_at" =~ ^[0-9]+$ ]]; then
@@ -270,12 +291,6 @@ poll_pipeline() {
         pid_status="alive"
       fi
       printf "Step %s elapsed %s PID %s.\n" "$step_id" "$elapsed_display" "$pid_status"
-
-      if [[ -n "$wrapper_pid" ]] && ! kill -0 "$wrapper_pid" 2>/dev/null; then
-        state_validate "$state_file" >/dev/null 2>&1 || true
-        printf "Wrapper PID %s is dead while step %s is still in progress.\n" "$wrapper_pid" "$step_id" >&2
-        return 1
-      fi
     else
       printf "No active step; %s pending.\n" "$pending_count"
     fi
@@ -343,7 +358,7 @@ case "$COMMAND" in
     fi
     STATE_FILE="$SCRIPT_DIR/workspaces/$ISSUE/state.json"
     state_validate "$STATE_FILE"
-    if ! jq -e '.steps[]? | select(.status == "completed")' "$STATE_FILE" >/dev/null 2>&1; then
+    if ! jq -e '.steps[]? | select(.status == "completed" or .status == "failed")' "$STATE_FILE" >/dev/null 2>&1; then
       context_check "$SCRIPT_DIR" "$STATE_FILE" "$SCRIPT_DIR/workspaces/$ISSUE"
     fi
     if [[ "$BACKGROUND" == "true" ]]; then

@@ -34,6 +34,25 @@ agent_sleep_before_retry() {
   sleep "$delay"
 }
 
+agent_validate_reasoning_effort() {
+  local agent="$1"
+  local effort="$2"
+
+  [[ -n "$effort" ]] || return 0
+
+  case "$agent:$effort" in
+    codex:low|codex:medium|codex:high|codex:xhigh|codex:max|codex:ultra)
+      return 0
+      ;;
+    claude:low|claude:medium|claude:high|claude:xhigh|claude:max)
+      return 0
+      ;;
+  esac
+
+  echo "Error: unsupported reasoning effort '$effort' for agent '$agent'" >&2
+  return 1
+}
+
 agent_run_with_retry() {
   local log_file="$1"
   local command_fn="$2"
@@ -73,11 +92,17 @@ run_claude() {
   local log_file="$2"
   local project_root="${3:-}"  # accepted for forward-compatibility, currently unused
   local model="${4:-}"
+  local reasoning_effort="${5:-}"
   local start_ms end_ms duration_ms status
+  local -a claude_args
+
+  agent_validate_reasoning_effort "claude" "$reasoning_effort" || return 1
+  claude_args=(-p "$prompt" --dangerously-skip-permissions --output-format stream-json --verbose)
+  [[ -z "$model" ]] || claude_args+=(--model "$model")
+  [[ -z "$reasoning_effort" ]] || claude_args+=(--effort "$reasoning_effort")
 
   run_claude_command() {
-    claude -p "$prompt" --dangerously-skip-permissions --output-format stream-json --verbose \
-      ${model:+--model "$model"}
+    claude "${claude_args[@]}"
   }
 
   start_ms="$(current_time_ms)"
@@ -96,21 +121,29 @@ run_codex() {
   local log_file="$2"
   local project_root="${3:-}"
   local model="${4:-}"
+  local reasoning_effort="${5:-}"
   local last_message_file start_ms end_ms duration_ms status
+  local -a codex_args
 
+  agent_validate_reasoning_effort "codex" "$reasoning_effort" || return 1
   if [[ -z "$project_root" ]]; then
     project_root="$(git -C "$SCRIPT_DIR/.." rev-parse --show-toplevel)"
   fi
   last_message_file="$(mktemp)"
+  codex_args=(-a never exec)
+  [[ -z "$model" ]] || codex_args+=(--model "$model")
+  [[ -z "$reasoning_effort" ]] \
+    || codex_args+=(--config "model_reasoning_effort=\"$reasoning_effort\"")
+  codex_args+=(
+    --skip-git-repo-check
+    --sandbox danger-full-access
+    -C "$project_root"
+    --json
+    --output-last-message "$last_message_file"
+    -
+  )
   run_codex_command() {
-    printf '%s' "$prompt" | (cd "$project_root" && codex -a never exec \
-      ${model:+--model "$model"} \
-      --skip-git-repo-check \
-      --sandbox danger-full-access \
-      -C "$project_root" \
-      --json \
-      --output-last-message "$last_message_file" \
-      -)
+    printf '%s' "$prompt" | (cd "$project_root" && codex "${codex_args[@]}")
   }
 
   start_ms="$(current_time_ms)"
@@ -130,16 +163,17 @@ agent_run_step() {
   local prompt="$2"
   local log_file="$3"
   local project_root="${4:-}"
-  local agent model
+  local agent model reasoning_effort
 
   agent="$(jq -r '.agent // empty' <<<"$step_json")"
   model="$(jq -r '.model // empty' <<<"$step_json")"
+  reasoning_effort="$(jq -r '.reasoningEffort // empty' <<<"$step_json")"
   case "$agent" in
     claude)
-      run_claude "$prompt" "$log_file" "$project_root" "$model"
+      run_claude "$prompt" "$log_file" "$project_root" "$model" "$reasoning_effort"
       ;;
     codex)
-      run_codex "$prompt" "$log_file" "$project_root" "$model"
+      run_codex "$prompt" "$log_file" "$project_root" "$model" "$reasoning_effort"
       ;;
     *)
       echo "Error: unsupported agent '$agent'" >&2

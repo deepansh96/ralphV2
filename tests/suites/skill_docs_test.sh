@@ -13,7 +13,11 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
     "$ROOT_DIR/skills/grilling/SKILL.md"
     "$ROOT_DIR/skills/wayfinder/SKILL.md"
     "$ROOT_DIR/skills/research/SKILL.md"
-    "$ROOT_DIR/skills/code-review/SKILL.md"
+    "$ROOT_DIR/skills/matt-pocock-code-review/SKILL.md"
+    "$ROOT_DIR/skills/ponytail-review/SKILL.md"
+    "$ROOT_DIR/skills/run-codex-review/SKILL.md"
+    "$ROOT_DIR/skills/run-codex-review/scripts/review.mjs"
+    "$ROOT_DIR/skills/supe-review-code-changes/SKILL.md"
     "$ROOT_DIR/skills/tdd/SKILL.md"
     "$ROOT_DIR/skills/tdd/tests.md"
     "$ROOT_DIR/skills/tdd/mocking.md"
@@ -68,9 +72,12 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   assert_contains "$(<"$readme")" "state.json"
   assert_contains "$(<"$readme")" "review-decisions"
   assert_contains "$(<"$readme")" "implement-slice"
-  assert_contains "$(<"$readme")" "review-slice"
-  assert_contains "$(<"$readme")" "pr-review"
-  assert_contains "$(<"$readme")" "review-fixes"
+  assert_contains "$(<"$readme")" "final-checks"
+  assert_contains "$(<"$readme")" "pr-creation"
+  assert_contains "$(<"$readme")" "prepare-qa-checklist"
+  assert_contains "$(<"$readme")" "runthrough-qa-checklist"
+  assert_contains "$(<"$readme")" "multi-axis-pr-review"
+  assert_contains "$(<"$readme")" "cleanup-local-resources"
   assert_contains "$(<"$readme")" "wayfinder"
   assert_contains "$(<"$readme")" "docs/agents/issue-tracker.md"
 
@@ -82,6 +89,66 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   assert_contains "$(<"$tests_readme")" "External tools"
 }
 
+test_isolated_codex_review_timeout_exits() {
+  local fake_bin output_file pid status alive attempt
+
+  fake_bin="$WORKSPACES_DIR/fake-bin"
+  output_file="$fake_bin/review-output"
+  rm -rf "$fake_bin"
+  mkdir -p "$fake_bin"
+
+  cat > "$fake_bin/codex" <<'FAKE'
+#!/usr/bin/env bash
+count=0
+while IFS= read -r line; do
+  count=$((count + 1))
+  case "$count" in
+    1) printf '{"id":1,"result":{}}\n' ;;
+    3) printf '{"id":2,"result":{"thread":{"id":"thread-1"}}}\n' ;;
+    4)
+      printf '{"id":3,"result":{"turn":{"id":"turn-1"}}}\n'
+      printf reached-review-start > "${CODEX_REVIEW_MARKER:?}"
+      ;;
+  esac
+done
+FAKE
+  chmod +x "$fake_bin/codex"
+
+  set +e
+  CODEX_REVIEW_MARKER="$fake_bin/reached-review-start" \
+    CODEX_BIN="$fake_bin/codex" \
+    node "$ROOT_DIR/skills/run-codex-review/scripts/review.mjs" \
+      --cwd "$ROOT_DIR" --custom smoke --timeout 1 \
+      > "$output_file" 2>&1 &
+  pid=$!
+  set -e
+
+  alive="true"
+  for attempt in {1..60}; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      alive="false"
+      break
+    fi
+    sleep 0.05
+  done
+
+  if [[ "$alive" == "true" ]]; then
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    fail "expected timed-out isolated review process to exit"
+  fi
+
+  set +e
+  wait "$pid"
+  status=$?
+  set -e
+
+  [[ "$status" -ne 0 ]] || fail "expected timed-out isolated review to fail"
+  [[ -f "$fake_bin/reached-review-start" ]] || fail "expected fake App Server to reach review/start"
+  assert_contains "$(<"$output_file")" "Review timed out after 1 seconds"
+}
+
 run_test test_skills_bundle_is_self_contained_and_readme_documents_workflow
+run_test test_isolated_codex_review_timeout_exits
 
 echo "skill_docs_test.sh passed"

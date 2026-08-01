@@ -17,7 +17,6 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   assert_contains "$prompt" "must not overwrite"
   assert_contains "$prompt" '"baseBranch": null'
   assert_contains "$prompt" '"branch": null'
-  assert_contains "$prompt" '"reviewFixes": false'
   assert_contains "$prompt" '"status": "initialized"'
   assert_contains "$prompt" '"phase": "fixed"'
   assert_contains "$prompt" '"metrics": null'
@@ -26,6 +25,9 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   assert_contains "$prompt" "create-and-review-prd"
   assert_contains "$prompt" "create-and-review-slices"
   assert_contains "$prompt" "preflight"
+  assert_contains "$prompt" '"type": "cleanup-local-resources"'
+  assert_contains "$prompt" '"alwaysRun": true'
+  assert_contains "$prompt" "local-resources.json"
   assert_contains "$prompt" "ralph.sh status --issue {{ISSUE}}"
   assert_contains "$prompt" '"projectRoot"'
   assert_contains "$prompt" "git rev-parse --show-toplevel"
@@ -38,10 +40,10 @@ test_init_prompt_defines_complete_workspace_initialization_contract() {
   assert_contains "$prompt" "If the user opts in without a count, use 1 review-decisions round"
   assert_contains "$prompt" '"reviewRounds": 0'
   assert_contains "$prompt" "Default is 0"
-  assert_contains "$prompt" 'Set `reviewFixes` to true only when the user explicitly opts in'
+  [[ "$prompt" != *"reviewFixes"* ]] || fail "expected init to omit removed reviewFixes option"
 }
 
-test_initialized_workspace_status_shows_default_three_pending_fixed_steps() {
+test_initialized_workspace_status_shows_default_four_pending_fixed_steps() {
   local issue output pending_count
 
   issue="9012"
@@ -91,6 +93,18 @@ test_initialized_workspace_status_shows_default_three_pending_fixed_steps() {
           hitl: false,
           metrics: null,
           notes: ""
+        },
+        {
+          id: "cleanup-local-resources",
+          phase: "fixed",
+          type: "cleanup-local-resources",
+          status: "pending",
+          agent: "codex",
+          reviewers: [],
+          hitl: false,
+          alwaysRun: true,
+          metrics: null,
+          notes: ""
         }
       ]
     }' > "$WORKSPACES_DIR/$issue/state.json"
@@ -98,10 +112,11 @@ test_initialized_workspace_status_shows_default_three_pending_fixed_steps() {
   output="$("$RALPH" status --issue "$issue")"
   pending_count="$(grep -c "pending" <<<"$output")"
 
-  [[ "$pending_count" == "3" ]] || fail "expected 3 pending steps in status output, got $pending_count: $output"
+  [[ "$pending_count" == "4" ]] || fail "expected 4 pending steps in status output, got $pending_count: $output"
   assert_contains "$output" "create-and-review-prd"
   assert_contains "$output" "create-and-review-slices"
   assert_contains "$output" "preflight"
+  assert_contains "$output" "cleanup-local-resources"
 }
 
 test_review_decisions_prompt_defines_council_filtering_and_hitl_contract() {
@@ -118,6 +133,8 @@ test_review_decisions_prompt_defines_council_filtering_and_hitl_contract() {
   assert_contains "$prompt" "CLAUDE.md"
   assert_contains "$prompt" "docs/adr"
   assert_contains "$prompt" "scripts/council-review.sh"
+  assert_contains "$prompt" "/tmp/ralph-{{ISSUE}}-issue-body.md"
+  assert_contains "$prompt" "rm -f /tmp/ralph-{{ISSUE}}-issue-body.md"
   assert_contains "$prompt" "Major feedback"
   assert_contains "$prompt" "nitpick"
   assert_contains "$prompt" "{{STEP_ID}}.md"
@@ -218,13 +235,19 @@ test_preflight_prompt_defines_full_preflight_workflow_contract() {
   assert_contains "$prompt" "state_add_steps"
   assert_contains "$prompt" "topologically"
   assert_contains "$prompt" "implement-slice"
-  assert_contains "$prompt" '"type": "review-slice"'
-  assert_contains "$prompt" "review-slice-<sub-issue-number>"
-  assert_contains "$prompt" "each slice is reviewed before the next slice is implemented"
-  assert_contains "$prompt" "final-review"
-  assert_contains "$prompt" "pr-review"
-  assert_contains "$prompt" "optional review-fixes"
-  assert_contains "$prompt" 'Append `review-fixes` only when `reviewFixes` is exactly true'
+  assert_contains "$prompt" "final-checks"
+  assert_contains "$prompt" "pr-creation"
+  assert_contains "$prompt" "prepare-qa-checklist"
+  assert_contains "$prompt" "runthrough-qa-checklist"
+  assert_contains "$prompt" "multi-axis-pr-review"
+  assert_contains "$prompt" "cleanup-local-resources"
+  assert_contains "$prompt" '"alwaysRun": true'
+  assert_contains "$prompt" "local-resources.json"
+  assert_contains "$prompt" 'If `state.json` has no step with id `cleanup-local-resources`'
+  assert_contains "$prompt" $'```json\n[\n{\n  "id": "cleanup-local-resources"'
+  assert_contains "$prompt" "Do not modify an existing cleanup step or overwrite an existing ledger"
+  [[ "$prompt" != *'"type": "review-slice"'* ]] || fail "expected preflight to omit review-slice"
+  [[ "$prompt" != *'"type": "review-fixes"'* ]] || fail "expected preflight to omit review-fixes"
   assert_contains "$prompt" "codex"
   assert_contains "$prompt" "sub_issue"
   assert_contains "$prompt" "idempotent"
@@ -266,149 +289,148 @@ test_implement_slice_prompt_defines_full_implementation_workflow_contract() {
   assert_contains "$prompt" "#{{SUB_ISSUE}}"
   assert_contains "$prompt" "git push"
   assert_contains "$prompt" "gh issue close {{SUB_ISSUE}} --repo {{REPO}}"
+  assert_contains "$prompt" "local-resources.json"
 }
 
-test_review_slice_prompt_defines_review_and_fix_contract() {
+test_final_checks_prompt_defines_read_only_check_contract() {
   local prompt_file prompt
 
-  prompt_file="$ROOT_DIR/prompts/review-slice.md"
-  [[ -f "$prompt_file" ]] || fail "expected review-slice prompt template at $prompt_file"
+  prompt_file="$ROOT_DIR/prompts/final-checks.md"
+  [[ -f "$prompt_file" ]] || fail "expected final-checks prompt template at $prompt_file"
 
   prompt="$(<"$prompt_file")"
 
-  assert_contains "$prompt" "Issue: {{ISSUE}}"
-  assert_contains "$prompt" "Repo: {{REPO}}"
-  assert_contains "$prompt" "Workspace: {{WORKSPACE}}"
-  assert_contains "$prompt" "Branch: {{BRANCH}}"
-  assert_contains "$prompt" "Base branch: {{BASE_BRANCH}}"
-  assert_contains "$prompt" "Step: {{STEP_ID}}"
-  assert_contains "$prompt" "Sub-issue: {{SUB_ISSUE}}"
-  assert_contains "$prompt" "Skills: {{SKILLS_DIR}}"
-  assert_contains "$prompt" "Default agent: codex"
-  assert_contains "$prompt" "AFK"
-  assert_contains "$prompt" "code-review/SKILL.md"
-  assert_contains "$prompt" "Standards"
-  assert_contains "$prompt" "Spec"
-  assert_contains "$prompt" "smell"
-  assert_contains "$prompt" "judgement call"
-  assert_contains "$prompt" "gh issue view {{ISSUE}} --repo {{REPO}}"
-  assert_contains "$prompt" "gh issue view {{SUB_ISSUE}} --repo {{REPO}}"
-  assert_contains "$prompt" "Fixed Point"
-  assert_contains "$prompt" "git checkout {{BRANCH}}"
-  assert_contains "$prompt" "failing test"
-  assert_contains "$prompt" "Run quality checks from CLAUDE.md"
-  assert_contains "$prompt" "git commit"
-  assert_contains "$prompt" "#{{SUB_ISSUE}}"
-  assert_contains "$prompt" "git push"
-  assert_contains "$prompt" "gh issue comment {{SUB_ISSUE}} --repo {{REPO}}"
-  assert_contains "$prompt" "{{STEP_ID}}.md"
-  assert_contains "$prompt" "no findings"
-  assert_contains "$prompt" "empty commit"
+  assert_contains "$prompt" "git diff {{BASE_BRANCH}}...HEAD"
+  assert_contains "$prompt" 'quality commands in `CLAUDE.md`'
+  assert_contains "$prompt" "acceptance criterion"
+  assert_contains "$prompt" "cross-slice integration"
+  assert_contains "$prompt" "read-only"
+  assert_contains "$prompt" "{{WORKSPACE}}/final-checks.md"
+  assert_contains "$prompt" "local-resources.json"
 }
 
-test_final_review_prompt_defines_full_review_workflow_contract() {
+test_pr_creation_prompt_defines_idempotent_pr_only_contract() {
   local prompt_file prompt
 
-  prompt_file="$ROOT_DIR/prompts/final-review.md"
-  [[ -f "$prompt_file" ]] || fail "expected final-review prompt template at $prompt_file"
+  prompt_file="$ROOT_DIR/prompts/pr-creation.md"
+  [[ -f "$prompt_file" ]] || fail "expected pr-creation prompt template at $prompt_file"
 
   prompt="$(<"$prompt_file")"
 
-  assert_contains "$prompt" "Issue: {{ISSUE}}"
-  assert_contains "$prompt" "Repo: {{REPO}}"
-  assert_contains "$prompt" "Workspace: {{WORKSPACE}}"
-  assert_contains "$prompt" "Branch: {{BRANCH}}"
-  assert_contains "$prompt" "Base branch: {{BASE_BRANCH}}"
-  assert_contains "$prompt" "Step: {{STEP_ID}}"
-  assert_contains "$prompt" "Skills: {{SKILLS_DIR}}"
-  assert_contains "$prompt" "Default agent: codex"
-  assert_contains "$prompt" "git diff --name-only {{BASE_BRANCH}}...HEAD"
-  assert_contains "$prompt" "Progressively read changed files"
-  assert_contains "$prompt" "Run quality checks from CLAUDE.md"
-  assert_contains "$prompt" "Verify acceptance criteria from each sub-issue"
-  assert_contains "$prompt" "side effects"
-  assert_contains "$prompt" "missing pieces"
-  assert_contains "$prompt" "scope creep"
-  assert_contains "$prompt" "Update CONTEXT.md"
-  assert_contains "$prompt" "Update CLAUDE.md"
-  assert_contains "$prompt" "{{WORKSPACE}}/final-review.md"
-}
-
-test_pr_review_prompt_defines_full_pr_workflow_contract() {
-  local prompt_file prompt
-
-  prompt_file="$ROOT_DIR/prompts/pr-review.md"
-  [[ -f "$prompt_file" ]] || fail "expected pr-review prompt template at $prompt_file"
-
-  prompt="$(<"$prompt_file")"
-
-  assert_contains "$prompt" "Issue: {{ISSUE}}"
-  assert_contains "$prompt" "Repo: {{REPO}}"
-  assert_contains "$prompt" "Workspace: {{WORKSPACE}}"
-  assert_contains "$prompt" "Branch: {{BRANCH}}"
-  assert_contains "$prompt" "Base branch: {{BASE_BRANCH}}"
-  assert_contains "$prompt" "Step: {{STEP_ID}}"
-  assert_contains "$prompt" "Skills: {{SKILLS_DIR}}"
-  assert_contains "$prompt" "Step agent: {{AGENT}}"
-  assert_contains "$prompt" "Default agent: codex"
+  assert_contains "$prompt" "git push -u origin {{BRANCH}}"
   assert_contains "$prompt" "gh pr list"
+  assert_contains "$prompt" "--head {{BRANCH}} --state open"
+  assert_contains "$prompt" "--json number,url,baseRefName"
+  assert_contains "$prompt" "gh pr edit"
   assert_contains "$prompt" "gh pr create"
-  assert_contains "$prompt" "--base {{BASE_BRANCH}}"
-  assert_contains "$prompt" "--head {{BRANCH}}"
-  assert_contains "$prompt" "summary of changes"
-  assert_contains "$prompt" "linked sub-issues"
-  assert_contains "$prompt" 'Closes #{{ISSUE}}'
-  assert_contains "$prompt" "Closes #<sub-issue>"
-  assert_contains "$prompt" "human QA checklist"
-  assert_contains "$prompt" "code-review:code-review"
-  assert_contains "$prompt" "code-review/SKILL.md"
-  assert_contains "$prompt" "Fowler smell baseline"
-  assert_contains "$prompt" "judgement call"
-  assert_contains "$prompt" "review --base"
-  assert_contains "$prompt" "codex-pr-review.md"
-  assert_contains "$prompt" "PR comments"
-  assert_contains "$prompt" "idempotent"
-  assert_contains "$prompt" "Do not create duplicate PRs"
-  assert_contains "$prompt" "PR Target Branch"
-  assert_contains "$prompt" 'grill/*'
-  assert_contains "$prompt" "must not target the planning branch"
+  assert_contains "$prompt" "If more than one exists"
+  assert_contains "$prompt" "same-head PR targets a different"
   assert_contains "$prompt" "defaultBranchRef"
-  assert_contains "$prompt" "git merge --no-edit origin/{{BASE_BRANCH}}"
-  assert_contains "$prompt" "git merge --abort"
+  assert_contains "$prompt" "git merge --no-edit"
+  assert_contains "$prompt" "Closes #{{ISSUE}}"
+  assert_contains "$prompt" "Closes #<sub-issue>"
+  assert_contains "$prompt" "Do not include a review section or QA checklist"
+  assert_contains "$prompt" "{{WORKSPACE}}/pr-creation.md"
 }
 
-test_review_fixes_prompt_defines_full_review_fixes_workflow_contract() {
+test_prepare_qa_checklist_prompt_defines_local_comment_contract() {
   local prompt_file prompt
 
-  prompt_file="$ROOT_DIR/prompts/review-fixes.md"
-  [[ -f "$prompt_file" ]] || fail "expected review-fixes prompt template at $prompt_file"
+  prompt_file="$ROOT_DIR/prompts/prepare-qa-checklist.md"
+  [[ -f "$prompt_file" ]] || fail "expected prepare-qa-checklist prompt template at $prompt_file"
 
   prompt="$(<"$prompt_file")"
 
-  assert_contains "$prompt" "Issue: {{ISSUE}}"
-  assert_contains "$prompt" "Repo: {{REPO}}"
-  assert_contains "$prompt" "Workspace: {{WORKSPACE}}"
-  assert_contains "$prompt" "Branch: {{BRANCH}}"
-  assert_contains "$prompt" "Base branch: {{BASE_BRANCH}}"
-  assert_contains "$prompt" "Step: {{STEP_ID}}"
-  assert_contains "$prompt" "Skills: {{SKILLS_DIR}}"
-  assert_contains "$prompt" "Default agent: codex"
-  assert_contains "$prompt" "pr-review.md"
-  assert_contains "$prompt" "final-review.md"
-  assert_contains "$prompt" "gh api"
-  assert_contains "$prompt" "issues/<pr-number>/comments"
-  assert_contains "$prompt" "pulls/<pr-number>/comments"
-  assert_contains "$prompt" "code-review:code-review"
-  assert_contains "$prompt" "codex review"
-  assert_contains "$prompt" "Fix"
-  assert_contains "$prompt" "Dismiss"
-  assert_contains "$prompt" "Run quality checks from CLAUDE.md"
-  assert_contains "$prompt" "git commit"
-  assert_contains "$prompt" "git push"
-  assert_contains "$prompt" "gh pr comment"
-  assert_contains "$prompt" "review-fixes-comment.md"
-  assert_contains "$prompt" "review-fixes.md"
-  assert_contains "$prompt" "zero"
+  assert_contains "$prompt" "whole PR"
+  assert_contains "$prompt" "never test a deployed environment"
+  assert_contains "$prompt" "stub or local fake"
+  assert_contains "$prompt" "remote database"
+  assert_contains "$prompt" "local browser"
+  assert_contains "$prompt" "<!-- ralph:qa-checklist -->"
+  assert_contains "$prompt" "[PENDING]"
+  assert_contains "$prompt" "edit it instead of adding another comment"
+  assert_contains "$prompt" "Save no checklist"
+}
+
+test_runthrough_qa_checklist_prompt_defines_execution_and_progress_contract() {
+  local prompt_file prompt
+
+  prompt_file="$ROOT_DIR/prompts/runthrough-qa-checklist.md"
+  [[ -f "$prompt_file" ]] || fail "expected runthrough-qa-checklist prompt template at $prompt_file"
+
+  prompt="$(<"$prompt_file")"
+
+  assert_contains "$prompt" "<!-- ralph:qa-checklist -->"
+  assert_contains "$prompt" "todo"
+  assert_contains "$prompt" "free local ports"
+  assert_contains "$prompt" "Stub all external calls"
+  assert_contains "$prompt" "local databases"
+  assert_contains "$prompt" 'check out `{{BRANCH}}`'
+  assert_contains "$prompt" "actual PR head revision"
+  assert_contains "$prompt" "git rev-parse HEAD"
+  assert_contains "$prompt" 'empty `git status --porcelain`'
+  assert_contains "$prompt" "[PASS]"
+  assert_contains "$prompt" "[FAIL]"
+  assert_contains "$prompt" "[BLOCKED]"
+  assert_contains "$prompt" "local-resources.json"
+  assert_contains "$prompt" "do not fail this step"
+}
+
+test_multi_axis_pr_review_prompt_defines_four_skill_vote_contract() {
+  local prompt_file prompt
+
+  prompt_file="$ROOT_DIR/prompts/multi-axis-pr-review.md"
+  [[ -f "$prompt_file" ]] || fail "expected multi-axis-pr-review prompt template at $prompt_file"
+
+  prompt="$(<"$prompt_file")"
+
+  assert_contains "$prompt" "two waves"
+  assert_contains "$prompt" "Wave 1"
+  assert_contains "$prompt" "Wait for wave 1 to finish"
+  assert_contains "$prompt" "wave 2 in parallel"
+  [[ "$prompt" != *"exactly four parallel"* ]] || fail "expected bounded two-wave review scheduling"
+  assert_contains "$prompt" "matt-pocock-code-review/SKILL.md"
+  assert_contains "$prompt" "ponytail-review/SKILL.md"
+  assert_contains "$prompt" "run-codex-review/SKILL.md"
+  assert_contains "$prompt" "supe-review-code-changes/SKILL.md"
+  assert_contains "$prompt" "run-codex-review/scripts/review.mjs"
+  assert_contains "$prompt" "git rev-parse HEAD"
+  assert_contains "$prompt" "actual PR head revision"
+  assert_contains "$prompt" "KEEP"
+  assert_contains "$prompt" "DISCARD"
+  assert_contains "$prompt" "Deduplicate"
+  assert_contains "$prompt" "<!-- ralph:multi-axis-review -->"
+  assert_contains "$prompt" "Do not apply"
+}
+
+test_cleanup_local_resources_prompt_defines_owned_always_run_contract() {
+  local prompt_file prompt
+
+  prompt_file="$ROOT_DIR/prompts/cleanup-local-resources.md"
+  [[ -f "$prompt_file" ]] || fail "expected cleanup-local-resources prompt template at $prompt_file"
+
+  prompt="$(<"$prompt_file")"
+
+  assert_contains "$prompt" "after an earlier step fails"
+  assert_contains "$prompt" "local-resources.json"
+  assert_contains "$prompt" "Docker containers"
+  assert_contains "$prompt" "browser or computer-use sessions"
+  assert_contains "$prompt" "project worktree"
+  assert_contains "$prompt" "Never use"
+  assert_contains "$prompt" "ralph-{{ISSUE}}-"
+  assert_contains "$prompt" '{"processes":[],"containers":[],"tempPaths":[],"sessions":[]}'
+  assert_contains "$prompt" "Keep any entry whose resource could not be cleaned"
+  [[ "$prompt" != *"Delete the resource ledger"* ]] || fail "expected cleanup to preserve an empty ledger"
+  assert_contains "$prompt" 'Do not invoke the post-merge `cleanup.sh`'
+  assert_contains "$prompt" "cleanup-local-resources.md"
+}
+
+test_removed_review_prompts_are_absent() {
+  local name
+
+  for name in review-slice final-review pr-review review-fixes; do
+    [[ ! -e "$ROOT_DIR/prompts/$name.md" ]] || fail "expected removed prompt to be absent: $name"
+  done
 }
 
 test_grill_with_docs_skill_defines_planning_branch_contract() {
@@ -435,16 +457,19 @@ test_grill_with_docs_skill_defines_planning_branch_contract() {
 }
 
 run_test test_init_prompt_defines_complete_workspace_initialization_contract
-run_test test_initialized_workspace_status_shows_default_three_pending_fixed_steps
+run_test test_initialized_workspace_status_shows_default_four_pending_fixed_steps
 run_test test_review_decisions_prompt_defines_council_filtering_and_hitl_contract
 run_test test_create_prd_prompt_defines_full_prd_workflow_contract
 run_test test_create_slices_prompt_defines_full_slice_creation_contract
 run_test test_preflight_prompt_defines_full_preflight_workflow_contract
 run_test test_implement_slice_prompt_defines_full_implementation_workflow_contract
-run_test test_review_slice_prompt_defines_review_and_fix_contract
-run_test test_final_review_prompt_defines_full_review_workflow_contract
-run_test test_pr_review_prompt_defines_full_pr_workflow_contract
-run_test test_review_fixes_prompt_defines_full_review_fixes_workflow_contract
+run_test test_final_checks_prompt_defines_read_only_check_contract
+run_test test_pr_creation_prompt_defines_idempotent_pr_only_contract
+run_test test_prepare_qa_checklist_prompt_defines_local_comment_contract
+run_test test_runthrough_qa_checklist_prompt_defines_execution_and_progress_contract
+run_test test_multi_axis_pr_review_prompt_defines_four_skill_vote_contract
+run_test test_cleanup_local_resources_prompt_defines_owned_always_run_contract
+run_test test_removed_review_prompts_are_absent
 run_test test_grill_with_docs_skill_defines_planning_branch_contract
 
 echo "prompt_contracts_test.sh passed"

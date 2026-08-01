@@ -16,7 +16,7 @@ edges:
     condition: when editing state safely
   - target: patterns/run-and-monitor-pipeline.md
     condition: when rerunning or monitoring after recovery
-last_updated: 2026-07-09
+last_updated: 2026-07-30
 ---
 
 # Recover Failed Or Stale Step
@@ -30,7 +30,7 @@ Load `context/architecture.md` and `context/conventions.md`. Identify the issue 
 1. Check current state: `./ralph.sh status --issue N`.
 2. Inspect the step log: `./ralph.sh logs --issue N --step step-id`.
 3. For `blocked`, open `workspaces/N/hitl-step-id.md`, answer under `## Answers`, and rerun Ralph.
-4. For `failed`, fix the root cause first, then reset only that step to `pending`.
+4. For `failed`, first confirm `cleanup-local-resources` completed when present, then fix the root cause and reset only the failed step to `pending`.
 5. For stale `in_progress`, check `workspaces/N/pids/step-id.pid` and whether the PID is alive.
 6. If the runner and child agent are dead, reset the step to `pending`, clear stale PID and `started_at`, remove the stale pid file, and rerun.
 7. Validate state with `jq . workspaces/N/state.json`.
@@ -39,7 +39,7 @@ Load `context/architecture.md` and `context/conventions.md`. Identify the issue 
 
 - Killing `ralph.sh` alone can leave a Claude or Codex subprocess running.
 - Only `ralph.sh` updates `state.json`; orphaned agents may finish work but not advance state.
-- Failed steps intentionally stop reruns until the user or agent resets them.
+- Failed steps skip normal pending work but allow pending `alwaysRun` cleanup. After cleanup completes, reruns stop until the failure is reset.
 - Do not reset unrelated steps just to make the table look clean.
 
 ## Verify

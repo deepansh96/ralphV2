@@ -10,7 +10,7 @@ ARCHIVE_DIR="$ROOT_DIR/archive"
 CONTEXT_FILE="$PROJECT_ROOT/CONTEXT.md"
 INITIAL_CONTEXT_BACKUP="$(mktemp)"
 INITIAL_CONTEXT_PRESENT="false"
-TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033 9034 9035 9036 9037 9038 9039 9040 9041 9042 9043 9044 9045 9046 9047 9048 9049 9050)
+TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033 9034 9035 9036 9037 9038 9039 9040 9041 9042 9043 9044 9045 9046 9047 9048 9049 9050 9051 9052 9053)
 export RALPH_RETRY_DELAYS="${RALPH_RETRY_DELAYS:-0 0 0}"
 
 if [[ -f "$CONTEXT_FILE" ]]; then
@@ -958,7 +958,7 @@ FAKE_CLAUDE
   chmod +x "$fake_bin/claude"
 }
 
-install_fake_final_and_pr_review_claude() {
+install_fake_post_implementation_claude() {
   local fake_bin="$1"
 
   mkdir -p "$fake_bin"
@@ -984,12 +984,9 @@ if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
   jq -n -c '{
     type: "result",
     subtype: "success",
-    result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
+    result: "CONTEXT_CHECK: PASS",
     duration_ms: 100,
-    usage: {
-      input_tokens: 1,
-      output_tokens: 1
-    },
+    usage: {input_tokens: 1, output_tokens: 1},
     total_cost_usd: 0.01
   }'
   exit 0
@@ -1000,90 +997,20 @@ step_id="$(awk '/^Step:/ { print $2; exit }' <<<"$prompt")"
 
 printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
 case "$step_id" in
-  final-review)
-    [[ "$prompt" == *"Issue: 9021"* ]] || exit 131
-    [[ "$prompt" == *"Repo: deepansh96/ralph"* ]] || exit 132
-    [[ "$prompt" == *"Branch: feat/issue-9021-final-pr-workflow"* ]] || exit 133
-    [[ "$prompt" == *"Base branch: main"* ]] || exit 134
-    [[ "$prompt" == *"git diff --name-only main...HEAD"* ]] || exit 135
-    [[ "$prompt" == *"Progressively read changed files"* ]] || exit 136
-    [[ "$prompt" == *"Run quality checks from CLAUDE.md"* ]] || exit 137
-    [[ "$prompt" == *"Verify acceptance criteria from each sub-issue"* ]] || exit 138
-    [[ "$prompt" == *"side effects"* ]] || exit 139
-    [[ "$prompt" == *"scope creep"* ]] || exit 140
-    [[ "$prompt" == *"Update CONTEXT.md"* ]] || exit 141
-    [[ "$prompt" == *"Update CLAUDE.md"* ]] || exit 142
-    cat > "$workspace/final-review.md" <<'FINAL_REVIEW'
-# Final Review
+  final-checks)
+    [[ "$prompt" == *"git diff main...HEAD"* ]] || exit 201
+    [[ "$prompt" == *"read-only"* ]] || exit 202
+    cat > "$workspace/final-checks.md" <<'FINAL_CHECKS'
+# Final Checks
 
-## Changed files reviewed
-
-- ralph-v2/prompts/final-review.md
-- ralph-v2/prompts/pr-review.md
-
-## Quality checks
-
-- bash ralph-v2/tests/test_ralph_v2.sh passed
-
-## Acceptance criteria verification
-
-- #9111: satisfied
-
-## Documentation updates
-
-- No durable project documentation changes discovered.
-
-## Findings
-
-- No blockers.
-
-## Outcome
-
-Pass.
-FINAL_REVIEW
-    jq -n -c '{
-      type: "result",
-      subtype: "success",
-      result: "final review verified changed files, checks, acceptance criteria, and docs",
-      duration_ms: 555,
-      usage: {
-        input_tokens: 8,
-        output_tokens: 7
-      },
-      total_cost_usd: 0.06
-    }'
+- Quality checks: passed
+- Acceptance criteria: satisfied
+- Outcome: PASS
+FINAL_CHECKS
     ;;
-  pr-review)
-    [[ "$prompt" == *"Step agent: claude"* ]] || exit 150
-    [[ "$prompt" == *"gh pr list"* ]] || exit 151
-    [[ "$prompt" == *"gh pr create"* ]] || exit 152
-    [[ "$prompt" == *"--base main"* ]] || exit 153
-    [[ "$prompt" == *"--head feat/issue-9021-final-pr-workflow"* ]] || exit 154
-    [[ "$prompt" == *"summary of changes"* ]] || exit 155
-    [[ "$prompt" == *"linked sub-issues"* ]] || exit 156
-    [[ "$prompt" == *"human QA checklist"* ]] || exit 157
-    [[ "$prompt" == *"code-review:code-review"* ]] || exit 158
-    [[ "$prompt" == *"PR comments"* ]] || exit 159
-    [[ "$prompt" == *"Do not create duplicate PRs"* ]] || exit 160
-    [[ "$prompt" == *"review --base"* ]] || exit 161
-    cat > "$workspace/pr-body.md" <<'PR_BODY'
-## Summary
-
-- Added final-review and pr-review prompt workflows.
-
-## Linked Issues
-
-- Closes #9021
-- Closes #9111
-
-## Final Review
-
-- Pass.
-
-## Human QA Checklist
-
-- [ ] Run the Ralph v2 test suite.
-PR_BODY
+  pr-creation)
+    [[ "$prompt" == *"Closes #9021"* ]] || exit 203
+    [[ "$prompt" == *"Do not include a review section or QA checklist"* ]] || exit 204
     if [[ ! -f "$workspace/github-pr.md" ]]; then
       printf '1\n' > "$workspace/github-pr-create-count"
       printf 'created PR #77\n' > "$workspace/github-pr.md"
@@ -1091,94 +1018,122 @@ PR_BODY
     else
       action="updated"
     fi
-    cat > "$workspace/pr-review.md" <<PR_REVIEW
-# PR Review
+    cat > "$workspace/pr-body.md" <<'PR_BODY'
+## Summary
 
-- PR: #77 https://github.com/deepansh96/ralph/pull/77
-- Action: $action
-- Linked sub-issues: #9111
-- code-review:code-review invoked and review comments posted.
-PR_REVIEW
-    jq -n -c --arg action "$action" '{
-      type: "result",
-      subtype: "success",
-      result: ("pr-review " + $action + " PR and invoked code-review:code-review"),
-      duration_ms: 666,
-      usage: {
-        input_tokens: 9,
-        output_tokens: 8
-      },
-      total_cost_usd: 0.07
-    }'
+- Added the post-implementation pipeline.
+
+## Linked Issues
+
+- Closes #9021
+- Closes #9111
+PR_BODY
+    printf '# PR Creation\n\n- PR: #77\n- Action: %s\n' "$action" > "$workspace/pr-creation.md"
     ;;
-  review-fixes)
-    [[ "$prompt" == *"pr-review.md"* ]] || exit 161
-    [[ "$prompt" == *"final-review.md"* ]] || exit 162
-    [[ "$prompt" == *"gh api"* ]] || exit 163
-    [[ "$prompt" == *"code-review:code-review"* ]] || exit 164
-    [[ "$prompt" == *"Fix"* ]] || exit 165
-    [[ "$prompt" == *"Dismiss"* ]] || exit 166
-    [[ "$prompt" == *"gh pr comment"* ]] || exit 167
-    cat > "$workspace/review-fixes-comment.md" <<'COMMENT'
-## Review Fixes Assessment
+  prepare-qa-checklist)
+    [[ "$prompt" == *"ralph:qa-checklist"* ]] || exit 205
+    if [[ ! -f "$workspace/qa-comment-count" ]]; then
+      printf '1\n' > "$workspace/qa-comment-count"
+    fi
+    cat > "$workspace/github-qa-comment.md" <<'QA_COMMENT'
+<!-- ralph:qa-checklist -->
+## Local QA Checklist
 
-### 1. Missing error handling in dashboard.sh
+- [ ] [PENDING] QA-01: Run locally
+QA_COMMENT
+    ;;
+  runthrough-qa-checklist)
+    [[ "$prompt" == *"Stub all external calls"* ]] || exit 206
+    cat > "$workspace/github-qa-comment.md" <<'QA_COMMENT'
+<!-- ralph:qa-checklist -->
+## Local QA Checklist
 
-**Disposition:** Fixed
+- [x] [PASS] QA-01: Run locally
 
-**Reasoning:** Valid — added set -e and error check.
+Summary: 1 passed.
+QA_COMMENT
+    ;;
+  multi-axis-pr-review)
+    [[ "$prompt" == *"two waves"* ]] || exit 207
+    [[ "$prompt" == *"matt-pocock-code-review/SKILL.md"* ]] || exit 208
+    [[ "$prompt" == *"ponytail-review/SKILL.md"* ]] || exit 209
+    [[ "$prompt" == *"run-codex-review/SKILL.md"* ]] || exit 210
+    [[ "$prompt" == *"supe-review-code-changes/SKILL.md"* ]] || exit 211
+    if [[ ! -f "$workspace/multi-axis-comment-count" ]]; then
+      printf '1\n' > "$workspace/multi-axis-comment-count"
+    fi
+    cat > "$workspace/github-multi-axis-comment.md" <<'REVIEW_COMMENT'
+<!-- ralph:multi-axis-review -->
+## Kept Findings
 
-## Summary
+- None.
 
-- Total findings: 1
-- Fixed: 1
-- Dismissed: 0
-COMMENT
-    cat > "$workspace/review-fixes.md" <<'REVIEW_FIXES'
-# Review Fixes
+Verdict: pass.
+REVIEW_COMMENT
+    ;;
+  cleanup-local-resources)
+    [[ "$prompt" == *"after an earlier step fails"* ]] || exit 212
+    printf '%s\n' '{"processes":[],"containers":[],"tempPaths":[],"sessions":[]}' > "$workspace/local-resources.json"
+    cat > "$workspace/cleanup-local-resources.md" <<'CLEANUP'
+# Cleanup Local Resources
 
-## PR
-
-- PR number: #77
-- PR URL: https://github.com/deepansh96/ralph/pull/77
-
-## Findings Evaluated
-
-### 1. Missing error handling in dashboard.sh
-
-**Finding:** dashboard.sh does not exit on error.
-
-**Disposition:** Fixed
-
-**Reasoning:** Valid concern — added set -e.
-
-**Changes:** dashboard/dashboard.sh
-
-## Summary
-
-- Total findings: 1
-- Fixed: 1
-- Dismissed: 0
-- Commit: abc1234
-- Quality checks: passed
-REVIEW_FIXES
-    jq -n -c '{
-      type: "result",
-      subtype: "success",
-      result: "review-fixes evaluated 1 finding, fixed 1, dismissed 0",
-      duration_ms: 444,
-      usage: {
-        input_tokens: 10,
-        output_tokens: 9
-      },
-      total_cost_usd: 0.05
-    }'
+- Removed recorded resources.
+CLEANUP
     ;;
   *)
     echo "unexpected step: $step_id" >&2
-    exit 170
+    exit 213
     ;;
 esac
+
+jq -n -c --arg step "$step_id" '{
+  type: "result",
+  subtype: "success",
+  result: ($step + " completed"),
+  duration_ms: 100,
+  usage: {input_tokens: 3, output_tokens: 2},
+  total_cost_usd: 0.01
+}'
+FAKE_CLAUDE
+  chmod +x "$fake_bin/claude"
+}
+
+install_fake_failure_then_cleanup_claude() {
+  local fake_bin="$1"
+
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/claude" <<'FAKE_CLAUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+
+prompt=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p)
+      prompt="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
+  printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+  printf '%s\n' '{"type":"result","subtype":"success","result":"CONTEXT_CHECK: PASS","duration_ms":1,"usage":{"input_tokens":1,"output_tokens":1},"total_cost_usd":0}'
+  exit 0
+fi
+
+workspace="$(awk '/^Workspace:/ { print $2; exit }' <<<"$prompt")"
+step_id="$(awk '/^Step:/ { print $2; exit }' <<<"$prompt")"
+if [[ "$step_id" == "create-and-review-prd" ]]; then
+  exit 42
+fi
+[[ "$step_id" == "cleanup-local-resources" ]] || exit 43
+printf 'cleanup ran\n' > "$workspace/cleanup-ran"
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
+printf '%s\n' '{"type":"result","subtype":"success","result":"cleanup completed","duration_ms":1,"usage":{"input_tokens":1,"output_tokens":1},"total_cost_usd":0}'
 FAKE_CLAUDE
   chmod +x "$fake_bin/claude"
 }
@@ -1293,60 +1248,6 @@ esac
 FAKE_COUNCIL
   chmod +x "$fake_bin/council"
 }
-
-install_fake_codex_pr_review() {
-  local fake_bin="$1"
-
-  mkdir -p "$fake_bin"
-  cat > "$fake_bin/codex" <<'FAKE_CODEX'
-#!/usr/bin/env bash
-set -euo pipefail
-
-while [[ $# -gt 0 ]]; do
-  shift
-done
-
-prompt="$(cat)"
-[[ "$prompt" == *"Step agent: codex"* ]] || exit 181
-[[ "$prompt" == *"codex-pr-review.md"* ]] || exit 182
-[[ "$prompt" == *"codex review"* ]] || exit 183
-[[ "$prompt" == *"review --base origin/main"* ]] || exit 184
-[[ "$prompt" == *"gh pr comment"* ]] || exit 185
-
-workspace="$(awk '/^Workspace:/ { print $2; exit }' <<<"$prompt")"
-cat > "$workspace/codex-pr-review.md" <<'CODEX_REVIEW'
-No findings.
-CODEX_REVIEW
-
-cat > "$workspace/pr-review.md" <<'PR_REVIEW'
-# PR Review
-
-- PR: #88 https://github.com/deepansh96/ralph/pull/88
-- Automated review source: codex review
-- Codex review output: no findings
-PR_REVIEW
-
-printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":31,"output_tokens":29}}'
-FAKE_CODEX
-  chmod +x "$fake_bin/codex"
-
-  cat > "$fake_bin/claude" <<'FAKE_CLAUDE'
-#!/usr/bin/env bash
-set -euo pipefail
-
-printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}'
-jq -n -c '{
-  type: "result",
-  subtype: "success",
-  result: "CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format.",
-  duration_ms: 100,
-  usage: { input_tokens: 1, output_tokens: 1 },
-  total_cost_usd: 0.01
-}'
-FAKE_CLAUDE
-  chmod +x "$fake_bin/claude"
-}
-
 
 run_test() {
   local name="$1"

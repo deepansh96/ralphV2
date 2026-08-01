@@ -17,25 +17,25 @@ edges:
     condition: when editing scripts, prompts, tests, or docs in this architecture
   - target: patterns/run-and-monitor-pipeline.md
     condition: when executing or observing a live pipeline
-last_updated: 2026-07-09
+last_updated: 2026-07-31
 ---
 
 # Architecture
 
 ## System Overview
 
-User starts with a GitHub issue -> `prompts/init.md` creates `workspaces/<issue>/state.json` -> `ralph.sh --issue N` validates state and context -> `prompt_render` combines a step prompt with state/workspace values -> `agent_run_step` dispatches to Claude or Codex -> the agent edits project files, GitHub issues, or workspace artifacts -> `state_update_step` records completion, failure, HITL, metrics, PID, and notes -> preflight appends dynamic implementation/review steps -> cleanup archives the workspace after merge.
+User starts with a GitHub issue -> `prompts/init.md` creates `workspaces/<issue>/state.json`, the local-resource ledger, and the always-run cleanup step -> `ralph.sh --issue N` validates state and context -> `prompt_render` combines a step prompt with state/workspace values -> `agent_run_step` dispatches to Claude or Codex -> the agent edits project files, GitHub issues, PR comments, or workspace artifacts -> `state_update_step` records completion, failure, HITL, metrics, PID, and notes -> preflight appends dynamic implementation/check/PR/QA/review steps -> post-merge `cleanup.sh` archives the workspace.
 
 The pipeline is issue-driven and state-driven. `ralph.sh` does not infer missing branch contracts once running; `state.json` decides which step runs next and which agent owns it.
 
 ## Key Components
 
 - **`ralph.sh`** - CLI entrypoint and run loop; handles `run`, `status`, `logs`, `poll`, HITL resume, foreground/background dispatch, step limits, and shutdown reset.
-- **`scripts/state.sh`** - state access and mutation layer; validates failed/stale steps, selects pending or blocked steps, appends dynamic steps, and writes PID files.
-- **`scripts/agent.sh`** - execution adapter for `claude` and `codex`; wraps retries, logging, working directory handling, and metrics extraction.
+- **`scripts/state.sh`** - state access and mutation layer; validates failed/stale steps, selects pending or blocked steps, defers `alwaysRun` cleanup behind normal work while prioritizing it after failure, rearms completed cleanup when normal work is retried, appends dynamic steps, and writes PID files.
+- **`scripts/agent.sh`** - execution adapter for `claude` and `codex`; maps optional per-step model and `reasoningEffort` overrides to each provider's CLI, then wraps retries, logging, working directory handling, and metrics extraction.
 - **`scripts/prompt.sh`** - renders prompt templates by replacing `{{ISSUE}}`, `{{REPO}}`, `{{WORKSPACE}}`, `{{BRANCH}}`, `{{BASE_BRANCH}}`, `{{STEP_ID}}`, `{{SUB_ISSUE}}`, `{{SKILLS_DIR}}`, `{{REVIEWERS}}`, and `{{AGENT}}`.
-- **`prompts/`** - one markdown contract per step type; downstream agents follow these to initialize workspaces, create PRDs, create slices, preflight, implement, review each slice (`review-slice` reviews and fixes the slice diff), review, and fix reviews.
-- **`skills/`** - bundled task guidance synced to mattpocock/skills v1.1.0: `to-spec`, `to-tickets`, `tdd`, `code-review` (two axes plus Fowler smell baseline), `domain-modeling`, `grilling`, `grill-with-docs`, `wayfinder`, and `research`; prompt references stay inside the repository. Tracker operations live in `docs/agents/issue-tracker.md`, referenced from `AGENTS.md`.
+- **`prompts/`** - one markdown contract per step type; downstream agents initialize workspaces, plan, implement, check, create the PR, prepare/run local QA, consolidate four review axes, and clean local resources. Preflight backfills missing cleanup artifacts for older initialized workspaces.
+- **`skills/`** - bundled task guidance includes planning/TDD/domain skills plus `matt-pocock-code-review`, `ponytail-review`, `run-codex-review`, and `supe-review-code-changes`; prompt references stay inside the repository. Tracker operations live in `docs/agents/issue-tracker.md`, referenced from `AGENTS.md`.
 - **`tests/`** - deterministic shell suite with shared fakes for external tools; validates behavior without real GitHub, Claude, Codex, or council calls.
 
 ## External Dependencies
@@ -53,5 +53,5 @@ The pipeline is issue-driven and state-driven. `ralph.sh` does not infer missing
 - No web service, database, daemon, or long-running server lives in this repo.
 - No package manager build step is needed for Ralph itself.
 - No runtime persistence outside Git, GitHub, per-issue workspaces, logs, and `.mex/events`.
-- No automatic recovery for failed steps; a human or agent must reset state intentionally.
+- No automatic recovery for failed work; Ralph runs pending `alwaysRun` cleanup and then a human or agent must reset the failed step intentionally.
 - No safe default `baseBranch`; init writes it as `null` and preflight requires an explicit value.

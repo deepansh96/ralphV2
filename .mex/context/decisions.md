@@ -18,7 +18,7 @@ edges:
     condition: when a decision affects live run behavior
   - target: patterns/initialize-issue-workspace.md
     condition: when a decision affects init or branch contracts
-last_updated: 2026-07-09
+last_updated: 2026-07-30
 ---
 
 # Decisions
@@ -27,11 +27,19 @@ last_updated: 2026-07-09
 
 ### Review and fix every slice with a dedicated review-slice step
 **Date:** 2026-07-09
-**Status:** Active
+**Status:** Superseded on 2026-07-30
 **Decision:** Preflight appends a `review-slice` step immediately after each `implement-slice` step. It reviews only that slice's diff along the bundled code-review skill's two axes (Standards with the Fowler smell baseline, Spec against the sub-issue and PRD) and fixes what it finds before the next slice starts.
 **Reasoning:** Per-slice review catches spec gaps and standards drift while the slice's context is fresh and the diff is small; deferring all review to `pr-review` makes findings expensive to fix. Refactoring was removed from the TDD loop upstream (mattpocock/skills v1.1.0), so the review step is where cleanup now lives.
 **Alternatives considered:** Review only at PR time (rejected: findings arrive after all slices stack), or making review-slice opt-in like review-fixes (rejected: the user wants it default-on).
 **Consequences:** Pipelines run twice as many dynamic slice steps; `prompts/review-slice.md` owns the contract; smells stay judgement calls, never hard blockers.
+
+### Split post-implementation checks, PR creation, local QA, and review
+**Date:** 2026-07-30
+**Status:** Active
+**Decision:** Remove per-slice review and review-fixes. After all implementation slices, run `final-checks`, `pr-creation`, `prepare-qa-checklist`, `runthrough-qa-checklist`, `multi-axis-pr-review`, and `cleanup-local-resources`. Init creates the last step with `alwaysRun: true`; the scheduler defers it behind normal work so it can still run after success or any earlier failure.
+**Reasoning:** Each concern now has one auditable step and one prompt. PR creation stays free of QA/review behavior, local QA is visible and updated in one PR comment, and four specialized skills review the completed PR independently. Cleanup must cover resources and rough files from any pipeline step, including failed runs.
+**Alternatives considered:** Keep the combined PR review and optional fixes (rejected: it mixes PR creation, QA planning, review, and remediation), or keep per-slice review (rejected: the requested review boundary is the completed PR).
+**Consequences:** Review findings are reported but not automatically fixed. The four review axes use two waves to fit the four-agent limit. The runner skips normal pending steps after a failure, runs pending `alwaysRun` cleanup, and still exits non-zero with the original failure recorded, including step-limited runs.
 
 ### Declare slice dependencies as first-class blocking edges
 **Date:** 2026-07-09
@@ -79,7 +87,7 @@ last_updated: 2026-07-09
 **Decision:** Pipeline progress, branch fields, step order, statuses, metrics, HITL, reviewers, and agent assignment live in `workspaces/<issue>/state.json`.
 **Reasoning:** A single state file makes recovery, retry, status, and test assertions deterministic.
 **Alternatives considered:** Derive progress from logs or GitHub comments (rejected because both are incomplete and harder to mutate safely).
-**Consequences:** All state edits must use `jq`, failed steps stop the pipeline, and manual recovery must validate JSON before rerun.
+**Consequences:** All state edits must use `jq`; failed steps stop normal work but allow pending always-run cleanup; manual recovery must validate JSON before rerun.
 
 ### Use foreground Ralph runs in Codex automation
 **Date:** 2026-06-07

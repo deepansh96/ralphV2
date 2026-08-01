@@ -47,6 +47,18 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
           status: "completed",
           metrics: {},
           notes: ""
+        },
+        {
+          id: "cleanup-local-resources",
+          phase: "fixed",
+          type: "cleanup-local-resources",
+          agent: "codex",
+          reviewers: [],
+          hitl: false,
+          alwaysRun: true,
+          status: "pending",
+          metrics: null,
+          notes: ""
         }
       ]
     }' > "$state_file"
@@ -79,9 +91,9 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
       "notes": ""
     },
     {
-      "id": "final-review",
+      "id": "final-checks",
       "phase": "dynamic",
-      "type": "final-review",
+      "type": "final-checks",
       "agent": "codex",
       "reviewers": [],
       "hitl": false,
@@ -90,20 +102,42 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
       "notes": ""
     },
     {
-      "id": "pr-review",
+      "id": "pr-creation",
       "phase": "dynamic",
-      "type": "pr-review",
+      "type": "pr-creation",
       "agent": "codex",
-      "reviewers": ["codex", "gemini", "kimi", "deepseek"],
+      "reviewers": [],
       "hitl": false,
       "status": "pending",
       "metrics": null,
       "notes": ""
     },
     {
-      "id": "review-fixes",
+      "id": "prepare-qa-checklist",
       "phase": "dynamic",
-      "type": "review-fixes",
+      "type": "prepare-qa-checklist",
+      "agent": "codex",
+      "reviewers": [],
+      "hitl": false,
+      "status": "pending",
+      "metrics": null,
+      "notes": ""
+    },
+    {
+      "id": "runthrough-qa-checklist",
+      "phase": "dynamic",
+      "type": "runthrough-qa-checklist",
+      "agent": "codex",
+      "reviewers": [],
+      "hitl": false,
+      "status": "pending",
+      "metrics": null,
+      "notes": ""
+    },
+    {
+      "id": "multi-axis-pr-review",
+      "phase": "dynamic",
+      "type": "multi-axis-pr-review",
       "agent": "codex",
       "reviewers": [],
       "hitl": false,
@@ -114,22 +148,29 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
   ]'
 
   ids="$(jq -r '.steps[].id' "$state_file" | tr '\n' ' ')"
-  agents="$(jq -r '.steps[] | select(.phase == "dynamic") | "\(.type):\(.agent)"' "$state_file" | tr '\n' ' ')"
+  agents="$(jq -r '.steps[] | "\(.type):\(.agent)"' "$state_file" | tr '\n' ' ')"
   sub_issues="$(jq -r '.steps[] | select(.type == "implement-slice") | .sub_issue' "$state_file" | tr '\n' ' ')"
 
-  assert_contains "$ids" "preflight implement-slice-9101 implement-slice-9102 final-review pr-review review-fixes"
+  assert_contains "$ids" "preflight cleanup-local-resources implement-slice-9101 implement-slice-9102 final-checks pr-creation prepare-qa-checklist runthrough-qa-checklist multi-axis-pr-review"
   assert_contains "$agents" "implement-slice:codex"
-  assert_contains "$agents" "final-review:codex"
-  assert_contains "$agents" "pr-review:codex"
-  assert_contains "$agents" "review-fixes:codex"
+  assert_contains "$agents" "final-checks:codex"
+  assert_contains "$agents" "pr-creation:codex"
+  assert_contains "$agents" "prepare-qa-checklist:codex"
+  assert_contains "$agents" "runthrough-qa-checklist:codex"
+  assert_contains "$agents" "multi-axis-pr-review:codex"
+  assert_contains "$agents" "cleanup-local-resources:codex"
   assert_contains "$sub_issues" "9101 9102"
+  [[ "$(jq -r '.steps[] | select(.id == "cleanup-local-resources") | .alwaysRun' "$state_file")" == "true" ]] || fail "expected cleanup-local-resources to always run"
 
   output="$("$RALPH" status --issue "$issue")"
   assert_contains "$output" "implement-slice-9101"
   assert_contains "$output" "implement-slice-9102"
-  assert_contains "$output" "final-review"
-  assert_contains "$output" "pr-review"
-  assert_contains "$output" "review-fixes"
+  assert_contains "$output" "final-checks"
+  assert_contains "$output" "pr-creation"
+  assert_contains "$output" "prepare-qa-checklist"
+  assert_contains "$output" "runthrough-qa-checklist"
+  assert_contains "$output" "multi-axis-pr-review"
+  assert_contains "$output" "cleanup-local-resources"
 
   set +e
   duplicate_output="$(state_add_steps "$state_file" '[{"id":"implement-slice-9101","phase":"dynamic","type":"implement-slice","agent":"codex","status":"pending"}]' 2>&1)"
@@ -138,7 +179,72 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
 
   [[ "$status" -ne 0 ]] || fail "expected duplicate dynamic step id to fail"
   assert_contains "$duplicate_output" "duplicate step id"
-  [[ "$(jq '.steps | length' "$state_file")" == "6" ]] || fail "expected duplicate failure not to append steps"
+  [[ "$(jq '.steps | length' "$state_file")" == "9" ]] || fail "expected duplicate failure not to append steps"
+}
+
+test_state_get_current_step_prioritizes_always_run_cleanup_after_failure() {
+  local issue state_file current
+
+  issue="9051"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  jq -n '{
+    issue: 9051,
+    steps: [
+      {id: "cleanup-local-resources", type: "cleanup-local-resources", status: "pending", alwaysRun: true},
+      {id: "failed-step", type: "stub", status: "failed"},
+      {id: "skipped-step", type: "stub", status: "pending"}
+    ]
+  }' > "$state_file"
+
+  source "$ROOT_DIR/scripts/state.sh"
+  current="$(state_get_current_step "$state_file")"
+
+  [[ "$(jq -r '.id' <<<"$current")" == "cleanup-local-resources" ]] || fail "expected cleanup to run after failure"
+  state_validate "$state_file"
+}
+
+test_state_get_current_step_defers_always_run_cleanup_until_normal_work_finishes() {
+  local issue state_file current
+
+  issue="9053"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  jq -n '{
+    issue: 9053,
+    steps: [
+      {id: "cleanup-local-resources", type: "cleanup-local-resources", status: "pending", alwaysRun: true},
+      {id: "normal-step", type: "stub", status: "pending"}
+    ]
+  }' > "$state_file"
+
+  source "$ROOT_DIR/scripts/state.sh"
+  current="$(state_get_current_step "$state_file")"
+
+  [[ "$(jq -r '.id' <<<"$current")" == "normal-step" ]] || fail "expected normal work before cleanup"
+}
+
+test_state_validate_rearms_completed_cleanup_when_normal_work_retries() {
+  local issue state_file
+
+  issue="9052"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  jq -n '{
+    issue: 9052,
+    steps: [
+      {id: "retry-step", type: "stub", status: "pending"},
+      {id: "cleanup-local-resources", type: "cleanup-local-resources", status: "completed", alwaysRun: true}
+    ]
+  }' > "$state_file"
+
+  source "$ROOT_DIR/scripts/state.sh"
+  state_validate "$state_file"
+
+  [[ "$(jq -r '.steps[] | select(.id == "cleanup-local-resources") | .status' "$state_file")" == "pending" ]] || fail "expected cleanup to rearm for retried work"
 }
 
 test_state_add_steps_rejects_malformed_step_payloads() {
@@ -444,6 +550,9 @@ test_state_validate_resets_stale_in_progress_step_with_dead_pid_file() {
 
 run_test test_run_rejects_failed_steps
 run_test test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates
+run_test test_state_get_current_step_prioritizes_always_run_cleanup_after_failure
+run_test test_state_get_current_step_defers_always_run_cleanup_until_normal_work_finishes
+run_test test_state_validate_rearms_completed_cleanup_when_normal_work_retries
 run_test test_state_add_steps_rejects_malformed_step_payloads
 run_test test_state_update_step_sets_started_at_on_in_progress
 run_test test_state_update_step_clears_started_at_on_pending
