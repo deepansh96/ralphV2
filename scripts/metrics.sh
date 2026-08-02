@@ -64,6 +64,32 @@ metrics_from_codex_log() {
   fi
 }
 
+metrics_from_pi_log() {
+  local log_file="$1"
+  local duration_ms="$2"
+  local provider="$3"
+
+  if [[ -s "$log_file" ]] && jq -s '.' "$log_file" >/dev/null 2>&1; then
+    jq -s \
+      --arg provider "$provider" \
+      --argjson duration_ms "$duration_ms" \
+      'reduce (.[] | select(.type == "message_end" and .message.role == "assistant")) as $event (
+        {
+          provider: $provider,
+          duration_ms: $duration_ms,
+          input_tokens: 0,
+          output_tokens: 0,
+          cost_usd: 0
+        };
+        .input_tokens += ($event.message.usage.input // 0)
+        | .output_tokens += ($event.message.usage.output // 0)
+        | .cost_usd += ($event.message.usage.cost.total // 0)
+      )' "$log_file"
+  else
+    metrics_empty_json "$provider" "$duration_ms"
+  fi
+}
+
 metrics_print_summary() {
   local state_file="$1"
 

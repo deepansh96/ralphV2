@@ -41,6 +41,21 @@ parse_log() {
           end
       '
       ;;
+    deepseek)
+      jq_filter='
+        if .type == "message_end" and .message.role == "assistant" then
+          .message.content[]?
+          | select(.type == "text")
+          | "[text] " + (.text[:120] | gsub("\n"; " "))
+        elif .type == "tool_execution_start" then
+          "[tool] " + .toolName + ": " + (
+            (.args | to_entries | first | (.key + "=" + (.value | tostring)[:80])) // ""
+          )
+        else
+          empty
+        end
+      '
+      ;;
     *)
       printf 'Unknown agent: %s\n' "$agent"
       return

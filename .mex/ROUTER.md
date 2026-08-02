@@ -5,7 +5,7 @@ edges:
   - target: context/architecture.md
     condition: when working on pipeline flow, prompt dispatch, state transitions, or integrations
   - target: context/stack.md
-    condition: when working with shell, jq, gh, claude, codex, council, or mex tooling
+    condition: when working with shell, jq, gh, claude, codex, pi, deepseek, council, or mex tooling
   - target: context/conventions.md
     condition: when editing code, prompts, tests, or repository instructions
   - target: context/decisions.md
@@ -14,7 +14,7 @@ edges:
     condition: when setting up the repo, running tests, or debugging environment issues
   - target: patterns/INDEX.md
     condition: when starting a concrete task, especially init, run, recovery, or pipeline changes
-last_updated: 2026-07-31
+last_updated: 2026-08-02
 ---
 
 # Session Bootstrap
@@ -28,7 +28,7 @@ Then read this file fully before doing anything else in this session.
 **Working:**
 - Core CLI entrypoint `ralph.sh` supports `run`, `status`, `logs`, and `poll` for issue workspaces.
 - Pipeline state lives in `workspaces/<issue>/state.json` with fixed steps, dynamic steps, optional per-step model/reasoning overrides, metrics, HITL flags, and stale PID recovery.
-- Prompt templates in `prompts/` render step-specific instructions and dispatch through `scripts/agent.sh` to Claude or Codex. Init installs always-run local-resource cleanup; preflight appends implementation steps followed by final checks, PR creation, local QA preparation/execution, and four-axis PR review.
+- Prompt templates in `prompts/` render step-specific instructions and dispatch through `scripts/agent.sh` to Claude, Codex, or DeepSeek through Pi. Init installs always-run local-resource cleanup; preflight appends implementation steps followed by final checks, PR creation, local QA preparation/execution, and four-axis PR review.
 - Bundled skills in `skills/` provide spec/ticket planning, TDD, domain modeling, grilling, wayfinder, research, and the four independent PR review axes without depending on global skill installs. Slices carry first-class blocking edges (native GitHub issue dependencies plus `Blocked by` body lines). Tracker operations live in `docs/agents/issue-tracker.md` behind the `Issue tracker` pointer in `AGENTS.md`.
 - Deterministic shell tests under `tests/suites/` fake external tools and cover CLI, state, prompts, agents, council, polling, cleanup, and docs.
 - mex scaffold is installed under `.mex/`; `CLAUDE.md` is a symlink to root `AGENTS.md`.
@@ -36,13 +36,13 @@ Then read this file fully before doing anything else in this session.
 **Not Built:**
 - No package manager wrapper or compiled artifact; this is a shell and markdown repository.
 - No automated release process is documented beyond pushing commits and running the test suite.
-- No first-class support for non-`claude` or non-`codex` execution agents in `scripts/agent.sh`.
+- No first-class support for execution agents other than `claude`, `codex`, and `deepseek` in `scripts/agent.sh`.
 - No persistent background supervisor; Codex automation should run long Ralph jobs in foreground and poll separately.
 
 **Known Issues:**
 - `mex setup` detects this repo as fresh because the scanner counts source extensions and ignores shell-heavy projects.
 - Long-running Ralph commands can appear hung or deadlock if piped through stream consumers.
-- Killing only `ralph.sh` can leave a Claude or Codex subprocess orphaned and the step stuck `in_progress`.
+- Killing only `ralph.sh` can leave a Claude, Codex, or Pi subprocess orphaned and the step stuck `in_progress`.
 - Preflight fails on any dirty working tree, including uncommitted grilling docs.
 
 ## Routing Table
@@ -52,7 +52,7 @@ Load the relevant file based on the current task. Always load `context/architect
 | Task type | Load |
 |-----------|------|
 | Understanding pipeline flow or state | `context/architecture.md` |
-| Working with shell, jq, gh, claude, codex, council, or mex | `context/stack.md` |
+| Working with shell, jq, gh, claude, codex, pi, deepseek, council, or mex | `context/stack.md` |
 | Editing scripts, prompts, tests, or docs | `context/conventions.md` |
 | Changing branch, review, agent, or HITL policy | `context/decisions.md` |
 | Setting up the repo or running checks | `context/setup.md` |

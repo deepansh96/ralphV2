@@ -1,6 +1,6 @@
 ---
 name: stack
-description: Technology stack, tool choices, and version constraints for Ralph v2. Load when working with shell, jq, GitHub, Claude, Codex, council, or mex.
+description: Technology stack, tool choices, and version constraints for Ralph v2. Load when working with shell, jq, GitHub, Claude, Codex, Pi, council, or mex.
 triggers:
   - "library"
   - "dependency"
@@ -10,6 +10,8 @@ triggers:
   - "gh"
   - "codex"
   - "claude"
+  - "pi"
+  - "deepseek"
   - "council"
 edges:
   - target: context/decisions.md
@@ -20,7 +22,7 @@ edges:
     condition: when installing or validating local command availability
   - target: patterns/change-pipeline-behavior.md
     condition: when a stack choice affects a new or changed pipeline step
-last_updated: 2026-07-31
+last_updated: 2026-08-02
 ---
 
 # Stack
@@ -39,9 +41,10 @@ last_updated: 2026-07-31
 - **`gh`** - GitHub API access; prompts rely on issue body edits, issue views, sub-issue creation, and PR operations.
 - **`claude` CLI** - used for context completeness checks and optional Claude-owned steps; per-step model and `reasoningEffort` map to `--model` and `--effort`.
 - **`codex` CLI** - default step executor for generated state; run from project root in `scripts/agent.sh`, with per-step model and `reasoningEffort` mapped to `--model` and `model_reasoning_effort`.
+- **`pi` CLI** - executes `deepseek` steps from the project root with `--provider deepseek`; defaults are `deepseek-v4-flash` and `high` reasoning effort, and per-step model and `reasoningEffort` map to `--model` and `--thinking`.
 - **Node.js** - runs the bundled isolated Codex App Server reviewer in `skills/run-codex-review/scripts/review.mjs`.
 - **`council` CLI** - fan-out review runner for decision, PRD, and slice-planning workflows.
-- **Shell test fakes** - tests fake `claude`, `codex`, `gh`, and `council`; never make deterministic tests depend on real services.
+- **Shell test fakes** - tests fake `claude`, `codex`, `pi`, `gh`, and `council`; never make deterministic tests depend on real services.
 
 ## What We Deliberately Do NOT Use
 
@@ -54,5 +57,5 @@ last_updated: 2026-07-31
 ## Version Constraints
 
 - `jq`, `git`, `gh`, and Node.js must be available on PATH for the full pipeline.
-- `claude`, `codex`, and `council` must be available only for steps or prompts that invoke them.
+- `claude`, `codex`, `pi`, and `council` must be available only for steps or prompts that invoke them. DeepSeek steps require Pi 0.70.1+ and credentials in its auth store or `DEEPSEEK_API_KEY`.
 - mex requires Node.js 20+ when using `npx mex-agent`.

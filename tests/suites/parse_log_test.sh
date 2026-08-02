@@ -49,6 +49,28 @@ JSONL
   [[ "$output" != *"item.started"* ]] || fail "expected item.started to be filtered out"
 }
 
+test_parse_log_deepseek_extracts_pi_messages_and_tools() {
+  local log_file output
+
+  log_file="$(mktemp)"
+  cat > "$log_file" <<'JSONL'
+{"type":"agent_start"}
+{"type":"tool_execution_start","toolCallId":"1","toolName":"bash","args":{"command":"npm test"}}
+{"type":"message_end","message":{"role":"toolResult","content":[{"type":"text","text":"tests passed"}]}}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"All tests pass. Committing now."}]}}
+{"type":"agent_end","messages":[]}
+JSONL
+
+  source "$ROOT_DIR/scripts/parse-log.sh"
+  output="$(parse_log "$log_file" "deepseek" 10)"
+  rm -f "$log_file"
+
+  assert_contains "$output" "[tool] bash: command=npm test"
+  assert_contains "$output" "[text] All tests pass. Committing now."
+  [[ "$output" != *"tests passed"* ]] || fail "expected tool result messages to be filtered out"
+  [[ "$output" != *"agent_end"* ]] || fail "expected agent_end to be filtered out"
+}
+
 test_parse_log_empty_file_shows_starting() {
   local log_file output
 
@@ -84,6 +106,7 @@ JSONL
 
 run_test test_parse_log_claude_extracts_text_and_tool_use
 run_test test_parse_log_codex_extracts_messages_and_commands
+run_test test_parse_log_deepseek_extracts_pi_messages_and_tools
 run_test test_parse_log_empty_file_shows_starting
 run_test test_parse_log_partial_write_skips_truncated_lines
 
