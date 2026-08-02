@@ -262,6 +262,67 @@ test_claude_step_passes_reasoning_effort_when_set() {
   rm -f "$log_file" "$log_file".attempt-* "$metrics_file" "$args_file"
 }
 
+test_deepseek_step_runs_via_pi_with_default_model_reasoning_and_metrics() {
+  local log_file metrics_file args_file cwd_file
+
+  log_file="$(mktemp)"
+  metrics_file="$(mktemp)"
+  args_file="$(mktemp)"
+  cwd_file="$(mktemp)"
+
+  (
+    source "$ROOT_DIR/scripts/metrics.sh"
+    source "$ROOT_DIR/scripts/agent.sh"
+
+    pi() {
+      printf '%s\n' "$@" > "$args_file"
+      pwd > "$cwd_file"
+      printf '%s\n' '{"type":"session","version":3,"id":"fake"}'
+      printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"done"}],"usage":{"input":21,"output":8,"cost":{"total":0.004}}}}'
+      printf '%s\n' '{"type":"agent_end","messages":[]}'
+    }
+
+    agent_run_step '{"agent":"deepseek"}' \
+      "deepseek prompt" "$log_file" "$PROJECT_ROOT" > "$metrics_file"
+  )
+
+  grep -Fx -- "--provider" "$args_file" >/dev/null || fail "expected Pi provider flag"
+  grep -Fx -- "deepseek" "$args_file" >/dev/null || fail "expected DeepSeek provider"
+  grep -Fx -- "deepseek-v4-flash" "$args_file" >/dev/null || fail "expected default DeepSeek model"
+  grep -Fx -- "--thinking" "$args_file" >/dev/null || fail "expected Pi thinking flag"
+  grep -Fx -- "high" "$args_file" >/dev/null || fail "expected default high thinking level"
+  grep -Fx -- "deepseek prompt" "$args_file" >/dev/null || fail "expected rendered prompt"
+  [[ "$(<"$cwd_file")" == "$PROJECT_ROOT" ]] || fail "expected Pi to run in project root"
+  assert_contains "$(<"$metrics_file")" '"provider": "deepseek"'
+  assert_contains "$(<"$metrics_file")" '"input_tokens": 21'
+  assert_contains "$(<"$metrics_file")" '"output_tokens": 8'
+  assert_contains "$(<"$metrics_file")" '"cost_usd": 0.004'
+
+  rm -f "$log_file" "$metrics_file" "$args_file" "$cwd_file"
+}
+
+test_deepseek_step_fails_on_pi_error_event() {
+  local log_file status
+
+  log_file="$(mktemp)"
+  (
+    source "$ROOT_DIR/scripts/metrics.sh"
+    source "$ROOT_DIR/scripts/agent.sh"
+
+    pi() {
+      printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"invalid api key","usage":{"input":0,"output":0,"cost":{"total":0}}}}'
+    }
+
+    set +e
+    run_deepseek "prompt" "$log_file" "$PROJECT_ROOT" >/dev/null
+    status=$?
+    set -e
+    [[ "$status" -eq 1 ]] || fail "expected Pi error event to fail the step"
+  )
+
+  rm -f "$log_file"
+}
+
 test_agent_rejects_unsupported_reasoning_effort() {
   local log_file output status
 
@@ -572,6 +633,8 @@ run_test test_run_codex_retries_transient_errors_and_preserves_attempt_logs
 run_test test_codex_step_passes_model_and_reasoning_effort_when_set
 run_test test_codex_step_omits_model_flag_when_unset
 run_test test_claude_step_passes_reasoning_effort_when_set
+run_test test_deepseek_step_runs_via_pi_with_default_model_reasoning_and_metrics
+run_test test_deepseek_step_fails_on_pi_error_event
 run_test test_agent_rejects_unsupported_reasoning_effort
 run_test test_run_claude_fails_clean_json_error_without_retrying
 run_test test_run_claude_retries_empty_crash_log

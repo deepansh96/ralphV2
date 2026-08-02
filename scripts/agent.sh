@@ -47,6 +47,9 @@ agent_validate_reasoning_effort() {
     claude:low|claude:medium|claude:high|claude:xhigh|claude:max)
       return 0
       ;;
+    deepseek:off|deepseek:minimal|deepseek:low|deepseek:medium|deepseek:high|deepseek:xhigh)
+      return 0
+      ;;
   esac
 
   echo "Error: unsupported reasoning effort '$effort' for agent '$agent'" >&2
@@ -158,6 +161,45 @@ run_codex() {
   metrics_from_codex_log "$log_file" "$duration_ms"
 }
 
+run_deepseek() {
+  local prompt="$1"
+  local log_file="$2"
+  local project_root="${3:-}"
+  local model="${4:-deepseek-v4-flash}"
+  local reasoning_effort="${5:-high}"
+  local start_ms end_ms duration_ms status
+  local -a pi_args
+
+  agent_validate_reasoning_effort "deepseek" "$reasoning_effort" || return 1
+  if [[ -z "$project_root" ]]; then
+    project_root="$(git -C "$SCRIPT_DIR/.." rev-parse --show-toplevel)"
+  fi
+  pi_args=(--provider deepseek --mode json --print --no-session)
+  pi_args+=(--model "$model")
+  pi_args+=(--thinking "$reasoning_effort")
+  pi_args+=("$prompt")
+  run_deepseek_command() {
+    (cd "$project_root" && pi "${pi_args[@]}")
+  }
+
+  start_ms="$(current_time_ms)"
+  agent_run_with_retry "$log_file" run_deepseek_command
+  status=$?
+  end_ms="$(current_time_ms)"
+  duration_ms=$((end_ms - start_ms))
+
+  [[ "$status" -eq 0 ]] || return "$status"
+  if jq -e 'select(
+    .type == "message_end"
+    and .message.role == "assistant"
+    and (.message.stopReason == "error" or .message.stopReason == "aborted")
+  )' "$log_file" >/dev/null; then
+    return 1
+  fi
+
+  metrics_from_pi_log "$log_file" "$duration_ms" "deepseek"
+}
+
 agent_run_step() {
   local step_json="$1"
   local prompt="$2"
@@ -174,6 +216,9 @@ agent_run_step() {
       ;;
     codex)
       run_codex "$prompt" "$log_file" "$project_root" "$model" "$reasoning_effort"
+      ;;
+    deepseek)
+      run_deepseek "$prompt" "$log_file" "$project_root" "$model" "$reasoning_effort"
       ;;
     *)
       echo "Error: unsupported agent '$agent'" >&2

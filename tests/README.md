@@ -19,7 +19,7 @@ Run one or more suites by name:
 - `cli_test.sh`: CLI argument validation, status output, logs, and activity snippets.
 - `cleanup_test.sh`: workspace archival and cleanup error handling.
 - `context_test.sh`: `CONTEXT.md` gate behavior before pipeline execution.
-- `agent_test.sh`: Claude/Codex dispatch, retries, metrics, logs, and working directory handling.
+- `agent_test.sh`: Claude, Codex, and DeepSeek/Pi dispatch, retries, metrics, logs, and working directory handling.
 - `state_test.sh`: state transitions, dynamic step appends, metrics fields, and stale PID recovery.
 - `pipeline_test.sh`: run-loop behavior, HITL resume, failed-step handling, and simulated workflow steps.
 - `background_poll_test.sh`: background wrapper and polling behavior.
@@ -28,6 +28,6 @@ Run one or more suites by name:
 - `prompt_render_test.sh`: prompt placeholder rendering and missing-template failures.
 - `prompt_contracts_test.sh`: prompt and skill contracts that downstream agents must follow.
 - `skill_docs_test.sh`: bundled skill/link integrity and workflow documentation.
-- `parse_log_test.sh`: log summarization for Claude and Codex JSONL output.
+- `parse_log_test.sh`: log summarization for Claude, Codex, and Pi JSONL output.
 
-External tools such as `claude`, `codex`, `gh`, and `council` are faked inside the suite. Tests must be deterministic, offline, and safe to run repeatedly.
+External tools such as `claude`, `codex`, `pi`, `gh`, and `council` are faked inside the suite. Tests must be deterministic, offline, and safe to run repeatedly.

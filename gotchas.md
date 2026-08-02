@@ -5,7 +5,7 @@ Lessons from running issue #266 (Remove Eraser Tool) end-to-end.
 
 1. NEVER PIPE RALPH THROUGH HEAD/TAIL
 --------------------------------------
-Ralph spawns long-running subprocesses (claude -p, codex exec) that produce
+Ralph spawns long-running subprocesses (claude -p, codex exec, pi) that produce
 output slowly. Piping through head/tail causes buffering deadlocks — the
 command appears frozen with zero output.
 
@@ -15,7 +15,7 @@ DON'T: ./ralph/ralph.sh --issue N 2>&1 | head -100
 
 2. KILL SUBPROCESSES WHEN STOPPING RALPH
 -----------------------------------------
-ralph.sh and the spawned agent (claude -p / codex) are separate PIDs.
+ralph.sh and the spawned agent (claude -p / codex / pi) are separate PIDs.
 Killing ralph.sh alone leaves the agent running as an orphan. The orphan
 may complete its step, but it will not update state.json or auto-advance
 to the next step. Only ralph.sh updates state.json. If ralph.sh is killed
@@ -23,7 +23,7 @@ without resetting the active step, that step stays in_progress forever.
 
 To stop cleanly:
   1. Kill ralph.sh
-  2. ps aux | grep "claude -p\|codex" | grep -v grep
+  2. ps aux | grep "claude -p\|codex\|pi" | grep -v grep
   3. Kill the matching agent subprocess(es)
   4. Check state.json and reset any in_progress step to pending
 
@@ -101,7 +101,7 @@ c) Council review progress:
    ls .council/<dir>/    — check which agents have *_done.txt files
 
 d) Process check:
-   ps aux | grep "claude -p\|codex\|council-review" | grep -v grep
+   ps aux | grep "claude -p\|codex\|pi\|council-review" | grep -v grep
 
 
 8. STEP TIMING EXPECTATIONS

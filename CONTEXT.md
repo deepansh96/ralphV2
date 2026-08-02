@@ -25,7 +25,7 @@ _Avoid_: tier, level
 ### Agents & Review
 
 **Agent**:
-An AI coding tool that executes a step. Currently `claude` (Anthropic CLI) or `codex` (OpenAI CLI).
+An AI coding tool that executes a step. Currently `claude` (Anthropic CLI), `codex` (OpenAI CLI), or `deepseek` (DeepSeek through Pi).
 _Avoid_: model, worker, runner
 
 **Council**:
