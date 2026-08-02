@@ -29,7 +29,7 @@ last_updated: 2026-08-02
 - `gh` authenticated for the target GitHub repo.
 - `claude` CLI for context checks and Claude-owned steps.
 - `codex` CLI for default generated steps.
-- `pi` CLI and DeepSeek credentials in Pi's auth store or `DEEPSEEK_API_KEY` for DeepSeek-owned steps.
+- Pi CLI 0.70.1+ and DeepSeek credentials in Pi's auth store or `DEEPSEEK_API_KEY` for DeepSeek-owned steps.
 - `council` CLI for council review steps.
 - Node.js 20+ for the isolated Codex review and mex.
 

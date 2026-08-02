@@ -138,7 +138,7 @@ Each step has this shape:
 Generated steps use `"agent": "codex"` by default. Before a step runs, you can
 set `agent` to `claude`, `codex`, or `deepseek` and edit its optional `model`
 and `reasoningEffort` fields in `state.json`. DeepSeek steps run through Pi and
-require `pi` plus DeepSeek credentials in Pi's auth store or
+require Pi 0.70.1+ plus DeepSeek credentials in Pi's auth store or
 `DEEPSEEK_API_KEY`; their defaults are `deepseek-v4-flash` with `high`
 reasoning effort:
 

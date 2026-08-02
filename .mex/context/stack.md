@@ -57,5 +57,5 @@ last_updated: 2026-08-02
 ## Version Constraints
 
 - `jq`, `git`, `gh`, and Node.js must be available on PATH for the full pipeline.
-- `claude`, `codex`, `pi`, and `council` must be available only for steps or prompts that invoke them. Pi requires DeepSeek credentials in its auth store or `DEEPSEEK_API_KEY` for `deepseek` steps.
+- `claude`, `codex`, `pi`, and `council` must be available only for steps or prompts that invoke them. DeepSeek steps require Pi 0.70.1+ and credentials in its auth store or `DEEPSEEK_API_KEY`.
 - mex requires Node.js 20+ when using `npx mex-agent`.
