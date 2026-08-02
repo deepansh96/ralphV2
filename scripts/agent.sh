@@ -179,7 +179,15 @@ run_deepseek() {
   pi_args+=(--thinking "$reasoning_effort")
   pi_args+=("$prompt")
   run_deepseek_command() {
-    (cd "$project_root" && pi "${pi_args[@]}")
+    (cd "$project_root" && pi "${pi_args[@]}") || return
+    jq -se '
+      [
+        .[]
+        | select(.type == "message_end" and .message.role == "assistant")
+      ]
+      | length > 0
+        and (last.message.stopReason != "error" and last.message.stopReason != "aborted")
+    ' "$log_file" >/dev/null
   }
 
   start_ms="$(current_time_ms)"
@@ -189,14 +197,6 @@ run_deepseek() {
   duration_ms=$((end_ms - start_ms))
 
   [[ "$status" -eq 0 ]] || return "$status"
-  if jq -e 'select(
-    .type == "message_end"
-    and .message.role == "assistant"
-    and (.message.stopReason == "error" or .message.stopReason == "aborted")
-  )' "$log_file" >/dev/null; then
-    return 1
-  fi
-
   metrics_from_pi_log "$log_file" "$duration_ms" "deepseek"
 }
 

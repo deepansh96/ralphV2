@@ -323,6 +323,60 @@ test_deepseek_step_fails_on_pi_error_event() {
   rm -f "$log_file"
 }
 
+test_deepseek_step_accepts_pi_recovery_after_error_event() {
+  local log_file metrics_file
+
+  log_file="$(mktemp)"
+  metrics_file="$(mktemp)"
+  (
+    source "$ROOT_DIR/scripts/metrics.sh"
+    source "$ROOT_DIR/scripts/agent.sh"
+
+    pi() {
+      printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"rate limit","usage":{"input":0,"output":0,"cost":{"total":0}}}}'
+      printf '%s\n' '{"type":"auto_retry_start","attempt":1,"maxAttempts":3,"delayMs":0,"errorMessage":"rate limit"}'
+      printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"done"}],"stopReason":"stop","usage":{"input":21,"output":8,"cost":{"total":0.004}}}}'
+    }
+
+    run_deepseek "prompt" "$log_file" "$PROJECT_ROOT" > "$metrics_file"
+  )
+
+  assert_contains "$(<"$metrics_file")" '"output_tokens": 8'
+  rm -f "$log_file" "$metrics_file"
+}
+
+test_deepseek_step_retries_terminal_pi_error_event() {
+  local log_file metrics_file count_file
+
+  log_file="$(mktemp)"
+  metrics_file="$(mktemp)"
+  count_file="$(mktemp)"
+  printf '0\n' > "$count_file"
+  (
+    source "$ROOT_DIR/scripts/metrics.sh"
+    source "$ROOT_DIR/scripts/agent.sh"
+    export RALPH_RETRY_DELAYS="0 0"
+
+    pi() {
+      local count
+      count="$(( $(<"$count_file") + 1 ))"
+      printf '%s\n' "$count" > "$count_file"
+      if [[ "$count" -eq 1 ]]; then
+        printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"rate limit","usage":{"input":0,"output":0,"cost":{"total":0}}}}'
+        return
+      fi
+      printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"done"}],"stopReason":"stop","usage":{"input":21,"output":8,"cost":{"total":0.004}}}}'
+    }
+
+    run_deepseek "prompt" "$log_file" "$PROJECT_ROOT" > "$metrics_file"
+  )
+
+  [[ "$(<"$count_file")" -eq 2 ]] || fail "expected Ralph to retry a terminal Pi rate-limit event"
+  [[ -f "$log_file.attempt-1" ]] || fail "expected the failed Pi attempt log to be preserved"
+  assert_contains "$(<"$metrics_file")" '"output_tokens": 8'
+  rm -f "$log_file" "$log_file".attempt-* "$metrics_file" "$count_file"
+}
+
 test_agent_rejects_unsupported_reasoning_effort() {
   local log_file output status
 
@@ -635,6 +689,8 @@ run_test test_codex_step_omits_model_flag_when_unset
 run_test test_claude_step_passes_reasoning_effort_when_set
 run_test test_deepseek_step_runs_via_pi_with_default_model_reasoning_and_metrics
 run_test test_deepseek_step_fails_on_pi_error_event
+run_test test_deepseek_step_accepts_pi_recovery_after_error_event
+run_test test_deepseek_step_retries_terminal_pi_error_event
 run_test test_agent_rejects_unsupported_reasoning_effort
 run_test test_run_claude_fails_clean_json_error_without_retrying
 run_test test_run_claude_retries_empty_crash_log

@@ -5,7 +5,7 @@ edges:
   - target: context/architecture.md
     condition: when working on pipeline flow, prompt dispatch, state transitions, or integrations
   - target: context/stack.md
-    condition: when working with shell, jq, gh, claude, codex, council, or mex tooling
+    condition: when working with shell, jq, gh, claude, codex, pi, deepseek, council, or mex tooling
   - target: context/conventions.md
     condition: when editing code, prompts, tests, or repository instructions
   - target: context/decisions.md
@@ -52,7 +52,7 @@ Load the relevant file based on the current task. Always load `context/architect
 | Task type | Load |
 |-----------|------|
 | Understanding pipeline flow or state | `context/architecture.md` |
-| Working with shell, jq, gh, claude, codex, council, or mex | `context/stack.md` |
+| Working with shell, jq, gh, claude, codex, pi, deepseek, council, or mex | `context/stack.md` |
 | Editing scripts, prompts, tests, or docs | `context/conventions.md` |
 | Changing branch, review, agent, or HITL policy | `context/decisions.md` |
 | Setting up the repo or running checks | `context/setup.md` |

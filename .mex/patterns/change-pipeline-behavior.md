@@ -15,7 +15,7 @@ edges:
     condition: when editing shell, prompts, state fields, or tests
   - target: context/decisions.md
     condition: when changing default agent, branch, review, or HITL policy
-last_updated: 2026-07-30
+last_updated: 2026-08-02
 ---
 
 # Change Pipeline Behavior
@@ -30,7 +30,7 @@ Load `context/architecture.md` and `context/conventions.md`. If the change touch
 2. Grep callers before editing shared helpers: `rg "function_or_step_name|step-type"`.
 3. Keep state schema changes explicit and mutate state with `jq`.
 4. If adding a step type, add or update its prompt in `prompts/`, ensure `prompt_render` has every placeholder it uses, and add deterministic tests.
-5. If changing agent execution, preserve the project-root `cd` for Codex and retry/metrics behavior for both agents.
+5. If changing agent execution, preserve each agent's working-directory and retry/metrics behavior.
 6. Update README, `CONTEXT.md`, `.mex/context/*`, or pattern docs only when the user-facing workflow changes.
 
 ## Gotchas
@@ -38,7 +38,7 @@ Load `context/architecture.md` and `context/conventions.md`. If the change touch
 - A prompt can look correct but fail at runtime if it references a placeholder not rendered by `scripts/prompt.sh`.
 - Downstream steps read issue bodies with `gh issue view`; comments are not a substitute for PRD or slice content.
 - `state.json` can become malformed through manual edits; always validate with `jq`.
-- Tests must fake `claude`, `codex`, `gh`, and `council` rather than calling real services.
+- Tests must fake `claude`, `codex`, `pi`, `gh`, and `council` rather than calling real services.
 
 ## Verify
 

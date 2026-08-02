@@ -10,7 +10,7 @@ triggers:
   - "integration"
 edges:
   - target: context/stack.md
-    condition: when specific shell, jq, GitHub, Claude, Codex, or council details are needed
+    condition: when specific shell, jq, GitHub, Claude, Codex, Pi, DeepSeek, or council details are needed
   - target: context/decisions.md
     condition: when understanding why the pipeline, branch, review, or agent defaults exist
   - target: context/conventions.md
