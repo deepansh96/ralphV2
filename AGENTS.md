@@ -36,6 +36,12 @@ Read these before starting, in order. Also read the target project's `CONTEXT.md
 
 **Pipeline steps** need no manual reading list: each `prompts/<step-type>.md` names the skill files its agent must read.
 
+## Supporting skills
+
+These are outside the fixed Ralph pipeline. Load them only when the task calls for them:
+
+- `skills/wizard/SKILL.md` — generate an interactive setup wizard for manual steps only a human can perform
+
 ## Issue tracker
 
 GitHub, via the `gh` CLI. Tracker operations — sub-issues, native blocking edges, wayfinding operations — live in `docs/agents/issue-tracker.md`. Skills resolve the tracker through this pointer; do not hardcode tracker commands elsewhere.
