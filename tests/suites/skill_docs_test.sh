@@ -29,6 +29,9 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
     "$ROOT_DIR/skills/wizard/template.sh"
     "$ROOT_DIR/skills/wizard/agents/openai.yaml"
     "$ROOT_DIR/skills/wizard/LICENSE"
+    "$ROOT_DIR/skills/wait-what/SKILL.md"
+    "$ROOT_DIR/skills/wait-what/agents/openai.yaml"
+    "$ROOT_DIR/skills/wait-what/LICENSE"
   )
 
   for file in "${required_files[@]}"; do

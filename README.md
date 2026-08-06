@@ -194,6 +194,7 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
 - `wayfinder/` — map an effort too big for one session as tracker tickets; hands its destination issue to `init`
 - `research/` — investigate a question against primary sources, leave a cited note
 - `wizard/` — supporting skill from `mattpocock/skills` v1.2.2 for interactive human-only setup; not part of the fixed pipeline
+- `wait-what/` — user-driven skill from `mattpocock/skills` v1.2.2 that re-pitches the previous response more clearly
 
 Tracker operations (sub-issues, native blocking edges, wayfinding operations) live in `docs/agents/issue-tracker.md`, referenced from the `Issue tracker` section of `AGENTS.md`.
 

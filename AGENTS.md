@@ -43,6 +43,7 @@ Read these before starting, in order. Also read the target project's `CONTEXT.md
 - `skills/grill-with-docs/SKILL.md` — grill a feature, update domain docs, and leave a build-ready issue
 - `skills/wayfinder/SKILL.md` — map work too large for one grilling session into linked decision tickets
 - `skills/wizard/SKILL.md` — generate an interactive setup wizard for manual steps only a human can perform
+- `skills/wait-what/SKILL.md` — re-pitch the previous response with simpler language and missing context
 
 **Shared planning skills:**
 
