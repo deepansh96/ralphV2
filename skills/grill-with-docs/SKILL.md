@@ -4,11 +4,11 @@ description: Grilling session that challenges your plan against the existing dom
 disable-model-invocation: false
 ---
 
-Run a grilling session (see [../grilling/SKILL.md](../grilling/SKILL.md)) using the domain-modeling discipline (see [../domain-modeling/SKILL.md](../domain-modeling/SKILL.md)): interview the user relentlessly about every aspect of the plan until you reach a shared understanding, updating `CONTEXT.md` and ADRs inline as decisions crystallise.
+Run the round-based grilling session (see [../grilling/SKILL.md](../grilling/SKILL.md)) using the domain-modeling discipline (see [../domain-modeling/SKILL.md](../domain-modeling/SKILL.md)): interview the user relentlessly until you reach a shared understanding, updating `CONTEXT.md` and ADRs inline as decisions crystallise.
 
-Ask the questions one at a time, waiting for feedback on each question before continuing. For each question, provide your recommended answer.
+Use the design-tree and frontier loop from `grilling`: ask every currently answerable question as one numbered round, then wait before recomputing the next frontier. If the user requests one question at a time, honor that preference.
 
-**Facts vs. decisions.** If a *fact* can be found by exploring the codebase, look it up rather than asking. The *decisions* are the user's — put each one to the user and wait for their answer. Never answer a decision on the user's behalf, even when running inside another workflow.
+**Facts vs. decisions.** If a *fact* can be found by exploring the codebase, look it up rather than asking. Read-only exploration subagents may return facts, but this session owns all file, Git, and GitHub writes. The *decisions* are the user's — put each one to the user and wait for their answer. Never answer a decision on the user's behalf, even when running inside another workflow.
 
 **Confirmation gate.** Do not write the final issue or enact the plan until the user confirms you have reached a shared understanding.
 
@@ -24,7 +24,7 @@ Explore the codebase to understand the current state of the code and existing do
 
 If an existing issue was provided, read it and use it to inform your questions — challenge what's already written, identify gaps, and build on what's there rather than starting from scratch.
 
-Many grilling questions can be answered — or at least informed — by reading the code. Before asking the user a question, check whether the codebase already has the answer. If it does, present what you found as your recommendation. If the code is ambiguous, show both what the code suggests and what's unclear, then ask.
+Many grilling questions can be answered — or at least informed — by reading the code. Before placing a question in a round, check whether the codebase already has the answer. If it does, present what you found as your recommendation. If the code is ambiguous, show both what the code suggests and what's unclear, then ask.
 
 ## Branch safety
 

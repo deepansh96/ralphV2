@@ -87,8 +87,8 @@ A child issue on a wayfinder Map whose resolution is a decision, not a Slice or 
 _Avoid_: implementation ticket, slice, work item
 
 **Frontier**:
-The Map's open, unblocked, unclaimed Decision Tickets — what a session can take next.
-_Avoid_: backlog, queue
+The currently actionable edge of a decision structure. In grilling, it is every question whose prerequisites are settled; in a wayfinder Map, it is the open, unblocked, unclaimed Decision Tickets.
+_Avoid_: backlog, queue, every possible question
 
 ### State & Workspace
 

@@ -23,7 +23,7 @@ Read these before starting, in order. Also read the target project's `CONTEXT.md
 **Grilling session** (default entry, one-session features):
 
 1. `skills/grill-with-docs/SKILL.md` — the session contract (branch safety, wrap-up issue)
-2. `skills/grilling/SKILL.md` — the interview loop (facts from code, decisions from the human, confirmation gate)
+2. `skills/grilling/SKILL.md` — dependency-ordered question rounds (facts from the environment, decisions from the human, confirmation gate)
 3. `skills/domain-modeling/SKILL.md` — glossary and ADR discipline
 4. `skills/domain-modeling/CONTEXT-FORMAT.md` and `ADR-FORMAT.md` — only when writing those files
 
@@ -52,7 +52,7 @@ Read these before starting, in order. Also read the target project's `CONTEXT.md
 
 **Shared planning skills:**
 
-- `skills/grilling/SKILL.md` — resolve a decision tree by asking the human only the questions code cannot answer
+- `skills/grilling/SKILL.md` — resolve a decision tree in rounds of currently answerable questions
 - `skills/domain-modeling/SKILL.md` — maintain shared domain language, context documents, and ADRs
 - `skills/research/SKILL.md` — investigate a decision-ticket question and leave cited findings
 
