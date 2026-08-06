@@ -195,6 +195,9 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
 - `grill-with-docs/` — grilling plus inline `CONTEXT.md`/ADR updates; the default entry point
 - `wayfinder/` — map an effort too big for one session as decision tickets; hands its destination issue to `init` for `to-spec`
 - `research/` — investigate a question against primary sources, leave a cited note
+- `writing-for-agents/` — model-invoked guidance from `mattpocock/skills` v1.2.2 for skills and agent-facing documents
+- `codebase-design/` — deep-module vocabulary required by the architecture improvement skill
+- `improve-codebase-architecture/` — user-driven architecture scan from `mattpocock/skills` v1.2.2 with a visual report and grilling follow-up
 - `prototype/` — supporting skill from `mattpocock/skills` v1.2.2 for shareable logic demos and switchable UI variants
 - `wizard/` — supporting skill from `mattpocock/skills` v1.2.2 for interactive human-only setup; not part of the fixed pipeline
 - `wait-what/` — user-driven skill from `mattpocock/skills` v1.2.2 that re-pitches the previous response more clearly
