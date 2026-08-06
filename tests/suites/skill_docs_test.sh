@@ -32,6 +32,11 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
     "$ROOT_DIR/skills/wait-what/SKILL.md"
     "$ROOT_DIR/skills/wait-what/agents/openai.yaml"
     "$ROOT_DIR/skills/wait-what/LICENSE"
+    "$ROOT_DIR/skills/prototype/SKILL.md"
+    "$ROOT_DIR/skills/prototype/LOGIC.md"
+    "$ROOT_DIR/skills/prototype/UI.md"
+    "$ROOT_DIR/skills/prototype/agents/openai.yaml"
+    "$ROOT_DIR/skills/prototype/LICENSE"
   )
 
   for file in "${required_files[@]}"; do

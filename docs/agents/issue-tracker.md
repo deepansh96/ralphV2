@@ -61,5 +61,5 @@ Used by the `wayfinder` skill. The **map** is a single issue with **child** issu
 - **Blocking**: native issue dependencies (see above), with the body-line fallback.
 - **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
 - **Claim**: `gh issue edit <n> --add-assignee @me` — the session's first write.
-- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer to the map's Decisions-so-far. For prototype tickets, point to the `prototype/<name>` branch; otherwise link the relevant gist or asset.
 - **Labels**: create once per repo if missing: `wayfinder:map`, `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, `wayfinder:task` (`gh label create <name>`).

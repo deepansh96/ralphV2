@@ -33,17 +33,22 @@ Read these before starting, in order. Also read the target project's `CONTEXT.md
 2. `docs/agents/issue-tracker.md` — the "Wayfinding operations" section (map, tickets, blocking, frontier, claim)
 3. `skills/grilling/SKILL.md` and `skills/domain-modeling/SKILL.md` — for naming the destination and grilling tickets
 4. `skills/research/SKILL.md` — only when resolving a research ticket
+5. `skills/prototype/SKILL.md` — only when resolving a prototype ticket
 
 **Pipeline steps** need no manual reading list: each `prompts/<step-type>.md` names the skill files its agent must read.
 
 ## Skill catalog
 
-**User-driven entry points:**
+**Planning entry points:**
 
 - `skills/grill-with-docs/SKILL.md` — grill a feature, update domain docs, and leave a build-ready issue
 - `skills/wayfinder/SKILL.md` — map work too large for one grilling session into linked decision tickets
-- `skills/wizard/SKILL.md` — generate an interactive setup wizard for manual steps only a human can perform
-- `skills/wait-what/SKILL.md` — re-pitch the previous response with simpler language and missing context
+
+**Supporting skills outside the pipeline:**
+
+- `skills/prototype/SKILL.md` — model-invoked support that builds a throwaway logic or UI prototype as branch-linked evidence
+- `skills/wizard/SKILL.md` — model-invoked support that generates an interactive wizard for manual human-only steps
+- `skills/wait-what/SKILL.md` — user-invoked re-pitch of the previous response with simpler language and missing context
 
 **Shared planning skills:**
 
