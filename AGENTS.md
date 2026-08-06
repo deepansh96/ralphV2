@@ -36,11 +36,29 @@ Read these before starting, in order. Also read the target project's `CONTEXT.md
 
 **Pipeline steps** need no manual reading list: each `prompts/<step-type>.md` names the skill files its agent must read.
 
-## Supporting skills
+## Skill catalog
 
-These are outside the fixed Ralph pipeline. Load them only when the task calls for them:
+**User-driven entry points:**
 
+- `skills/grill-with-docs/SKILL.md` — grill a feature, update domain docs, and leave a build-ready issue
+- `skills/wayfinder/SKILL.md` — map work too large for one grilling session into linked decision tickets
 - `skills/wizard/SKILL.md` — generate an interactive setup wizard for manual steps only a human can perform
+
+**Shared planning skills:**
+
+- `skills/grilling/SKILL.md` — resolve a decision tree by asking the human only the questions code cannot answer
+- `skills/domain-modeling/SKILL.md` — maintain shared domain language, context documents, and ADRs
+- `skills/research/SKILL.md` — investigate a decision-ticket question and leave cited findings
+
+**Ralph pipeline skills:**
+
+- `skills/to-spec/SKILL.md` — turn confirmed decisions into an implementation-ready specification
+- `skills/to-tickets/SKILL.md` — split a specification into ordered, independently buildable slices
+- `skills/tdd/SKILL.md` — implement slices with a focused red-green test loop
+- `skills/matt-pocock-code-review/SKILL.md` — review changes against repository standards and the originating specification
+- `skills/ponytail-review/SKILL.md` — find unnecessary complexity and opportunities to delete code
+- `skills/run-codex-review/SKILL.md` — run an isolated Codex review through the App Server
+- `skills/supe-review-code-changes/SKILL.md` — review correctness, security, compatibility, and test coverage
 
 ## Issue tracker
 
