@@ -4,7 +4,7 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/test_helpers.sh"
 
 test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
-  local required_files readme agents context grilling grill_with_docs wayfinder research tests_readme global_skill_ref stale_refs broken_links link_records file relative_file target target_without_anchor resolved
+  local required_files readme agents context grilling grill_with_docs wayfinder research writing_for_agents codebase_design improve_architecture tests_readme global_skill_ref stale_refs broken_links link_records file relative_file target target_without_anchor resolved
 
   required_files=(
     "$ROOT_DIR/skills/to-spec/SKILL.md"
@@ -37,6 +37,19 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
     "$ROOT_DIR/skills/prototype/UI.md"
     "$ROOT_DIR/skills/prototype/agents/openai.yaml"
     "$ROOT_DIR/skills/prototype/LICENSE"
+    "$ROOT_DIR/skills/writing-for-agents/SKILL.md"
+    "$ROOT_DIR/skills/writing-for-agents/SKILL-MECHANICS.md"
+    "$ROOT_DIR/skills/writing-for-agents/agents/openai.yaml"
+    "$ROOT_DIR/skills/writing-for-agents/LICENSE"
+    "$ROOT_DIR/skills/codebase-design/SKILL.md"
+    "$ROOT_DIR/skills/codebase-design/DEEPENING.md"
+    "$ROOT_DIR/skills/codebase-design/DESIGN-IT-TWICE.md"
+    "$ROOT_DIR/skills/codebase-design/agents/openai.yaml"
+    "$ROOT_DIR/skills/codebase-design/LICENSE"
+    "$ROOT_DIR/skills/improve-codebase-architecture/SKILL.md"
+    "$ROOT_DIR/skills/improve-codebase-architecture/HTML-REPORT.md"
+    "$ROOT_DIR/skills/improve-codebase-architecture/agents/openai.yaml"
+    "$ROOT_DIR/skills/improve-codebase-architecture/LICENSE"
   )
 
   for file in "${required_files[@]}"; do
@@ -94,6 +107,8 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   assert_contains "$(<"$readme")" "cleanup-local-resources"
   assert_contains "$(<"$readme")" "wayfinder"
   assert_contains "$(<"$readme")" "wizard"
+  assert_contains "$(<"$readme")" "writing-for-agents"
+  assert_contains "$(<"$readme")" "improve-codebase-architecture"
   assert_contains "$(<"$readme")" "docs/agents/issue-tracker.md"
 
   agents="$ROOT_DIR/AGENTS.md"
@@ -108,6 +123,9 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   grill_with_docs="$ROOT_DIR/skills/grill-with-docs/SKILL.md"
   wayfinder="$ROOT_DIR/skills/wayfinder/SKILL.md"
   research="$ROOT_DIR/skills/research/SKILL.md"
+  writing_for_agents="$ROOT_DIR/skills/writing-for-agents/SKILL.md"
+  codebase_design="$ROOT_DIR/skills/codebase-design/SKILL.md"
+  improve_architecture="$ROOT_DIR/skills/improve-codebase-architecture/SKILL.md"
   assert_contains "$(<"$context")" "Decision Ticket"
   assert_contains "$(<"$grilling")" "Work the tree in **rounds**"
   assert_contains "$(<"$grilling")" "❓ **Q1**"
@@ -118,6 +136,11 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   assert_contains "$(<"$wayfinder")" "returns cited findings only"
   assert_contains "$(<"$wayfinder")" "create-and-review-prd"
   assert_contains "$(<"$research")" "owns all file, Git, and tracker writes"
+  assert_contains "$(<"$writing_for_agents")" "environment** is a source of truth"
+  assert_contains "$(<"$writing_for_agents")" "**cache**"
+  assert_contains "$(<"$codebase_design")" "**The deletion test.**"
+  assert_contains "$(<"$improve_architecture")" "**Scope before you scan — YAGNI.**"
+  assert_contains "$(<"$improve_architecture")" "Subagents return findings only"
 
   tests_readme="$ROOT_DIR/tests/README.md"
   [[ -f "$tests_readme" ]] || fail "expected tests README"

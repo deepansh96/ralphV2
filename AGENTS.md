@@ -46,6 +46,9 @@ Read these before starting, in order. Also read the target project's `CONTEXT.md
 
 **Supporting skills outside the pipeline:**
 
+- `skills/writing-for-agents/SKILL.md` — model-invoked guidance for writing skills and agent-facing documents
+- `skills/codebase-design/SKILL.md` — model-invoked vocabulary and principles for designing deep modules
+- `skills/improve-codebase-architecture/SKILL.md` — user-invoked architecture scan, visual report, and grilling flow
 - `skills/prototype/SKILL.md` — model-invoked support that builds a throwaway logic or UI prototype as branch-linked evidence
 - `skills/wizard/SKILL.md` — model-invoked support that generates an interactive wizard for manual human-only steps
 - `skills/wait-what/SKILL.md` — user-invoked re-pitch of the previous response with simpler language and missing context
