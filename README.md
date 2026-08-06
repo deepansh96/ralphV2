@@ -55,7 +55,7 @@ Run specific suites by name:
 5. If a step blocks, answer the questions in `workspaces/<issue>/hitl-<step-id>.md`, then run the same command again.
 6. After the PR workflow completes, run `./ralph-v2/cleanup.sh <issue-number>`.
 
-Grilling asks dependency-independent questions in numbered rounds, then recomputes the next frontier from the answers. Ask for one question at a time when that cadence is easier to work through.
+Grilling asks every currently answerable question in a numbered round, then recomputes the next frontier from the answers. Ask for one question at a time when that cadence is easier to work through.
 
 The fixed flow is:
 
