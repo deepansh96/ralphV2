@@ -9,4 +9,4 @@ Investigate the question against **primary sources** — official docs, source c
 2. Save it where the repo already keeps such notes; match the existing convention, and if there is none, put it somewhere sensible and say where.
 3. If the research resolves a wayfinder ticket, link the findings file from the ticket's resolution comment — the ticket holds the answer, the file holds the evidence.
 
-If your environment supports background agents, delegate the reading to one so the main session keeps working while it reads.
+If your environment supports background agents, delegate the reading so the main session keeps working. Delegate reading only: the background agent returns cited findings, while the invoking agent owns all file, Git, and tracker writes. This is required when Wayfinder fans out multiple research tickets in parallel.

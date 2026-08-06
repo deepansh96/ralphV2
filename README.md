@@ -48,7 +48,7 @@ Run specific suites by name:
 
 ## Workflow
 
-1. Grill the feature into a GitHub issue using the project context and decision workflow (`skills/grill-with-docs/`). For an effort too big or foggy for one grilling session, chart a wayfinder map first (`skills/wayfinder/`): a map issue with child tickets resolved one per session, whose destination is the decision issue that enters the pipeline. If grilling produces speculative `CONTEXT.md` or ADR changes, keep them on a pushed `grill/*` planning branch instead of committing them directly to `main`.
+1. Grill the feature into a GitHub issue using the project context and decision workflow (`skills/grill-with-docs/`). For an effort too big or foggy for one grilling session, chart a wayfinder map first (`skills/wayfinder/`): a map issue with child decision tickets resolved one per session, except for read-only research subagents fanned out in parallel. The cleared map's destination decision issue enters Ralph at `init`, where `create-and-review-prd` performs the `to-spec` handoff. If grilling produces speculative `CONTEXT.md` or ADR changes, keep them on a pushed `grill/*` planning branch instead of committing them directly to `main`.
 2. Run the `init.md` prompt for that issue so an agent creates `ralph-v2/workspaces/<issue>/state.json`. By default, init skips review-decisions steps and PRD/slice council review rounds. Opt in with "with 1 review-decision round" or "with 1 review round on PRD".
 3. Set `.baseBranch` explicitly in `state.json` before preflight reaches branch creation. Use the branch that already contains the grilling context: usually `main` for accepted docs, or the pushed `grill/*` planning branch for speculative feature docs.
 4. Run `./ralph-v2/ralph.sh --issue N`.
@@ -191,7 +191,7 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
 - `domain-modeling/` — glossary and ADR discipline, plus domain awareness for consumers
 - `grilling/` — the core interview loop (facts from the code, decisions from the human)
 - `grill-with-docs/` — grilling plus inline `CONTEXT.md`/ADR updates; the default entry point
-- `wayfinder/` — map an effort too big for one session as tracker tickets; hands its destination issue to `init`
+- `wayfinder/` — map an effort too big for one session as decision tickets; hands its destination issue to `init` for `to-spec`
 - `research/` — investigate a question against primary sources, leave a cited note
 - `prototype/` — supporting skill from `mattpocock/skills` v1.2.2 for shareable logic demos and switchable UI variants
 - `wizard/` — supporting skill from `mattpocock/skills` v1.2.2 for interactive human-only setup; not part of the fixed pipeline

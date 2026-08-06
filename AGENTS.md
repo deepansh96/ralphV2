@@ -29,7 +29,7 @@ Read these before starting, in order. Also read the target project's `CONTEXT.md
 
 **Wayfinder session** (efforts too big for one grilling session):
 
-1. `skills/wayfinder/SKILL.md` — the map, ticket types, chart/work modes
+1. `skills/wayfinder/SKILL.md` — the map, decision-ticket types, chart/work modes, and research fan-out
 2. `docs/agents/issue-tracker.md` — the "Wayfinding operations" section (map, tickets, blocking, frontier, claim)
 3. `skills/grilling/SKILL.md` and `skills/domain-modeling/SKILL.md` — for naming the destination and grilling tickets
 4. `skills/research/SKILL.md` — only when resolving a research ticket

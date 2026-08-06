@@ -12,7 +12,7 @@ Ask the questions one at a time, waiting for feedback on each question before co
 
 **Confirmation gate.** Do not write the final issue or enact the plan until the user confirms you have reached a shared understanding.
 
-**Too big for one session?** If the effort is clearly more than one session can hold — a greenfield project, a huge multi-part feature, fog in every direction — stop and suggest charting a map with [../wayfinder/SKILL.md](../wayfinder/SKILL.md) instead. Wayfinder breaks the planning itself into tickets and hands each one to a session this size.
+**Too big for one session?** If the effort is clearly more than one session can hold — a greenfield project, a huge multi-part feature, fog in every direction — stop and suggest charting a map with [../wayfinder/SKILL.md](../wayfinder/SKILL.md) instead. Wayfinder breaks the planning itself into decision tickets and hands each one to a session this size.
 
 ## User inputs
 
