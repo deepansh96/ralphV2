@@ -179,7 +179,7 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
 
 ## Bundled Skills
 
-`ralph-v2/skills/` contains the skills used by the prompts:
+`ralph-v2/skills/` contains pipeline and supporting skills:
 
 - `to-spec/` — turn grilled decisions into a spec/PRD (with testing seams)
 - `to-tickets/` — break a spec into tracer-bullet slices with blocking edges
@@ -193,6 +193,9 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
 - `grill-with-docs/` — grilling plus inline `CONTEXT.md`/ADR updates; the default entry point
 - `wayfinder/` — map an effort too big for one session as tracker tickets; hands its destination issue to `init`
 - `research/` — investigate a question against primary sources, leave a cited note
+- `prototype/` — supporting skill from `mattpocock/skills` v1.2.2 for shareable logic demos and switchable UI variants
+- `wizard/` — supporting skill from `mattpocock/skills` v1.2.2 for interactive human-only setup; not part of the fixed pipeline
+- `wait-what/` — user-driven skill from `mattpocock/skills` v1.2.2 that re-pitches the previous response more clearly
 
 Tracker operations (sub-issues, native blocking edges, wayfinding operations) live in `docs/agents/issue-tracker.md`, referenced from the `Issue tracker` section of `AGENTS.md`.
 

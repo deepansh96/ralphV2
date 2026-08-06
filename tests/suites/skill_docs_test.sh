@@ -4,7 +4,7 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/test_helpers.sh"
 
 test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
-  local required_files readme tests_readme global_skill_ref stale_refs broken_links link_records file target target_without_anchor resolved
+  local required_files readme agents tests_readme global_skill_ref stale_refs broken_links link_records file relative_file target target_without_anchor resolved
 
   required_files=(
     "$ROOT_DIR/skills/to-spec/SKILL.md"
@@ -25,6 +25,18 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
     "$ROOT_DIR/skills/domain-modeling/DOMAIN-AWARENESS.md"
     "$ROOT_DIR/skills/domain-modeling/CONTEXT-FORMAT.md"
     "$ROOT_DIR/skills/domain-modeling/ADR-FORMAT.md"
+    "$ROOT_DIR/skills/wizard/SKILL.md"
+    "$ROOT_DIR/skills/wizard/template.sh"
+    "$ROOT_DIR/skills/wizard/agents/openai.yaml"
+    "$ROOT_DIR/skills/wizard/LICENSE"
+    "$ROOT_DIR/skills/wait-what/SKILL.md"
+    "$ROOT_DIR/skills/wait-what/agents/openai.yaml"
+    "$ROOT_DIR/skills/wait-what/LICENSE"
+    "$ROOT_DIR/skills/prototype/SKILL.md"
+    "$ROOT_DIR/skills/prototype/LOGIC.md"
+    "$ROOT_DIR/skills/prototype/UI.md"
+    "$ROOT_DIR/skills/prototype/agents/openai.yaml"
+    "$ROOT_DIR/skills/prototype/LICENSE"
   )
 
   for file in "${required_files[@]}"; do
@@ -54,6 +66,8 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   done <<< "$link_records"
   [[ -z "$broken_links" ]] || fail "expected all bundled skill relative links to resolve:"$'\n'"$broken_links"
 
+  bash -n "$ROOT_DIR/skills/wizard/template.sh"
+
   readme="$ROOT_DIR/README.md"
   [[ -f "$readme" ]] || fail "expected ralph-v2 README"
   assert_contains "$(<"$readme")" "ralph.sh --issue N"
@@ -79,7 +93,15 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   assert_contains "$(<"$readme")" "multi-axis-pr-review"
   assert_contains "$(<"$readme")" "cleanup-local-resources"
   assert_contains "$(<"$readme")" "wayfinder"
+  assert_contains "$(<"$readme")" "wizard"
   assert_contains "$(<"$readme")" "docs/agents/issue-tracker.md"
+
+  agents="$ROOT_DIR/AGENTS.md"
+  for file in "${required_files[@]}"; do
+    [[ "$(basename "$file")" == "SKILL.md" ]] || continue
+    relative_file="${file#"$ROOT_DIR"/}"
+    assert_contains "$(<"$agents")" "$relative_file"
+  done
 
   tests_readme="$ROOT_DIR/tests/README.md"
   [[ -f "$tests_readme" ]] || fail "expected tests README"
