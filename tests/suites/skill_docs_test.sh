@@ -4,7 +4,7 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/test_helpers.sh"
 
 test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
-  local required_files readme agents context wayfinder research tests_readme global_skill_ref stale_refs broken_links link_records file relative_file target target_without_anchor resolved
+  local required_files readme agents context grilling grill_with_docs wayfinder research tests_readme global_skill_ref stale_refs broken_links link_records file relative_file target target_without_anchor resolved
 
   required_files=(
     "$ROOT_DIR/skills/to-spec/SKILL.md"
@@ -104,9 +104,16 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   done
 
   context="$ROOT_DIR/CONTEXT.md"
+  grilling="$ROOT_DIR/skills/grilling/SKILL.md"
+  grill_with_docs="$ROOT_DIR/skills/grill-with-docs/SKILL.md"
   wayfinder="$ROOT_DIR/skills/wayfinder/SKILL.md"
   research="$ROOT_DIR/skills/research/SKILL.md"
   assert_contains "$(<"$context")" "Decision Ticket"
+  assert_contains "$(<"$grilling")" "Work the tree in **rounds**"
+  assert_contains "$(<"$grilling")" "❓ **Q1**"
+  assert_contains "$(<"$grilling")" "must not modify files, Git, or the tracker"
+  assert_contains "$(<"$grilling")" "user confirms"
+  assert_contains "$(<"$grill_with_docs")" "currently answerable question"
   assert_contains "$(<"$wayfinder")" "decision tickets"
   assert_contains "$(<"$wayfinder")" "returns cited findings only"
   assert_contains "$(<"$wayfinder")" "create-and-review-prd"

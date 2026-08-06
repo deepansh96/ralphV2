@@ -55,6 +55,8 @@ Run specific suites by name:
 5. If a step blocks, answer the questions in `workspaces/<issue>/hitl-<step-id>.md`, then run the same command again.
 6. After the PR workflow completes, run `./ralph-v2/cleanup.sh <issue-number>`.
 
+Grilling asks every currently answerable question in a numbered round, then recomputes the next frontier from the answers. Ask for one question at a time when that cadence is easier to work through.
+
 The fixed flow is:
 
 ```text
@@ -189,7 +191,7 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
 - `run-codex-review/` — isolated Codex App Server review
 - `supe-review-code-changes/` — correctness, security, compatibility, and test review
 - `domain-modeling/` — glossary and ADR discipline, plus domain awareness for consumers
-- `grilling/` — the core interview loop (facts from the code, decisions from the human)
+- `grilling/` — the round-based interview loop (facts from the environment, decisions from the human)
 - `grill-with-docs/` — grilling plus inline `CONTEXT.md`/ADR updates; the default entry point
 - `wayfinder/` — map an effort too big for one session as decision tickets; hands its destination issue to `init` for `to-spec`
 - `research/` — investigate a question against primary sources, leave a cited note

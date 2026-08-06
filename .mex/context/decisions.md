@@ -65,6 +65,14 @@ last_updated: 2026-08-06
 **Alternatives considered:** Sync upstream Wayfinder verbatim (rejected because it drops Ralph's tracker, branch, and `init` contracts), run standalone `to-spec` before `init` (rejected as duplicate PRD generation), or let research subagents mutate branches and tickets concurrently (rejected because shared worktrees and tracker updates can collide).
 **Consequences:** Research reading can run concurrently when the harness supports subagents; without subagents, research Decision Tickets remain on the Frontier for fresh sessions. The parent captures each result on its `research/<name>` branch and resolves tickets sequentially.
 
+### Ask grilling questions in frontier rounds
+**Date:** 2026-08-06
+**Status:** Active
+**Decision:** Grilling maps a plan, decision, or idea as a design tree and asks the whole currently answerable Frontier in a numbered round. Questions with unresolved prerequisites wait for a later round. Fact-finding subagents are read-only, decisions remain with the user, and no action starts before the user's confirmation. A user request for one question at a time overrides the round cadence.
+**Reasoning:** Rounds reduce conversational turns without asking dependent questions too early or weakening the facts-versus-decisions split. The fixed format lets the user answer by number.
+**Alternatives considered:** Keep one question per turn (rejected as the default because independent questions needlessly serialize), or ask every known question at once (rejected because later questions would assume unresolved answers).
+**Consequences:** `grilling` owns the interview cadence; wrappers such as `grill-with-docs` and Wayfinder reference it instead of defining their own loop.
+
 ### Use mex for routed agent memory
 **Date:** 2026-07-09
 **Status:** Active
