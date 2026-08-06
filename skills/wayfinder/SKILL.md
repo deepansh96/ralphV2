@@ -1,10 +1,10 @@
 ---
 name: wayfinder
-description: Plan a huge chunk of work — more than one agent session can hold — as a shared map of investigation tickets on GitHub, and resolve them one at a time until the way to the destination is clear. Use when a feature or project is too big or too foggy for a single grilling session.
+description: Plan a huge chunk of work — more than one agent session can hold — as a shared map of decision tickets on GitHub, and resolve them one at a time until the way to the destination is clear. Use when a feature or project is too big or too foggy for a single grilling session.
 disable-model-invocation: true
 ---
 
-A loose idea has arrived — too big for one agent session, and wrapped in fog: the way from here to the **destination** isn't visible yet. Wayfinding is about finding that way, not charging at the destination. This skill charts the way as a **shared map** on the repo's issue tracker, then works its tickets one at a time until the route is clear.
+A loose idea has arrived — too big for one agent session, and wrapped in fog: the way from here to the **destination** isn't visible yet. Wayfinding is about finding that way, not charging at the destination. This skill charts the way as a **shared map** on the repo's issue tracker, then works its **decision tickets** — questions whose resolution is a decision, not slices of a build — one at a time until the route is clear.
 
 The destination varies per effort, and naming it is the first act of charting — it shapes every ticket. For a Ralph project the destination is usually **a finalized decision issue, ready for Ralph `init`** — the same kind of issue a single `grill-with-docs` session produces for smaller features. It might also be a decision to lock before planning starts, or a change made in place like a data-structure migration.
 
@@ -52,9 +52,9 @@ The whole map at low resolution, loaded once per session. Open tickets are **not
 <!-- see "Out of scope": work ruled beyond the destination; closed, never graduates -->
 ```
 
-### Tickets
+### Decision tickets
 
-Each ticket is a **child issue** of the map; the tracker's issue id is its identity. Its body is the question, sized to one 100K token agent session:
+Each decision ticket is a **child issue** of the map; the tracker's issue id is its identity. Its body is the question, sized to one 100K token agent session:
 
 ```markdown
 ## Question
@@ -70,11 +70,11 @@ Blocking uses the tracker's **native** dependency relationship — essential bec
 
 The answer isn't part of the body — it's recorded on resolution (see [Work through the map](#work-through-the-map)). Assets created while resolving a ticket are linked from the issue, not pasted in.
 
-## Ticket Types
+## Decision Ticket Types
 
 Every ticket is either **HITL** — human in the loop, worked *with* a human who speaks for themselves — or **AFK**, driven by the agent alone. A HITL ticket only resolves through that live exchange; the agent never stands in for the human's side of it (a grilling agent that answers its own questions has broken this).
 
-- **Research** (AFK): Reading documentation, third-party APIs, or local resources like knowledge bases. Follow [../research/SKILL.md](../research/SKILL.md); creates a markdown summary as a linked asset. Use when knowledge outside the current working directory is required.
+- **Research** (AFK): Reading documentation, third-party APIs, or local resources like knowledge bases. Follow [../research/SKILL.md](../research/SKILL.md). A research subagent reads and returns cited findings only; the parent session owns every file, Git, tracker, and map write. Use when knowledge outside the current working directory is required.
 - **Prototype** (HITL): Follow [../prototype/SKILL.md](../prototype/SKILL.md) to build a cheap, concrete artifact for the human to react to. Keep it out of the mainline on a `prototype/<name>` branch and link that branch from the ticket. Use when "how should it look" or "how should it behave" is the key question.
 - **Grilling** (HITL): Conversation via [../grilling/SKILL.md](../grilling/SKILL.md) and [../domain-modeling/SKILL.md](../domain-modeling/SKILL.md), one question at a time. The default case.
 - **Task** (HITL or AFK): Manual work that must happen before a *decision* can be made — nothing to decide, prototype, or research, but the discussion is blocked until it's done. Signing up for a service so its API can be judged, provisioning access, moving data so its shape can be seen. This is the one type that *does* rather than decides — and it earns its place by unblocking a decision, not by delivering the destination. The agent drives it alone where it can (AFK); otherwise it hands the human a precise checklist (HITL). Resolved when the work is done; the answer records what was done and any resulting facts (credentials location, new URLs, row counts) later tickets depend on.
@@ -102,7 +102,7 @@ When a ticket that already exists turns out to sit past the destination — mis-
 
 ## Invocation
 
-Two modes. Either way, **never resolve more than one ticket per session.**
+Two modes. Either way, **never resolve more than one decision ticket per session**, except for the research fan-out during charting.
 
 ### Chart the map
 
@@ -112,7 +112,8 @@ User invokes with a loose idea.
 2. **Map the frontier.** Grill again, **breadth-first** this time: fan out across the whole space rather than deep on any one thread, surfacing the open decisions and the first steps takeable now. **If this surfaces no fog** — the way to the destination is already clear, the whole journey small enough for one session — you don't need a map. Stop and suggest a plain `grill-with-docs` session instead.
 3. **Create the map** (label `wayfinder:map`): Destination and Notes filled in, Decisions-so-far empty, the fog sketched into **Not yet specified**.
 4. **Create the tickets you can specify now** as child issues of the map — then wire blocking edges in a **second pass** (issues need ids before they can reference each other). Wiring sorts them into the frontier and the blocked; everything you can't yet specify stays in the fog — the **Not yet specified** section.
-5. Stop — charting the map is one session's work; do not also resolve tickets.
+5. **Fan out research.** Claim each unblocked research ticket, then, if the harness supports subagents, run one research subagent per ticket in parallel. Each subagent reads and returns cited findings only — it must not modify files, Git, GitHub, or the map. After they return, the parent processes results one at a time: write the Markdown evidence, commit and push it on a `research/<name>` branch, link it from the resolution comment, close the ticket, and update Decisions-so-far. If subagents are unavailable, leave the research tickets on the frontier for fresh sessions.
+6. Stop — charting hand-resolves no non-research tickets.
 
 ### Work through the map
 
@@ -128,8 +129,8 @@ The user may run unblocked tickets in parallel, so expect other sessions to be e
 
 ## Handing off to Ralph
 
-The map issue itself never enters the Ralph pipeline — only the **destination issue** does.
+The map issue itself never enters the Ralph pipeline — only the **destination issue** does. This is Ralph's handoff to `to-spec`, not a handoff to implementation.
 
 - When the way is clear (no open tickets, no fog), synthesize the map's Decisions-so-far into the destination: a decision issue with a feature summary, decisions with rationale, scope boundaries, and acceptance criteria — the same shape `grill-with-docs` produces. Create it (or update it if it already exists), link it from the map, and close the map.
 - Grilling and domain-modeling tickets may edit `CONTEXT.md` or ADRs. The same branch contract as `grill-with-docs` applies: keep speculative documentation changes on a pushed `grill/*` planning branch, and set Ralph's `baseBranch` to that branch before preflight. Ralph's `init` and `preflight` hard-fail on a dirty working tree.
-- Run Ralph `init` on the destination issue number, then the pipeline runs exactly as it does for a grilled issue.
+- Run Ralph `init` on the destination issue number. Its `create-and-review-prd` step follows `to-spec`, then `create-and-review-slices` follows `to-tickets`; do not run standalone `to-spec` before `init` or jump directly from the map to implementation.

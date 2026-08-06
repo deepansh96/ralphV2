@@ -4,7 +4,7 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/test_helpers.sh"
 
 test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
-  local required_files readme agents tests_readme global_skill_ref stale_refs broken_links link_records file relative_file target target_without_anchor resolved
+  local required_files readme agents context wayfinder research tests_readme global_skill_ref stale_refs broken_links link_records file relative_file target target_without_anchor resolved
 
   required_files=(
     "$ROOT_DIR/skills/to-spec/SKILL.md"
@@ -102,6 +102,15 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
     relative_file="${file#"$ROOT_DIR"/}"
     assert_contains "$(<"$agents")" "$relative_file"
   done
+
+  context="$ROOT_DIR/CONTEXT.md"
+  wayfinder="$ROOT_DIR/skills/wayfinder/SKILL.md"
+  research="$ROOT_DIR/skills/research/SKILL.md"
+  assert_contains "$(<"$context")" "Decision Ticket"
+  assert_contains "$(<"$wayfinder")" "decision tickets"
+  assert_contains "$(<"$wayfinder")" "returns cited findings only"
+  assert_contains "$(<"$wayfinder")" "create-and-review-prd"
+  assert_contains "$(<"$research")" "owns all file, Git, and tracker writes"
 
   tests_readme="$ROOT_DIR/tests/README.md"
   [[ -f "$tests_readme" ]] || fail "expected tests README"

@@ -57,9 +57,10 @@ Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` lin
 Used by the `wayfinder` skill. The **map** is a single issue with **child** issues as tickets.
 
 - **Map**: a single issue labelled `wayfinder:map`, holding the Destination / Notes / Decisions-so-far / Not-yet-specified / Out-of-scope body. `gh issue create --label wayfinder:map`.
-- **Child ticket**: an issue linked to the map as a GitHub sub-issue (see above). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
+- **Decision ticket**: an issue linked to the map as a GitHub sub-issue (see above). Where sub-issues aren't enabled, add it to a task list in the map body and put `Part of #<map>` at the top of its body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
 - **Blocking**: native issue dependencies (see above), with the body-line fallback.
 - **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
 - **Claim**: `gh issue edit <n> --add-assignee @me` — the session's first write.
-- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer to the map's Decisions-so-far. For prototype tickets, point to the `prototype/<name>` branch; otherwise link the relevant gist or asset.
+- **Research fan-out**: claim each unblocked research ticket before spawning one read-only research subagent per ticket. Subagents return findings only; the parent session serializes file, branch, comment, close, and map writes.
+- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer to the map's Decisions-so-far. Point prototype and research tickets to their `prototype/<name>` or `research/<name>` branch; otherwise link the relevant gist or asset.
 - **Labels**: create once per repo if missing: `wayfinder:map`, `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, `wayfinder:task` (`gh label create <name>`).

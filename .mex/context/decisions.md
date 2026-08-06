@@ -18,7 +18,7 @@ edges:
     condition: when a decision affects live run behavior
   - target: patterns/initialize-issue-workspace.md
     condition: when a decision affects init or branch contracts
-last_updated: 2026-07-30
+last_updated: 2026-08-06
 ---
 
 # Decisions
@@ -56,6 +56,14 @@ last_updated: 2026-07-30
 **Reasoning:** Mirrors upstream v1.1.0, which settles wayfinder as a situational on-ramp while the grill-led chain stays the front door. Tracker operations resolve through the `Issue tracker` pointer in `AGENTS.md` to `docs/agents/issue-tracker.md`, keeping skills tracker-agnostic.
 **Alternatives considered:** Replacing grill-with-docs with wayfinder (rejected: upstream explicitly declined this; most features fit one session).
 **Consequences:** Target repos need the `wayfinder:*` labels created once; map sessions must respect the `grill/*` branch contract because `init`/`preflight` fail on dirty trees.
+
+### Keep wayfinder decisions separate from Ralph implementation
+**Date:** 2026-08-06
+**Status:** Active
+**Decision:** Wayfinder child issues are Decision Tickets whose resolution is a decision, never a Ralph implementation Slice. A cleared map hands its destination issue to `init`; `create-and-review-prd` is the `to-spec` boundary. During charting, research subagents may read in parallel, but they return findings only and the parent session serializes every file, Git, tracker, and map write.
+**Reasoning:** The explicit term prevents agents from implementing map tickets. Entering at `init` preserves Ralph's existing PRD and slice pipeline without running `to-spec` twice. Parent-owned writes avoid branch and issue races when subagents share a checkout.
+**Alternatives considered:** Sync upstream Wayfinder verbatim (rejected because it drops Ralph's tracker, branch, and `init` contracts), run standalone `to-spec` before `init` (rejected as duplicate PRD generation), or let research subagents mutate branches and tickets concurrently (rejected because shared worktrees and tracker updates can collide).
+**Consequences:** Research reading can run concurrently when the harness supports subagents; without subagents, research Decision Tickets remain on the Frontier for fresh sessions. The parent captures each result on its `research/<name>` branch and resolves tickets sequentially.
 
 ### Use mex for routed agent memory
 **Date:** 2026-07-09

@@ -79,11 +79,15 @@ _Avoid_: autonomous, unattended, headless
 ### Wayfinding
 
 **Map**:
-A single GitHub issue (label `wayfinder:map`) charting an effort too big for one session: destination, decisions so far, fog, and out-of-scope, with child ticket issues. Produced and worked by the `wayfinder` skill; never enters the pipeline itself.
+A single GitHub issue (label `wayfinder:map`) charting an effort too big for one session: destination, decisions so far, fog, and out-of-scope, with child Decision Ticket issues. Produced and worked by the `wayfinder` skill; never enters the pipeline itself.
 _Avoid_: plan doc, tracker board
 
+**Decision Ticket**:
+A child issue on a wayfinder Map whose resolution is a decision, not a Slice or another unit of implementation. Its type is research, prototype, grilling, or task; it closes before Ralph build planning begins.
+_Avoid_: implementation ticket, slice, work item
+
 **Frontier**:
-The map's open, unblocked, unclaimed tickets — what a session can take next.
+The Map's open, unblocked, unclaimed Decision Tickets — what a session can take next.
 _Avoid_: backlog, queue
 
 ### State & Workspace
@@ -111,7 +115,7 @@ _Avoid_: manual review, approval gate
 - The post-implementation **Steps** check the branch, create the PR, prepare and execute the **Local QA Checklist**, and run four **Review Axes**
 - `cleanup-local-resources` is an **Always-Run Step** created during init and
   deferred until normal work ends; it removes pipeline-owned **Local Resources**
-- A wayfinder **Map**'s destination issue is what `init` consumes; the **Map** itself stays outside the **Pipeline**
+- A wayfinder **Map**'s destination issue is what `init` consumes; `create-and-review-prd` performs the `to-spec` handoff, while the **Map** itself stays outside the **Pipeline**
 - A **Workspace** holds the **State** and artifacts for one pipeline run
 
 ## Example dialogue
