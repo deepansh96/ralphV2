@@ -17,7 +17,7 @@ edges:
     condition: when editing scripts, prompts, tests, or docs in this architecture
   - target: patterns/run-and-monitor-pipeline.md
     condition: when executing or observing a live pipeline
-last_updated: 2026-08-06
+last_updated: 2026-08-16
 ---
 
 # Architecture
@@ -35,7 +35,7 @@ The pipeline is issue-driven and state-driven. `ralph.sh` does not infer missing
 - **`scripts/agent.sh`** - execution adapter for `claude`, `codex`, and `deepseek`; maps optional per-step model and `reasoningEffort` overrides to Claude, Codex, or Pi CLI flags, then wraps retries, logging, working directory handling, and metrics extraction.
 - **`scripts/prompt.sh`** - renders prompt templates by replacing `{{ISSUE}}`, `{{REPO}}`, `{{WORKSPACE}}`, `{{BRANCH}}`, `{{BASE_BRANCH}}`, `{{STEP_ID}}`, `{{SUB_ISSUE}}`, `{{SKILLS_DIR}}`, `{{REVIEWERS}}`, and `{{AGENT}}`.
 - **`prompts/`** - one markdown contract per step type; downstream agents initialize workspaces, plan, implement, check, create the PR, prepare/run local QA, consolidate four review axes, and clean local resources. Preflight backfills missing cleanup artifacts for older initialized workspaces.
-- **`skills/`** - bundled task guidance includes planning/TDD/domain skills plus `matt-pocock-code-review`, `ponytail-review`, `run-codex-review`, and `supe-review-code-changes`; grilling asks dependency-ordered question rounds; Wayfinder uses decision tickets and may fan out read-only research subagents while the parent owns all writes; `writing-for-agents`, `codebase-design`, `improve-codebase-architecture`, `prototype`, `wizard`, and `wait-what` are optional support outside the fixed pipeline. Prompt references stay inside the repository. Tracker operations live in `docs/agents/issue-tracker.md`, referenced from `AGENTS.md`.
+- **`skills/`** - bundled task guidance includes planning/TDD/domain skills plus `matt-pocock-code-review`, `ponytail-review`, `run-codex-review`, and `supe-review-code-changes`; grilling asks dependency-ordered question rounds; `quiz-grilling` can present those rounds through a disposable local web app and temporary tunnel; Wayfinder uses decision tickets and may fan out read-only research subagents while the parent owns all writes; `writing-for-agents`, `codebase-design`, `improve-codebase-architecture`, `prototype`, `wizard`, and `wait-what` are optional support outside the fixed pipeline. Prompt references stay inside the repository. Tracker operations live in `docs/agents/issue-tracker.md`, referenced from `AGENTS.md`.
 - **`tests/`** - deterministic shell suite with shared fakes for external tools; validates behavior without real GitHub, Claude, Codex, Pi, or council calls.
 
 ## External Dependencies
@@ -45,13 +45,14 @@ The pipeline is issue-driven and state-driven. `ralph.sh` does not infer missing
 - **Codex CLI (`codex`)** - default generated step agent; `scripts/agent.sh` runs it from the project root with danger-full-access sandbox and JSON logging.
 - **Pi CLI (`pi`)** - runs steps whose `agent` is `deepseek`; `scripts/agent.sh` selects the DeepSeek provider and consumes Pi's JSON event stream.
 - **Council CLI (`council`)** - multi-agent review harness used by review prompts and `scripts/council-review.sh`.
+- **Cloudflare Quick Tunnels or ngrok** - optionally expose a quiz-grilling session's loopback server to another device; the session records and cleans up the tunnel process.
 - **Git** - branch creation, status checks, pushes, and project-root discovery underpin preflight and agent working directories.
 - **`jq`** - required for all state manipulation, prompt rendering fields, status tables, and JSON validation.
 - **mex (`npx mex-agent`)** - repository memory scaffold under `.mex/`; use `npx mex-agent check` and `npx mex-agent sync` unless mex is installed globally.
 
 ## What Does NOT Exist Here
 
-- No web service, database, daemon, or long-running server lives in this repo.
+- No deployed web service, database, daemon, or long-running server lives in this repo; `quiz-grilling` starts only a session-owned temporary local server.
 - No package manager build step is needed for Ralph itself.
 - No runtime persistence outside Git, GitHub, per-issue workspaces, logs, and `.mex/events`.
 - No automatic recovery for failed work; Ralph runs pending `alwaysRun` cleanup and then a human or agent must reset the failed step intentionally.

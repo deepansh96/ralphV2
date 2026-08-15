@@ -18,12 +18,20 @@ edges:
     condition: when a decision affects live run behavior
   - target: patterns/initialize-issue-workspace.md
     condition: when a decision affects init or branch contracts
-last_updated: 2026-08-06
+last_updated: 2026-08-16
 ---
 
 # Decisions
 
 ## Decision Log
+
+### Keep browser-based grilling disposable and parent-owned
+**Date:** 2026-08-16
+**Status:** Active
+**Decision:** `quiz-grilling` wraps the existing grilling Frontier in a dependency-free local web app with optional Cloudflare/ngrok exposure. Read-only exploration may run in two subagent waves, while the parent owns questions, answers, writes, user communication, processes, and cleanup.
+**Reasoning:** A one-card-at-a-time quiz makes dense decision rounds easier to answer from another device without changing grilling semantics. Explicit process records and a marked temporary directory make the public surface removable when the session closes.
+**Alternatives considered:** Build a permanent hosted app (rejected as infrastructure for a temporary planning surface), or copy a new ad hoc HTML/server stack for every grilling session (rejected because behavior and cleanup drift).
+**Consequences:** Node.js is required for quiz sessions; a public link additionally needs `cloudflared` or `ngrok`. Quiz payloads must contain no secrets, and every terminal path runs the bundled cleanup helper.
 
 ### Review and fix every slice with a dedicated review-slice step
 **Date:** 2026-07-09

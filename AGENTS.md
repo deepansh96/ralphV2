@@ -51,6 +51,7 @@ Read these before starting, in order. Also read the target project's `CONTEXT.md
 - `skills/improve-codebase-architecture/SKILL.md` — user-invoked architecture scan, visual report, and grilling flow
 - `skills/prototype/SKILL.md` — model-invoked support that builds a throwaway logic or UI prototype as branch-linked evidence
 - `skills/wizard/SKILL.md` — model-invoked support that generates an interactive wizard for manual human-only steps
+- `skills/quiz-grilling/SKILL.md` — model-invoked browser quiz wrapper for remote grilling rounds with temporary tunnels and owned cleanup
 - `skills/wait-what/SKILL.md` — user-invoked re-pitch of the previous response with simpler language and missing context
 
 **Shared planning skills:**

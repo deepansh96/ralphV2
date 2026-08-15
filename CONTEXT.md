@@ -90,6 +90,10 @@ _Avoid_: implementation ticket, slice, work item
 The currently actionable edge of a decision structure. In grilling, it is every question whose prerequisites are settled; in a wayfinder Map, it is the open, unblocked, unclaimed Decision Tickets.
 _Avoid_: backlog, queue, every possible question
 
+**Quiz Grilling Session**:
+A temporary browser surface for one grilling design tree. It serves one Frontier round at a time, records the human's answers, and owns its local server, public tunnel, and temporary files until cleanup.
+_Avoid_: survey, permanent form, deployed app
+
 ### State & Workspace
 
 **Workspace**:
@@ -116,6 +120,7 @@ _Avoid_: manual review, approval gate
 - `cleanup-local-resources` is an **Always-Run Step** created during init and
   deferred until normal work ends; it removes pipeline-owned **Local Resources**
 - A wayfinder **Map**'s destination issue is what `init` consumes; `create-and-review-prd` performs the `to-spec` handoff, while the **Map** itself stays outside the **Pipeline**
+- A **Quiz Grilling Session** presents each grilling **Frontier** without changing which decisions are ready or who owns them
 - A **Workspace** holds the **State** and artifacts for one pipeline run
 
 ## Example dialogue
