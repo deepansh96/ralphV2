@@ -234,6 +234,12 @@ JSON
   assert_contains "$output" '"ok":true'
   [[ "$(jq -r '.answers[0].optionId' "$session/answers-round-1.json")" == "a" ]] || fail "expected saved quiz answer"
 
+  output="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$local_url/api/submit" \
+    -H 'content-type: application/json' \
+    --data '{"round":1,"answers":[{"questionId":"q1","optionId":"b"}]}')"
+  [[ "$output" == "409" ]] || fail "expected repeated round submission to return 409"
+  [[ "$(jq -r '.answers[0].optionId' "$session/answers-round-1.json")" == "a" ]] || fail "expected first quiz answer to be kept"
+
   "$ROOT_DIR/skills/quiz-grilling/scripts/cleanup-session.sh" "$session" >/dev/null
   [[ ! -e "$session" ]] || fail "expected quiz session cleanup"
 }

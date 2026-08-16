@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createServer } from "node:http";
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import { link, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -50,7 +50,19 @@ const server = createServer(async (request, response) => {
         answers,
       };
       await writeFile(tempPath, `${JSON.stringify(output, null, 2)}\n`, { mode: 0o600 });
-      await rename(tempPath, outputPath);
+      try {
+        // link() is atomic and fails with EEXIST, so a round can never be overwritten once submitted.
+        await link(tempPath, outputPath);
+      } catch (error) {
+        if (error.code === "EEXIST") {
+          const conflict = new Error(`Round ${questions.round} already has submitted answers`);
+          conflict.statusCode = 409;
+          throw conflict;
+        }
+        throw error;
+      } finally {
+        await rm(tempPath, { force: true });
+      }
       return sendJson(response, 201, { ok: true, file: `answers-round-${questions.round}.json` });
     }
 

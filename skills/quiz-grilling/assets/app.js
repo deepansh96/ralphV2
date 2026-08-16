@@ -134,7 +134,13 @@ function customControl(question, answer) {
     radio.checked = Boolean(text);
     updateControls();
   };
-  radio.addEventListener("change", () => textarea.focus());
+  radio.addEventListener("change", () => {
+    const text = textarea.value.trim();
+    if (text) state.answers.set(question.id, { text });
+    else state.answers.delete(question.id);
+    updateControls();
+    textarea.focus();
+  });
   textarea.addEventListener("input", save);
   wrapper.append(label, textarea);
   return wrapper;
