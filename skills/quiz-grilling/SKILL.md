@@ -124,8 +124,8 @@ Finish any outer `grill-with-docs` wrap-up, then run:
 <skill-dir>/scripts/cleanup-session.sh "$session"
 ```
 
-The cleanup helper stops only recorded quiz/tunnel processes and removes only a marked quiz session directory. Run it on success, cancellation, or failure. Verify that the public URL is closed and the session path no longer exists. If cleanup reports a process-identity mismatch, leave that process untouched and report the exact manual cleanup needed.
+The cleanup helper stops only recorded quiz/tunnel processes and removes only a marked quiz session directory. Run it on success, cancellation, or failure. Verify that the public URL is closed and the session path no longer exists. When a recorded PID now belongs to a different process, cleanup leaves that process untouched, drops the stale record, and still removes the directory.
 
-If a parent session crashes or loses its handle, search only the operating system's temporary directory for `.quiz-grilling-session` markers, inspect the adjacent PID/manifest files, and run the cleanup helper on each confirmed orphan. For an identity mismatch, report the recorded PID and current `ps -p <pid> -o command=` output; stop it only after its ownership is confirmed.
+If a parent session crashes or loses its handle, search only the operating system's temporary directory for `.quiz-grilling-session` markers, inspect the adjacent PID/manifest files, and run the cleanup helper on each confirmed orphan.
 
 **Done when:** no quiz server or tunnel owned by the session remains, the marked temporary directory is gone, and the user has the durable grilling result instead of a live temporary link.

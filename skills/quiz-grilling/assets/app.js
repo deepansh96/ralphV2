@@ -70,14 +70,11 @@ function render() {
 
   elements.card.append(cardHeader, copy, recommendation, fieldset);
 
-  const answered = state.answers.size;
-  elements.progressLabel.textContent = `${answered} of ${questions.length} answered`;
-  elements.progressBar.style.width = `${(answered / questions.length) * 100}%`;
   elements.previous.disabled = state.index === 0 || state.submitting;
   elements.next.hidden = state.index === questions.length - 1;
-  elements.next.disabled = state.index === questions.length - 1 || state.submitting;
+  elements.next.disabled = state.submitting;
   elements.submit.hidden = state.index !== questions.length - 1;
-  elements.submit.disabled = answered !== questions.length || state.submitting;
+  updateControls();
 }
 
 function waitWhatToggle(question, simplified) {

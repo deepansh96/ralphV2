@@ -24,9 +24,13 @@ stop_recorded_process() {
   [[ "$pid" =~ ^[0-9]+$ ]] || { echo "Invalid $label PID: $pid" >&2; return 1; }
   kill -0 "$pid" 2>/dev/null || { rm -f "$pid_file"; return 0; }
   command_line="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+  # A command mismatch means the recorded process is gone and the OS reused
+  # its PID: leave the stranger untouched, but drop the stale record so the
+  # session directory can still be removed.
   [[ "$command_line" == *"$expected"* ]] || {
-    echo "Refusing to stop PID $pid: it is not the recorded $label process" >&2
-    return 1
+    echo "Recorded $label PID $pid now belongs to another process; leaving it untouched" >&2
+    rm -f "$pid_file"
+    return 0
   }
   kill "$pid" 2>/dev/null || true
   for ((attempt = 0; attempt < 20; attempt++)); do

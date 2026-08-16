@@ -21,6 +21,10 @@ done
 
 [[ -n "$session_dir" && -n "$local_url" ]] || usage
 [[ -f "$session_dir/.quiz-grilling-session" ]] || { echo "Not a quiz-grilling session: $session_dir" >&2; exit 1; }
+[[ "$(<"$session_dir/.quiz-grilling-session")" == "quiz-grilling-v1" ]] || {
+  echo "Not a quiz-grilling session: $session_dir" >&2
+  exit 1
+}
 [[ "$local_url" == http://127.0.0.1:* || "$local_url" == http://localhost:* ]] || {
   echo "Tunnel target must be a loopback HTTP URL" >&2
   exit 1
@@ -50,6 +54,10 @@ if [[ -f "$pid_file" ]]; then
   rm -f "$pid_file" "$manifest"
 fi
 
+# Record the provider before anything can crash or be cleaned up, so
+# cleanup-session.sh never has to guess which binary owns tunnel.pid.
+jq -n --arg provider "$provider" '{provider: $provider}' > "$manifest"
+
 case "$provider" in
   cloudflare)
     command -v cloudflared >/dev/null 2>&1 || { echo "cloudflared is not installed" >&2; exit 3; }
@@ -66,19 +74,19 @@ tunnel_pid=$!
 printf '%s\n' "$tunnel_pid" > "$pid_file"
 
 public_url=""
-for _attempt in {1..60}; do
+for _attempt in {1..240}; do
   if ! kill -0 "$tunnel_pid" 2>/dev/null; then
     echo "Tunnel process exited before publishing a URL. See $log_file" >&2
-    rm -f "$pid_file"
+    rm -f "$pid_file" "$manifest"
     exit 1
   fi
 
   if [[ "$provider" == "cloudflare" ]]; then
     public_url="$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' "$log_file" 2>/dev/null | tail -1 || true)"
   else
-    public_url="$(curl -fsS http://127.0.0.1:4040/api/tunnels 2>/dev/null \
-      | jq -r --arg url "$local_url" '.tunnels[]? | select(.proto == "https" and .config.addr == $url) | .public_url' \
-      | head -1 || true)"
+    # Read the URL from this tunnel's own JSON log instead of the agent API,
+    # which lives on a fixed port and may belong to another ngrok agent.
+    public_url="$(jq -r 'select(.msg == "started tunnel") | .url // empty' "$log_file" 2>/dev/null | tail -1 || true)"
   fi
   [[ -n "$public_url" ]] && break
   sleep 0.25
@@ -86,7 +94,7 @@ done
 
 if [[ -z "$public_url" ]]; then
   kill "$tunnel_pid" 2>/dev/null || true
-  rm -f "$pid_file"
+  rm -f "$pid_file" "$manifest"
   echo "Timed out waiting for a public tunnel URL. See $log_file" >&2
   exit 1
 fi
