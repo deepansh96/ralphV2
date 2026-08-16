@@ -157,7 +157,7 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   assert_contains "$(<"$codebase_design")" "**The deletion test.**"
   assert_contains "$(<"$improve_architecture")" "**Scope before you scan — YAGNI.**"
   assert_contains "$(<"$improve_architecture")" "Subagents return findings only"
-  assert_contains "$(<"$quiz_grilling")" "Luna"
+  assert_contains "$(<"$quiz_grilling")" "explicit read-only boundary"
   assert_contains "$(<"$quiz_grilling")" "Wait-what"
   assert_contains "$(<"$quiz_grilling")" "cleanup-session.sh"
 

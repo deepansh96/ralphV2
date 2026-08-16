@@ -19,7 +19,7 @@ Use read-only exploration subagents when the harness supports them:
 2. Integrate those results and identify only the facts still missing.
 3. Dispatch a second targeted wave when unresolved facts would change the frontier or recommendations.
 
-For Codex delegation, prefer an available Luna model with `high` reasoning effort. If Luna is unavailable, use the default subagent and state the fallback. Give every subagent an explicit read-only boundary: no file, Git, tracker, process, tunnel, or user-facing communication changes.
+Give every subagent an explicit read-only boundary: no file, Git, tracker, process, tunnel, or user-facing communication changes.
 
 **Done when:** every current question is a decision for the user, its prerequisites are settled, and its recommendation cites the relevant repository facts.
 
