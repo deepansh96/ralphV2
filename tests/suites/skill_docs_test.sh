@@ -17,7 +17,7 @@ cleanup_quiz_sessions() {
 trap 'cleanup_quiz_sessions; cleanup' EXIT
 
 test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
-  local required_files readme agents context grilling grill_with_docs wayfinder research writing_for_agents codebase_design improve_architecture tests_readme global_skill_ref stale_refs broken_links link_records file relative_file target target_without_anchor resolved
+  local required_files readme agents context grilling grill_with_docs wayfinder research writing_for_agents codebase_design improve_architecture quiz_grilling tests_readme global_skill_ref stale_refs broken_links link_records file relative_file target target_without_anchor resolved
 
   required_files=(
     "$ROOT_DIR/skills/to-spec/SKILL.md"
@@ -185,7 +185,7 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
 test_quiz_grilling_server_validates_and_saves_a_round() {
   local session server_pid ready_file local_url status output
 
-  session="$($ROOT_DIR/skills/quiz-grilling/scripts/create-session.sh)"
+  session="$("$ROOT_DIR/skills/quiz-grilling/scripts/create-session.sh")"
   QUIZ_SESSIONS+=("$session")
   ready_file="$session/server-ready.json"
   cat > "$session/questions.json" <<'JSON'
@@ -271,7 +271,7 @@ while true; do sleep 1; done
 FAKE
   chmod +x "$fake_bin/cloudflared"
 
-  session="$($ROOT_DIR/skills/quiz-grilling/scripts/create-session.sh)"
+  session="$("$ROOT_DIR/skills/quiz-grilling/scripts/create-session.sh")"
   QUIZ_SESSIONS+=("$session")
   manifest="$(PATH="$fake_bin:$PATH" "$ROOT_DIR/skills/quiz-grilling/scripts/start-tunnel.sh" \
     --session "$session" --url "http://127.0.0.1:4173")"

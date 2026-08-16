@@ -124,21 +124,20 @@ function customControl(question, answer) {
   textarea.maxLength = 10000;
   textarea.placeholder = "Type your answer here…";
   textarea.value = answer?.text ?? "";
-  const save = () => {
+  const applyText = () => {
     const text = textarea.value.trim();
     if (text) state.answers.set(question.id, { text });
     else state.answers.delete(question.id);
-    radio.checked = Boolean(text);
     updateControls();
+    return Boolean(text);
   };
   radio.addEventListener("change", () => {
-    const text = textarea.value.trim();
-    if (text) state.answers.set(question.id, { text });
-    else state.answers.delete(question.id);
-    updateControls();
+    applyText();
     textarea.focus();
   });
-  textarea.addEventListener("input", save);
+  textarea.addEventListener("input", () => {
+    radio.checked = applyText();
+  });
   wrapper.append(label, textarea);
   return wrapper;
 }

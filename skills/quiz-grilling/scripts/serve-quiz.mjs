@@ -1,19 +1,24 @@
 #!/usr/bin/env node
 
+import { execFile } from "node:child_process";
 import { createServer } from "node:http";
-import { link, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs, promisify } from "node:util";
 
-const assetsDir = resolve(dirname(fileURLToPath(import.meta.url)), "../assets");
-const args = parseArgs(process.argv.slice(2));
-const sessionDir = resolve(args.session ?? "");
+const execFileAsync = promisify(execFile);
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const assetsDir = resolve(scriptDir, "../assets");
+const expectedMarker = (await readFile(join(scriptDir, "session-marker"), "utf8")).trim();
+const args = parseCli();
+const sessionDir = resolve(args.session);
 const host = "127.0.0.1";
 const port = parsePort(args.port ?? "4173");
 const markerPath = join(sessionDir, ".quiz-grilling-session");
 const questionsPath = join(sessionDir, "questions.json");
-const pidPath = join(sessionDir, "server.pid");
 const readyPath = join(sessionDir, "server-ready.json");
+const tunnelManifestPath = join(sessionDir, "tunnel.json");
 
 await requireSession();
 await requireNoLiveServer();
@@ -26,6 +31,10 @@ const assets = new Map([
 
 const server = createServer(async (request, response) => {
   try {
+    if (!(await hostAllowed(request.headers.host ?? ""))) {
+      return sendJson(response, 421, { error: "Unrecognized Host header" });
+    }
+
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
     if (request.method === "GET" && url.pathname === "/api/health") {
@@ -42,17 +51,16 @@ const server = createServer(async (request, response) => {
       const questions = await loadQuestions();
       const answers = validateAnswers(payload, questions);
       const outputPath = join(sessionDir, `answers-round-${questions.round}.json`);
-      const tempPath = `${outputPath}.${process.pid}.tmp`;
       const output = {
         title: questions.title,
         round: questions.round,
         submittedAt: new Date().toISOString(),
         answers,
       };
-      await writeFile(tempPath, `${JSON.stringify(output, null, 2)}\n`, { mode: 0o600 });
       try {
-        // link() is atomic and fails with EEXIST, so a round can never be overwritten once submitted.
-        await link(tempPath, outputPath);
+        // O_EXCL create is atomic, so a submitted round can never be
+        // overwritten and concurrent submissions cannot interleave.
+        await writeFile(outputPath, `${JSON.stringify(output, null, 2)}\n`, { mode: 0o600, flag: "wx" });
       } catch (error) {
         if (error.code === "EEXIST") {
           const conflict = new Error(`Round ${questions.round} already has submitted answers`);
@@ -60,8 +68,6 @@ const server = createServer(async (request, response) => {
           throw conflict;
         }
         throw error;
-      } finally {
-        await rm(tempPath, { force: true });
       }
       return sendJson(response, 201, { ok: true, file: `answers-round-${questions.round}.json` });
     }
@@ -91,31 +97,27 @@ await new Promise((resolveListen, rejectListen) => {
 const address = server.address();
 const actualPort = typeof address === "object" && address ? address.port : port;
 const localUrl = `http://${host}:${actualPort}`;
-await writeFile(pidPath, `${process.pid}\n`, { mode: 0o600 });
 await writeAtomic(readyPath, { pid: process.pid, url: localUrl });
 console.log(JSON.stringify({ event: "ready", pid: process.pid, url: localUrl }));
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
     server.close(async () => {
-      await Promise.allSettled([rm(pidPath, { force: true }), rm(readyPath, { force: true })]);
+      await rm(readyPath, { force: true });
       process.exit(0);
     });
   });
 }
 
-function parseArgs(values) {
-  const parsed = {};
-  for (let index = 0; index < values.length; index += 2) {
-    const key = values[index];
-    const value = values[index + 1];
-    if (!key?.startsWith("--") || value === undefined) usage();
-    const name = key.slice(2);
-    if (!new Set(["session", "port"]).has(name)) usage();
-    parsed[name] = value;
+function parseCli() {
+  let values;
+  try {
+    ({ values } = parseArgs({ options: { session: { type: "string" }, port: { type: "string" } } }));
+  } catch {
+    usage();
   }
-  if (!parsed.session) usage();
-  return parsed;
+  if (!values.session) usage();
+  return values;
 }
 
 function usage() {
@@ -136,30 +138,55 @@ async function requireSession() {
   } catch {
     throw new Error(`Not a quiz-grilling session: ${sessionDir}`);
   }
-  if (marker !== "quiz-grilling-v1") throw new Error(`Not a quiz-grilling session: ${sessionDir}`);
+  if (marker !== expectedMarker) throw new Error(`Not a quiz-grilling session: ${sessionDir}`);
 }
 
 async function requireNoLiveServer() {
-  let recordedPid;
+  let record = null;
   try {
-    recordedPid = Number((await readFile(pidPath, "utf8")).trim());
+    record = JSON.parse(await readFile(readyPath, "utf8"));
   } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-    await rm(readyPath, { force: true });
-    return;
+    if (error?.code && error.code !== "ENOENT") throw error;
   }
 
-  let alive = false;
+  const recordedPid = Number(record?.pid);
   if (Number.isInteger(recordedPid) && recordedPid > 0) {
+    let alive = false;
     try {
       process.kill(recordedPid, 0);
       alive = true;
     } catch (error) {
       alive = error.code !== "ESRCH";
     }
+    // A live PID can belong to another program after a crash and PID reuse,
+    // so only a matching command line counts as a running quiz server.
+    if (alive && (await commandLine(recordedPid)).includes("serve-quiz.mjs")) {
+      throw new Error(`Quiz server PID ${recordedPid} is already running for this session`);
+    }
   }
-  if (alive) throw new Error(`Quiz server PID ${recordedPid} is already running for this session`);
-  await Promise.all([rm(pidPath, { force: true }), rm(readyPath, { force: true })]);
+  await rm(readyPath, { force: true });
+}
+
+async function commandLine(pid) {
+  try {
+    const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "command="]);
+    return stdout;
+  } catch {
+    return "";
+  }
+}
+
+async function hostAllowed(hostHeader) {
+  const hostname = hostHeader.trim().toLowerCase().replace(/:\d+$/, "").replace(/^\[(.*)\]$/, "$1");
+  if (hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1") return true;
+  // A tunnel forwards its public hostname, which only tunnel.json knows.
+  // Rejecting every other name blocks DNS-rebinding pages from reaching us.
+  try {
+    const tunnel = JSON.parse(await readFile(tunnelManifestPath, "utf8"));
+    return new URL(tunnel.url).hostname.toLowerCase() === hostname;
+  } catch {
+    return false;
+  }
 }
 
 async function loadQuestions() {

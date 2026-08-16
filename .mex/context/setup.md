@@ -25,7 +25,7 @@ last_updated: 2026-08-16
 ## Prerequisites
 
 - `bash` with `set -euo pipefail` compatible behavior.
-- `git`, `jq`, and `gh` on PATH.
+- `git`, `jq`, `gh`, and `curl` on PATH.
 - `gh` authenticated for the target GitHub repo.
 - `claude` CLI for context checks and Claude-owned steps.
 - `codex` CLI for default generated steps.
