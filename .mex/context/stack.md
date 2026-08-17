@@ -22,7 +22,7 @@ edges:
     condition: when installing or validating local command availability
   - target: patterns/change-pipeline-behavior.md
     condition: when a stack choice affects a new or changed pipeline step
-last_updated: 2026-08-02
+last_updated: 2026-08-16
 ---
 
 # Stack
@@ -42,13 +42,14 @@ last_updated: 2026-08-02
 - **`claude` CLI** - used for context completeness checks and optional Claude-owned steps; per-step model and `reasoningEffort` map to `--model` and `--effort`.
 - **`codex` CLI** - default step executor for generated state; run from project root in `scripts/agent.sh`, with per-step model and `reasoningEffort` mapped to `--model` and `model_reasoning_effort`.
 - **`pi` CLI** - executes `deepseek` steps from the project root with `--provider deepseek`; defaults are `deepseek-v4-flash` and `high` reasoning effort, and per-step model and `reasoningEffort` map to `--model` and `--thinking`.
-- **Node.js** - runs the bundled isolated Codex App Server reviewer in `skills/run-codex-review/scripts/review.mjs`.
+- **Node.js** - runs the bundled isolated Codex App Server reviewer and the dependency-free temporary quiz-grilling server.
+- **`cloudflared` or `ngrok`** - optional tunnel client for exposing a temporary quiz-grilling link; Cloudflare Quick Tunnels are preferred.
 - **`council` CLI** - fan-out review runner for decision, PRD, and slice-planning workflows.
 - **Shell test fakes** - tests fake `claude`, `codex`, `pi`, `gh`, and `council`; never make deterministic tests depend on real services.
 
 ## What We Deliberately Do NOT Use
 
-- No Python or compiled app runtime for the core pipeline; Node is limited to the bundled isolated Codex reviewer and mex.
+- No Python or compiled app runtime for the core pipeline; Node is limited to the bundled isolated Codex reviewer, quiz-grilling support, and mex.
 - No real external services in tests; use fake commands under `tests/lib/`.
 - No background mode from Codex automation; foreground Ralph plus separate status polling is safer.
 - No implicit branch defaults; `.baseBranch` must be set explicitly before preflight.
@@ -56,6 +57,6 @@ last_updated: 2026-08-02
 
 ## Version Constraints
 
-- `jq`, `git`, `gh`, and Node.js must be available on PATH for the full pipeline.
+- `jq`, `git`, `gh`, and Node.js must be available on PATH for the full pipeline. Public quiz-grilling links additionally require `cloudflared` or `ngrok`.
 - `claude`, `codex`, `pi`, and `council` must be available only for steps or prompts that invoke them. DeepSeek steps require Pi 0.70.1+ and credentials in its auth store or `DEEPSEEK_API_KEY`.
 - mex requires Node.js 20+ when using `npx mex-agent`.

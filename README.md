@@ -200,6 +200,7 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
 - `improve-codebase-architecture/` — user-driven architecture scan from `mattpocock/skills` v1.2.2 with a visual report and grilling follow-up
 - `prototype/` — supporting skill from `mattpocock/skills` v1.2.2 for shareable logic demos and switchable UI variants
 - `wizard/` — supporting skill from `mattpocock/skills` v1.2.2 for interactive human-only setup; not part of the fixed pipeline
+- `quiz-grilling/` — browser quiz wrapper for grilling rounds with recommended and free-text answers, Wait-what views, temporary Cloudflare/ngrok links, and owned cleanup
 - `wait-what/` — user-driven skill from `mattpocock/skills` v1.2.2 that re-pitches the previous response more clearly
 
 Tracker operations (sub-issues, native blocking edges, wayfinding operations) live in `docs/agents/issue-tracker.md`, referenced from the `Issue tracker` section of `AGENTS.md`.

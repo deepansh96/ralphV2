@@ -3,8 +3,21 @@ set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/test_helpers.sh"
 
+QUIZ_SESSIONS=()
+
+cleanup_quiz_sessions() {
+  local session
+  [[ ${#QUIZ_SESSIONS[@]} -gt 0 ]] || return 0
+  for session in "${QUIZ_SESSIONS[@]}"; do
+    [[ -e "$session" ]] || continue
+    "$ROOT_DIR/skills/quiz-grilling/scripts/cleanup-session.sh" "$session" >/dev/null 2>&1 || true
+  done
+}
+
+trap 'cleanup_quiz_sessions; cleanup' EXIT
+
 test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
-  local required_files readme agents context grilling grill_with_docs wayfinder research writing_for_agents codebase_design improve_architecture tests_readme global_skill_ref stale_refs broken_links link_records file relative_file target target_without_anchor resolved
+  local required_files readme agents context grilling grill_with_docs wayfinder research writing_for_agents codebase_design improve_architecture quiz_grilling tests_readme global_skill_ref stale_refs broken_links link_records file relative_file target target_without_anchor resolved
 
   required_files=(
     "$ROOT_DIR/skills/to-spec/SKILL.md"
@@ -29,6 +42,15 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
     "$ROOT_DIR/skills/wizard/template.sh"
     "$ROOT_DIR/skills/wizard/agents/openai.yaml"
     "$ROOT_DIR/skills/wizard/LICENSE"
+    "$ROOT_DIR/skills/quiz-grilling/SKILL.md"
+    "$ROOT_DIR/skills/quiz-grilling/agents/openai.yaml"
+    "$ROOT_DIR/skills/quiz-grilling/scripts/create-session.sh"
+    "$ROOT_DIR/skills/quiz-grilling/scripts/serve-quiz.mjs"
+    "$ROOT_DIR/skills/quiz-grilling/scripts/start-tunnel.sh"
+    "$ROOT_DIR/skills/quiz-grilling/scripts/cleanup-session.sh"
+    "$ROOT_DIR/skills/quiz-grilling/assets/index.html"
+    "$ROOT_DIR/skills/quiz-grilling/assets/app.js"
+    "$ROOT_DIR/skills/quiz-grilling/assets/styles.css"
     "$ROOT_DIR/skills/wait-what/SKILL.md"
     "$ROOT_DIR/skills/wait-what/agents/openai.yaml"
     "$ROOT_DIR/skills/wait-what/LICENSE"
@@ -80,6 +102,11 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   [[ -z "$broken_links" ]] || fail "expected all bundled skill relative links to resolve:"$'\n'"$broken_links"
 
   bash -n "$ROOT_DIR/skills/wizard/template.sh"
+  bash -n "$ROOT_DIR/skills/quiz-grilling/scripts/create-session.sh"
+  bash -n "$ROOT_DIR/skills/quiz-grilling/scripts/start-tunnel.sh"
+  bash -n "$ROOT_DIR/skills/quiz-grilling/scripts/cleanup-session.sh"
+  node --check "$ROOT_DIR/skills/quiz-grilling/scripts/serve-quiz.mjs"
+  node --check "$ROOT_DIR/skills/quiz-grilling/assets/app.js"
 
   readme="$ROOT_DIR/README.md"
   [[ -f "$readme" ]] || fail "expected ralph-v2 README"
@@ -107,6 +134,7 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   assert_contains "$(<"$readme")" "cleanup-local-resources"
   assert_contains "$(<"$readme")" "wayfinder"
   assert_contains "$(<"$readme")" "wizard"
+  assert_contains "$(<"$readme")" "quiz-grilling"
   assert_contains "$(<"$readme")" "writing-for-agents"
   assert_contains "$(<"$readme")" "improve-codebase-architecture"
   assert_contains "$(<"$readme")" "docs/agents/issue-tracker.md"
@@ -126,6 +154,7 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   writing_for_agents="$ROOT_DIR/skills/writing-for-agents/SKILL.md"
   codebase_design="$ROOT_DIR/skills/codebase-design/SKILL.md"
   improve_architecture="$ROOT_DIR/skills/improve-codebase-architecture/SKILL.md"
+  quiz_grilling="$ROOT_DIR/skills/quiz-grilling/SKILL.md"
   assert_contains "$(<"$context")" "Decision Ticket"
   assert_contains "$(<"$grilling")" "Work the tree in **rounds**"
   assert_contains "$(<"$grilling")" "❓ **Q1**"
@@ -141,6 +170,9 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   assert_contains "$(<"$codebase_design")" "**The deletion test.**"
   assert_contains "$(<"$improve_architecture")" "**Scope before you scan — YAGNI.**"
   assert_contains "$(<"$improve_architecture")" "Subagents return findings only"
+  assert_contains "$(<"$quiz_grilling")" "explicit read-only boundary"
+  assert_contains "$(<"$quiz_grilling")" "Wait-what"
+  assert_contains "$(<"$quiz_grilling")" "cleanup-session.sh"
 
   tests_readme="$ROOT_DIR/tests/README.md"
   [[ -f "$tests_readme" ]] || fail "expected tests README"
@@ -148,6 +180,109 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   assert_contains "$(<"$tests_readme")" "Suite Map"
   assert_contains "$(<"$tests_readme")" "prompt_contracts_test.sh"
   assert_contains "$(<"$tests_readme")" "External tools"
+}
+
+test_quiz_grilling_server_validates_and_saves_a_round() {
+  local session server_pid ready_file local_url status output
+
+  session="$("$ROOT_DIR/skills/quiz-grilling/scripts/create-session.sh")"
+  QUIZ_SESSIONS+=("$session")
+  ready_file="$session/server-ready.json"
+  cat > "$session/questions.json" <<'JSON'
+{
+  "title": "Test decisions",
+  "round": 1,
+  "questions": [
+    {
+      "id": "q1",
+      "title": "Choose",
+      "body": "Which option should we use?",
+      "recommendation": "Use A.",
+      "options": [
+        {"id": "a", "label": "Option A", "recommended": true},
+        {"id": "b", "label": "Option B"}
+      ],
+      "waitWhat": {
+        "context": "We need one option.",
+        "question": "Should we use A?",
+        "recommendation": "Yes."
+      }
+    }
+  ]
+}
+JSON
+
+  node "$ROOT_DIR/skills/quiz-grilling/scripts/serve-quiz.mjs" --session "$session" --port 0 \
+    > "$session/server.log" 2>&1 &
+  server_pid=$!
+
+  for _attempt in {1..100}; do
+    [[ -f "$ready_file" ]] && break
+    kill -0 "$server_pid" 2>/dev/null || break
+    sleep 0.05
+  done
+  [[ -f "$ready_file" ]] || fail "expected quiz server readiness file"
+  local_url="$(jq -r '.url' "$ready_file")"
+  assert_contains "$(curl -fsS "$local_url/api/health")" '"ok":true'
+  assert_contains "$(curl -fsS "$local_url/api/questions")" '"waitWhat"'
+
+  set +e
+  output="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$local_url/api/submit" \
+    -H 'content-type: application/json' --data '{"round":1,"answers":[]}')"
+  status=$?
+  set -e
+  [[ "$status" -eq 0 && "$output" == "400" ]] || fail "expected incomplete quiz submission to return 400"
+
+  output="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$local_url/api/submit" \
+    -H 'content-type: application/json' \
+    --data '{"round":1,"answers":[{"questionId":"q1","optionId":"a","text":"also text"}]}')"
+  [[ "$output" == "400" ]] || fail "expected ambiguous quiz answer to return 400"
+
+  output="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$local_url/api/submit" \
+    -H 'content-type: application/json' \
+    --data '{"round":1,"answers":[{"questionId":"q1","text":"   "}]}')"
+  [[ "$output" == "400" ]] || fail "expected blank free-text answer to return 400"
+
+  output="$(curl -fsS -X POST "$local_url/api/submit" -H 'content-type: application/json' \
+    --data '{"round":1,"answers":[{"questionId":"q1","optionId":"a"}]}')"
+  assert_contains "$output" '"ok":true'
+  [[ "$(jq -r '.answers[0].optionId' "$session/answers-round-1.json")" == "a" ]] || fail "expected saved quiz answer"
+
+  output="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$local_url/api/submit" \
+    -H 'content-type: application/json' \
+    --data '{"round":1,"answers":[{"questionId":"q1","optionId":"b"}]}')"
+  [[ "$output" == "409" ]] || fail "expected repeated round submission to return 409"
+  [[ "$(jq -r '.answers[0].optionId' "$session/answers-round-1.json")" == "a" ]] || fail "expected first quiz answer to be kept"
+
+  "$ROOT_DIR/skills/quiz-grilling/scripts/cleanup-session.sh" "$session" >/dev/null
+  [[ ! -e "$session" ]] || fail "expected quiz session cleanup"
+}
+
+test_quiz_grilling_tunnel_records_and_cleans_owned_process() {
+  local fake_bin session manifest tunnel_pid
+
+  fake_bin="$WORKSPACES_DIR/fake-bin"
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/cloudflared" <<'FAKE'
+#!/usr/bin/env bash
+trap 'exit 0' TERM INT
+echo 'Quick Tunnel available at https://quiz-test.trycloudflare.com' >&2
+while true; do sleep 1; done
+FAKE
+  chmod +x "$fake_bin/cloudflared"
+
+  session="$("$ROOT_DIR/skills/quiz-grilling/scripts/create-session.sh")"
+  QUIZ_SESSIONS+=("$session")
+  manifest="$(PATH="$fake_bin:$PATH" "$ROOT_DIR/skills/quiz-grilling/scripts/start-tunnel.sh" \
+    --session "$session" --url "http://127.0.0.1:4173")"
+  assert_contains "$manifest" '"provider": "cloudflare"'
+  assert_contains "$manifest" 'https://quiz-test.trycloudflare.com'
+  tunnel_pid="$(jq -r '.pid' <<< "$manifest")"
+  kill -0 "$tunnel_pid" 2>/dev/null || fail "expected recorded tunnel process to be running"
+
+  "$ROOT_DIR/skills/quiz-grilling/scripts/cleanup-session.sh" "$session" >/dev/null
+  [[ ! -e "$session" ]] || fail "expected tunnel session cleanup"
+  ! kill -0 "$tunnel_pid" 2>/dev/null || fail "expected recorded tunnel process to stop"
 }
 
 test_isolated_codex_review_timeout_exits() {
@@ -210,6 +345,8 @@ FAKE
 }
 
 run_test test_skills_bundle_is_self_contained_and_readme_documents_workflow
+run_test test_quiz_grilling_server_validates_and_saves_a_round
+run_test test_quiz_grilling_tunnel_records_and_cleans_owned_process
 run_test test_isolated_codex_review_timeout_exits
 
 echo "skill_docs_test.sh passed"

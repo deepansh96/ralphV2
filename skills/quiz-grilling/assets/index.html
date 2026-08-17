@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Grilling quiz</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Decision session</p>
+          <h1 id="quiz-title">Loading…</h1>
+        </div>
+        <p id="round-label" class="round"></p>
+      </header>
+
+      <div class="progress-track" aria-hidden="true"><div id="progress-bar" class="progress-bar"></div></div>
+      <p id="progress-label" class="progress-label" aria-live="polite"></p>
+
+      <section id="card" class="card" aria-live="polite" tabindex="-1"></section>
+
+      <nav class="actions" aria-label="Quiz navigation">
+        <button id="previous" class="button button-secondary" type="button">Previous</button>
+        <button id="next" class="button" type="button">Next</button>
+        <button id="submit" class="button button-submit" type="button" disabled>Submit answers</button>
+      </nav>
+
+      <p id="status" class="status" role="status"></p>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
