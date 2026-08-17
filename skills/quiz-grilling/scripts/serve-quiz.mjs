@@ -1,13 +1,11 @@
 #!/usr/bin/env node
 
-import { execFile } from "node:child_process";
 import { createServer } from "node:http";
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseArgs, promisify } from "node:util";
+import { parseArgs } from "node:util";
 
-const execFileAsync = promisify(execFile);
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const assetsDir = resolve(scriptDir, "../assets");
 const expectedMarker = (await readFile(join(scriptDir, "session-marker"), "utf8")).trim();
@@ -21,7 +19,6 @@ const readyPath = join(sessionDir, "server-ready.json");
 const tunnelManifestPath = join(sessionDir, "tunnel.json");
 
 await requireSession();
-await requireNoLiveServer();
 
 const assets = new Map([
   ["/", ["index.html", "text/html; charset=utf-8"]],
@@ -100,15 +97,6 @@ const localUrl = `http://${host}:${actualPort}`;
 await writeAtomic(readyPath, { pid: process.pid, url: localUrl });
 console.log(JSON.stringify({ event: "ready", pid: process.pid, url: localUrl }));
 
-for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.on(signal, () => {
-    server.close(async () => {
-      await rm(readyPath, { force: true });
-      process.exit(0);
-    });
-  });
-}
-
 function parseCli() {
   let values;
   try {
@@ -139,41 +127,6 @@ async function requireSession() {
     throw new Error(`Not a quiz-grilling session: ${sessionDir}`);
   }
   if (marker !== expectedMarker) throw new Error(`Not a quiz-grilling session: ${sessionDir}`);
-}
-
-async function requireNoLiveServer() {
-  let record = null;
-  try {
-    record = JSON.parse(await readFile(readyPath, "utf8"));
-  } catch (error) {
-    if (error?.code && error.code !== "ENOENT") throw error;
-  }
-
-  const recordedPid = Number(record?.pid);
-  if (Number.isInteger(recordedPid) && recordedPid > 0) {
-    let alive = false;
-    try {
-      process.kill(recordedPid, 0);
-      alive = true;
-    } catch (error) {
-      alive = error.code !== "ESRCH";
-    }
-    // A live PID can belong to another program after a crash and PID reuse,
-    // so only a matching command line counts as a running quiz server.
-    if (alive && (await commandLine(recordedPid)).includes("serve-quiz.mjs")) {
-      throw new Error(`Quiz server PID ${recordedPid} is already running for this session`);
-    }
-  }
-  await rm(readyPath, { force: true });
-}
-
-async function commandLine(pid) {
-  try {
-    const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "command="]);
-    return stdout;
-  } catch {
-    return "";
-  }
 }
 
 async function hostAllowed(hostHeader) {

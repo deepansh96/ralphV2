@@ -64,6 +64,9 @@ function render() {
 
   const fieldset = document.createElement("fieldset");
   fieldset.className = "options";
+  // Freeze the inputs while a submit is in flight so the saved payload can
+  // never differ from what the screen shows.
+  fieldset.disabled = state.submitting;
   fieldset.append(node("legend", "sr-only", `Answer ${question.title}`));
   for (const option of question.options) fieldset.append(optionControl(question, option, answer));
   fieldset.append(customControl(question, answer));

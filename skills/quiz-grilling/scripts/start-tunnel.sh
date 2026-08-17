@@ -50,15 +50,29 @@ manifest="$session_dir/tunnel.json"
 if [[ -f "$manifest" ]]; then
   existing_pid="$(jq -r '.pid // empty' "$manifest" 2>/dev/null || true)"
   if [[ "$existing_pid" =~ ^[0-9]+$ ]] && kill -0 "$existing_pid" 2>/dev/null; then
-    echo "Tunnel PID $existing_pid is already running for this session" >&2
-    exit 1
+    # A live PID can belong to another program after a crash and PID reuse,
+    # so only a tunnel command line counts as a running tunnel.
+    existing_command="$(ps -p "$existing_pid" -o command= 2>/dev/null || true)"
+    if [[ "$existing_command" == *cloudflared* || "$existing_command" == *ngrok* ]]; then
+      echo "Tunnel PID $existing_pid is already running for this session" >&2
+      exit 1
+    fi
   fi
   rm -f "$manifest"
 fi
 
-# Record the provider before anything can crash or be cleaned up, so
-# cleanup-session.sh never has to guess which binary owns the tunnel.
-jq -n --arg provider "$provider" '{provider: $provider}' > "$manifest"
+# Until the manifest records the tunnel PID, this trap is the only handle on
+# the spawned process: kill it if the script dies inside that window.
+manifest_recorded=0
+kill_unrecorded_tunnel() {
+  [[ "$manifest_recorded" -eq 0 && -n "${tunnel_pid:-}" ]] || return 0
+  kill "$tunnel_pid" 2>/dev/null || true
+  rm -f "$manifest"
+}
+trap kill_unrecorded_tunnel EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 case "$provider" in
   cloudflare)
@@ -75,6 +89,7 @@ esac
 tunnel_pid=$!
 jq -n --arg provider "$provider" --argjson pid "$tunnel_pid" \
   '{provider: $provider, pid: $pid}' > "$manifest"
+manifest_recorded=1
 
 # Stop the tunnel this run spawned. Keep the manifest until the process is
 # confirmed dead so cleanup-session.sh always has a handle on a live tunnel.
