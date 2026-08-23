@@ -10,8 +10,10 @@ Base branch: {{BASE_BRANCH}}
 Step: {{STEP_ID}}
 Skills: {{SKILLS_DIR}}
 
-Default agent: codex
+Agent: {{AGENT}}
 Mode: AFK, no HITL
+
+{{NATIVE_DELEGATION_CONTRACT}}
 
 ## Prepare
 

@@ -18,12 +18,20 @@ edges:
     condition: when a decision affects live run behavior
   - target: patterns/initialize-issue-workspace.md
     condition: when a decision affects init or branch contracts
-last_updated: 2026-08-16
+last_updated: 2026-08-24
 ---
 
 # Decisions
 
 ## Decision Log
+
+### Keep native review delegation provider-owned
+**Date:** 2026-08-24
+**Status:** Active
+**Decision:** The multi-axis review prompt receives a provider-specific native delegation contract selected from its main `agent`. Codex review workers use `gpt-5.6-luna` with `max` reasoning, while Claude Code review workers use `sonnet` with `high` effort. Ralph renders the instructions but never launches or coordinates the workers itself.
+**Reasoning:** Claude Code and Codex are post-trained to operate their own subagent tools, but workers inherit the parent configuration when the prompt does not name a model and effort. Provider-specific context keeps the main agent in control while making the desired worker configuration explicit.
+**Alternatives considered:** Let workers inherit the parent (rejected because a Sol/medium parent produced Sol/medium workers), or add a Ralph-owned fan-out runner (rejected because it duplicates provider-native orchestration and cannot share one model vocabulary across providers).
+**Consequences:** Multi-axis review steps support Claude or Codex as their main agent and fail during prompt rendering for an unconfigured provider. The parent must fail rather than silently falling back when its native tool cannot apply the requested worker settings.
 
 ### Keep browser-based grilling disposable and parent-owned
 **Date:** 2026-08-16

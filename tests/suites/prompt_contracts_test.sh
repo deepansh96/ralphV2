@@ -384,6 +384,8 @@ test_multi_axis_pr_review_prompt_defines_four_skill_vote_contract() {
 
   prompt="$(<"$prompt_file")"
 
+  assert_contains "$prompt" "Agent: {{AGENT}}"
+  assert_contains "$prompt" "{{NATIVE_DELEGATION_CONTRACT}}"
   assert_contains "$prompt" "review orchestrator"
   assert_contains "$prompt" "must not run any of the four review skills"
   assert_contains "$prompt" "two waves"

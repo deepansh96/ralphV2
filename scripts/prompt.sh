@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 
+prompt_native_delegation_contract() {
+  local template_file="$1"
+  local agent="$2"
+  local contract_file
+
+  contract_file="$(dirname "$template_file")/native-delegation/$agent.md"
+  if [[ ! -f "$contract_file" ]]; then
+    echo "Error: native delegation is not configured for agent '$agent'" >&2
+    return 1
+  fi
+
+  cat "$contract_file"
+}
+
 prompt_render() {
   local template_file="$1"
   local state_file="$2"
@@ -16,6 +30,7 @@ prompt_render() {
   prompt="$(<"$template_file")"
 
   local issue repo branch base_branch step_id sub_issue reviewers agent
+  local native_delegation_contract
   issue="$(jq -r '.issue // ""' "$state_file")"
   repo="$(jq -r '.repo // ""' "$state_file")"
   branch="$(jq -r '.branch // ""' "$state_file")"
@@ -35,6 +50,13 @@ prompt_render() {
   prompt="${prompt//\{\{SKILLS_DIR\}\}/$skills_dir}"
   prompt="${prompt//\{\{REVIEWERS\}\}/$reviewers}"
   prompt="${prompt//\{\{AGENT\}\}/$agent}"
+
+  if [[ "$prompt" == *'{{NATIVE_DELEGATION_CONTRACT}}'* ]]; then
+    if ! native_delegation_contract="$(prompt_native_delegation_contract "$template_file" "$agent")"; then
+      return 1
+    fi
+    prompt="${prompt//\{\{NATIVE_DELEGATION_CONTRACT\}\}/$native_delegation_contract}"
+  fi
 
   printf '%s\n' "$prompt"
 }

@@ -79,7 +79,93 @@ test_prompt_render_fails_when_template_is_missing() {
   assert_contains "$output" "$workspace/missing.md"
 }
 
+test_prompt_render_injects_codex_native_delegation_contract() {
+  local issue workspace state_file prompt
+
+  issue="9048"
+  workspace="$WORKSPACES_DIR/$issue"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$workspace"
+  state_file="$workspace/state.json"
+  jq -n '{issue: 9048}' > "$state_file"
+
+  source "$ROOT_DIR/scripts/prompt.sh"
+  prompt="$(
+    prompt_render \
+      "$ROOT_DIR/prompts/multi-axis-pr-review.md" \
+      "$state_file" \
+      "$workspace" \
+      '{"id":"multi-axis-pr-review","agent":"codex"}' \
+      "$ROOT_DIR/skills"
+  )"
+
+  assert_contains "$prompt" "Native Delegation Contract — Codex"
+  assert_contains "$prompt" 'model: `gpt-5.6-luna`'
+  assert_contains "$prompt" '`reasoning_effort`: `max`'
+  assert_contains "$prompt" 'fork_turns: "none"'
+  assert_contains "$prompt" "omit any of these values"
+  [[ "$prompt" != *'{{NATIVE_DELEGATION_CONTRACT}}'* ]] || fail "expected delegation placeholder to be rendered"
+  [[ "$prompt" != *"Claude Code's native Agent tool"* ]] || fail "expected only the Codex delegation contract"
+}
+
+test_prompt_render_injects_claude_native_delegation_contract() {
+  local issue workspace state_file prompt
+
+  issue="9049"
+  workspace="$WORKSPACES_DIR/$issue"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$workspace"
+  state_file="$workspace/state.json"
+  jq -n '{issue: 9049}' > "$state_file"
+
+  source "$ROOT_DIR/scripts/prompt.sh"
+  prompt="$(
+    prompt_render \
+      "$ROOT_DIR/prompts/multi-axis-pr-review.md" \
+      "$state_file" \
+      "$workspace" \
+      '{"id":"multi-axis-pr-review","agent":"claude"}' \
+      "$ROOT_DIR/skills"
+  )"
+
+  assert_contains "$prompt" "Native Delegation Contract — Claude Code"
+  assert_contains "$prompt" 'model: `sonnet`'
+  assert_contains "$prompt" 'effort: `high`'
+  assert_contains "$prompt" "Do not omit either value"
+  [[ "$prompt" != *"gpt-5.6-luna"* ]] || fail "expected only the Claude delegation contract"
+}
+
+test_prompt_render_rejects_unconfigured_native_delegation_agent() {
+  local issue workspace state_file output status
+
+  issue="9050"
+  workspace="$WORKSPACES_DIR/$issue"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$workspace"
+  state_file="$workspace/state.json"
+  jq -n '{issue: 9050}' > "$state_file"
+
+  source "$ROOT_DIR/scripts/prompt.sh"
+  set +e
+  output="$(
+    prompt_render \
+      "$ROOT_DIR/prompts/multi-axis-pr-review.md" \
+      "$state_file" \
+      "$workspace" \
+      '{"id":"multi-axis-pr-review","agent":"deepseek"}' \
+      "$ROOT_DIR/skills" 2>&1
+  )"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 1 ]] || fail "expected unconfigured delegation agent to fail with 1, got $status"
+  assert_contains "$output" "native delegation is not configured for agent 'deepseek'"
+}
+
 run_test test_prompt_render_replaces_all_supported_placeholders
 run_test test_prompt_render_fails_when_template_is_missing
+run_test test_prompt_render_injects_codex_native_delegation_contract
+run_test test_prompt_render_injects_claude_native_delegation_contract
+run_test test_prompt_render_rejects_unconfigured_native_delegation_agent
 
 echo "prompt_render_test.sh passed"

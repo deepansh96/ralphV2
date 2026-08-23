@@ -176,7 +176,11 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
 - `pr-creation`: pushes the feature branch and idempotently creates or updates a PR with a summary and issue-closing links.
 - `prepare-qa-checklist`: posts or updates one PR comment containing local-only manual QA items.
 - `runthrough-qa-checklist`: executes that checklist with local services, stubs, local databases, and browser tooling; updates the same PR comment with results.
-- `multi-axis-pr-review`: runs four skill-driven reviews in two bounded waves, verifies and votes on their findings, and posts one consolidated PR comment.
+- `multi-axis-pr-review`: injects a provider-specific native delegation contract,
+  runs four skill-driven reviews in two bounded waves, verifies and votes on
+  their findings, and posts one consolidated PR comment. Codex review workers
+  use Luna with `max` reasoning; Claude review workers use Sonnet with `high`
+  effort.
 - `cleanup-local-resources`: always runs after success or failure and removes pipeline-owned processes, containers, sessions, temporary files, and worktree leftovers.
 
 ## Bundled Skills
