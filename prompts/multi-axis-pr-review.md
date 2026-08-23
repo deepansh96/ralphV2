@@ -20,25 +20,38 @@ linked sub-issues, local QA comment, and repository instructions. Confirm the
 diff is non-empty. Before launching reviews, verify `git rev-parse HEAD` equals
 the actual PR head revision. Fail instead of reviewing a different local head.
 
-## Four Reviews
+## Required Delegation
 
-Run the four read-only review agents in two waves so the parent and all
-subagents stay within the four-agent concurrency limit. Each review agent
-receives the PR scope, requirements sources, base/head revisions, and one
-skill to load.
+The parent is the review orchestrator, not one of the four reviewers. It owns
+Prepare and Consolidate. The parent must not run any of the four review skills
+or perform their axis-specific review analysis in the parent thread.
+
+Prepare one shared review packet containing the PR scope, requirements sources,
+base/head revisions, complete diff, local QA result, and repository
+instructions. Give that packet to every top-level review subagent.
+
+Spawn four read-only top-level review subagents in two waves so the parent and
+all active subagents stay within the four-agent concurrency limit.
 
 Wave 1:
 
-1. Run `{{SKILLS_DIR}}/matt-pocock-code-review/SKILL.md` alone. It spawns its
-   own Standards and Spec subagents.
+1. Spawn exactly one subagent for
+   `{{SKILLS_DIR}}/matt-pocock-code-review/SKILL.md`.
+2. Instruct it to load that skill and complete its contract, including its own
+   Standards and Spec subagents. Require both nested results in its response.
 
-Wait for wave 1 to finish, then run wave 2 in parallel:
+Wait for wave 1 to finish and confirm both nested results returned, then run
+wave 2 in parallel:
 
-1. `{{SKILLS_DIR}}/ponytail-review/SKILL.md`
-2. `{{SKILLS_DIR}}/run-codex-review/SKILL.md`
-3. `{{SKILLS_DIR}}/supe-review-code-changes/SKILL.md`
+1. Spawn exactly three subagents concurrently, one for each skill:
+   - `{{SKILLS_DIR}}/ponytail-review/SKILL.md`
+   - `{{SKILLS_DIR}}/run-codex-review/SKILL.md`
+   - `{{SKILLS_DIR}}/supe-review-code-changes/SKILL.md`
+2. Instruct each subagent to load only its assigned skill.
+3. Require each to return findings only to the parent.
+4. Wait for all three to finish.
 
-For the isolated Codex review, use:
+For the isolated Codex review, its assigned subagent must use:
 
 ```bash
 node "{{SKILLS_DIR}}/run-codex-review/scripts/review.mjs" \
@@ -46,8 +59,12 @@ node "{{SKILLS_DIR}}/run-codex-review/scripts/review.mjs" \
   --base "<actual-pr-base>"
 ```
 
-Subagents must not edit files, branches, state, or GitHub. They return findings
-only to the parent. All four top-level reviews must finish successfully.
+All review subagents must remain read-only: they must not edit files, branches,
+state, or GitHub. If any top-level review fails, returns no usable result, or
+the Matt review omits either nested result, fail this step. The parent must not
+replace missing delegated work with its own review. Do not begin Consolidate
+until all four top-level reviews and the Matt review's two nested results have
+returned successfully.
 
 ## Consolidate
 
