@@ -1,25 +1,25 @@
 ## Native Delegation Contract — Claude Code
 
 This prompt explicitly opts in to Claude Code's native dynamic Workflow tool.
-Use that tool for the top-level review fan-out because its `agent()` function
-can set both the worker model and effort. The plain Agent tool cannot set effort
-per invocation.
+Use that tool for every task that the step prompt marks as delegated because its
+`agent()` function can set both the worker model and effort. The plain Agent tool
+cannot set effort per invocation.
 
-Implement the two waves in Required Delegation below inside one workflow: await
-wave 1, then start wave 2. In wave 1, use `Promise.all` to run two independent
-workflow `agent()` calls: one for the Matt skill's Standards axis and one for
-its Spec axis. Instruct each worker to load the Matt skill and complete only its
-assigned axis. Preserve both results separately.
+Build one session-scoped workflow that preserves the delegation topology,
+dependency order, and concurrency boundaries defined by the step prompt. Use
+`Promise.all` only for work that the step explicitly allows to run concurrently,
+and await each dependency boundary before starting dependent work.
 
-After both wave 1 results return, use a second `Promise.all` for the three wave
-2 skill reviews. On all five workflow `agent()` calls, explicitly set:
+On every workflow `agent()` call, explicitly set:
 
 - model: `sonnet`
 - effort: `high`
 
-Delegate all review exploration and axis-specific analysis. The parent only
-plans, launches the workflow, waits for its complete result, and verifies the
-returned findings during Consolidate. Do not save a durable workflow.
+Include the complete task packet in each call, give the worker only its assigned
+scope, and require it to return its result to the parent. The parent plans,
+launches, waits, and verifies. It performs responsibilities that the step assigns
+to the parent, but it must not take over exploration, execution, implementation,
+or checks that the step assigns to workers. Do not save a durable workflow.
 
 If the Workflow tool is unavailable or any worker cannot apply the requested
 configuration, fail the step. Do not silently use a different worker

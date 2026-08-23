@@ -103,11 +103,12 @@ test_prompt_render_injects_codex_native_delegation_contract() {
   assert_contains "$prompt" 'model: `gpt-5.6-luna`'
   assert_contains "$prompt" '`reasoning_effort`: `max`'
   assert_contains "$prompt" 'fork_turns: "none"'
-  assert_contains "$prompt" "omit any of these values"
-  assert_contains "$prompt" "spawn exactly one Matt review coordinator"
-  assert_contains "$prompt" "Standards and Spec reviewers in"
+  assert_contains "$prompt" "Do not omit any of these"
+  assert_contains "$prompt" "every task that the step prompt marks"
+  assert_contains "$prompt" "complete task packet"
+  assert_contains "$prompt" "dependency order"
   [[ "$prompt" != *'{{NATIVE_DELEGATION_CONTRACT}}'* ]] || fail "expected delegation placeholder to be rendered"
-  [[ "$prompt" != *"Claude Code's native Agent tool"* ]] || fail "expected only the Codex delegation contract"
+  [[ "$prompt" != *"Native Delegation Contract — Claude Code"* ]] || fail "expected only the Codex delegation contract"
 }
 
 test_prompt_render_injects_claude_native_delegation_contract() {
@@ -136,11 +137,63 @@ test_prompt_render_injects_claude_native_delegation_contract() {
   assert_contains "$prompt" 'model: `sonnet`'
   assert_contains "$prompt" 'effort: `high`'
   assert_contains "$prompt" '`Promise.all`'
-  assert_contains "$prompt" "plain Agent tool cannot set effort"
-  assert_contains "$prompt" 'all five workflow `agent()` calls'
-  assert_contains "$prompt" "Matt skill's Standards axis"
-  assert_contains "$prompt" "its Spec axis"
+  assert_contains "$prompt" "The plain Agent tool"
+  assert_contains "$prompt" "cannot set effort per invocation"
+  assert_contains "$prompt" "every task that the step prompt marks"
+  assert_contains "$prompt" "dependency order"
+  assert_contains "$prompt" "complete task packet"
   [[ "$prompt" != *"gpt-5.6-luna"* ]] || fail "expected only the Claude delegation contract"
+}
+
+test_native_delegation_contracts_are_step_agnostic() {
+  local contract
+
+  for contract in \
+    "$ROOT_DIR/prompts/native-delegation/codex.md" \
+    "$ROOT_DIR/prompts/native-delegation/claude.md"; do
+    [[ -f "$contract" ]] || fail "expected native delegation contract at $contract"
+    [[ "$(<"$contract")" != *"Matt"* ]] || fail "expected $contract to be independent of the Matt skill"
+    [[ "$(<"$contract")" != *"PR review"* ]] || fail "expected $contract to be independent of PR review"
+    [[ "$(<"$contract")" != *"QA"* ]] || fail "expected $contract to be independent of QA"
+  done
+}
+
+test_prompt_render_injects_native_delegation_into_qa() {
+  local issue workspace state_file codex_prompt claude_prompt
+
+  issue="9051"
+  workspace="$WORKSPACES_DIR/$issue"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$workspace"
+  state_file="$workspace/state.json"
+  jq -n '{issue: 9051}' > "$state_file"
+
+  source "$ROOT_DIR/scripts/prompt.sh"
+  codex_prompt="$(
+    prompt_render \
+      "$ROOT_DIR/prompts/runthrough-qa-checklist.md" \
+      "$state_file" \
+      "$workspace" \
+      '{"id":"runthrough-qa-checklist","agent":"codex"}' \
+      "$ROOT_DIR/skills"
+  )"
+  claude_prompt="$(
+    prompt_render \
+      "$ROOT_DIR/prompts/runthrough-qa-checklist.md" \
+      "$state_file" \
+      "$workspace" \
+      '{"id":"runthrough-qa-checklist","agent":"claude"}' \
+      "$ROOT_DIR/skills"
+  )"
+
+  assert_contains "$codex_prompt" "Agent: codex"
+  assert_contains "$codex_prompt" "Native Delegation Contract — Codex"
+  assert_contains "$codex_prompt" "QA orchestrator"
+  assert_contains "$claude_prompt" "Agent: claude"
+  assert_contains "$claude_prompt" "Native Delegation Contract — Claude Code"
+  assert_contains "$claude_prompt" "QA orchestrator"
+  [[ "$codex_prompt" != *'{{NATIVE_DELEGATION_CONTRACT}}'* ]] || fail "expected Codex QA delegation placeholder to be rendered"
+  [[ "$claude_prompt" != *'{{NATIVE_DELEGATION_CONTRACT}}'* ]] || fail "expected Claude QA delegation placeholder to be rendered"
 }
 
 test_prompt_render_rejects_unconfigured_native_delegation_agent() {
@@ -174,6 +227,8 @@ run_test test_prompt_render_replaces_all_supported_placeholders
 run_test test_prompt_render_fails_when_template_is_missing
 run_test test_prompt_render_injects_codex_native_delegation_contract
 run_test test_prompt_render_injects_claude_native_delegation_contract
+run_test test_native_delegation_contracts_are_step_agnostic
+run_test test_prompt_render_injects_native_delegation_into_qa
 run_test test_prompt_render_rejects_unconfigured_native_delegation_agent
 
 echo "prompt_render_test.sh passed"

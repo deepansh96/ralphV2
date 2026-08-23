@@ -17,7 +17,7 @@ cleanup_quiz_sessions() {
 trap 'cleanup_quiz_sessions; cleanup' EXIT
 
 test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
-  local required_files readme agents context grilling grill_with_docs wayfinder research writing_for_agents codebase_design improve_architecture quiz_grilling tests_readme global_skill_ref stale_refs broken_links link_records file relative_file target target_without_anchor resolved
+  local required_files readme agents context grilling grill_with_docs wayfinder research writing_for_agents codebase_design improve_architecture matt_review quiz_grilling tests_readme global_skill_ref stale_refs broken_links link_records file relative_file target target_without_anchor resolved
 
   required_files=(
     "$ROOT_DIR/skills/to-spec/SKILL.md"
@@ -154,6 +154,7 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   writing_for_agents="$ROOT_DIR/skills/writing-for-agents/SKILL.md"
   codebase_design="$ROOT_DIR/skills/codebase-design/SKILL.md"
   improve_architecture="$ROOT_DIR/skills/improve-codebase-architecture/SKILL.md"
+  matt_review="$ROOT_DIR/skills/matt-pocock-code-review/SKILL.md"
   quiz_grilling="$ROOT_DIR/skills/quiz-grilling/SKILL.md"
   assert_contains "$(<"$context")" "Decision Ticket"
   assert_contains "$(<"$grilling")" "Work the tree in **rounds**"
@@ -170,6 +171,9 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   assert_contains "$(<"$codebase_design")" "**The deletion test.**"
   assert_contains "$(<"$improve_architecture")" "**Scope before you scan — YAGNI.**"
   assert_contains "$(<"$improve_architecture")" "Subagents return findings only"
+  assert_contains "$(<"$matt_review")" "Do not spawn subagents"
+  assert_contains "$(<"$matt_review")" "Complete the Standards pass and the Spec pass yourself"
+  [[ "$(<"$matt_review")" != *"Spawn both sub-agents"* ]] || fail "expected the Matt review skill to stay flat"
   assert_contains "$(<"$quiz_grilling")" "explicit read-only boundary"
   assert_contains "$(<"$quiz_grilling")" "Wait-what"
   assert_contains "$(<"$quiz_grilling")" "cleanup-session.sh"

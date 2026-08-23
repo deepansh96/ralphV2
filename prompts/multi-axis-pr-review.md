@@ -37,22 +37,22 @@ mechanism in the injected contract above.
 
 Wave 1:
 
-1. Produce two independent delegated results for
-   `{{SKILLS_DIR}}/matt-pocock-code-review/SKILL.md`: one Standards result and
-   one Spec result.
-2. Each result must come from its own review worker. A provider-native
-   coordinator may arrange them, but it must not perform either axis itself.
-3. Preserve both results separately for Consolidate.
+1. Spawn exactly one top-level subagent for
+   `{{SKILLS_DIR}}/matt-pocock-code-review/SKILL.md`.
+2. Instruct that worker to load the skill and complete both its Standards and
+   Spec passes itself, preserving the two reports separately.
+3. That worker must not spawn further subagents.
 
-Wait for both wave 1 results, then run wave 2 in parallel:
+Wait for the wave 1 result, then run wave 2 in parallel:
 
 1. Spawn exactly three subagents concurrently, one for each skill:
    - `{{SKILLS_DIR}}/ponytail-review/SKILL.md`
    - `{{SKILLS_DIR}}/run-codex-review/SKILL.md`
    - `{{SKILLS_DIR}}/supe-review-code-changes/SKILL.md`
 2. Instruct each subagent to load only its assigned skill.
-3. Require each to return findings only to the parent.
-4. Wait for all three to finish.
+3. None of these workers may spawn further subagents.
+4. Require each to return findings only to the parent.
+5. Wait for all three to finish.
 
 For the isolated Codex review, its assigned subagent must use:
 
@@ -63,10 +63,12 @@ node "{{SKILLS_DIR}}/run-codex-review/scripts/review.mjs" \
 ```
 
 All review workers must remain read-only: they must not edit files, branches,
-state, or GitHub. If any of the five delegated results fails or is unusable,
-fail this step. The parent must not replace missing delegated work with its own
-review. Do not begin Consolidate until the Standards, Spec, Ponytail, isolated
-Codex, and Supe results have all returned successfully.
+state, or GitHub. If any of the four top-level review results fails or is
+unusable, fail this step. The Matt result is unusable unless it contains both
+separate axes, except that Spec may explicitly report that no spec is available.
+The parent must not replace missing delegated work with its own review. Do not
+begin Consolidate until the Matt, Ponytail, isolated Codex, and Supe results have
+all returned successfully.
 
 ## Consolidate
 

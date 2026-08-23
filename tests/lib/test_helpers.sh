@@ -1055,6 +1055,8 @@ QA_COMMENT
     ;;
   multi-axis-pr-review)
     [[ "$prompt" == *"two waves"* ]] || exit 207
+    [[ "$prompt" == *"exactly one top-level subagent"* ]] || exit 212
+    [[ "$prompt" == *"four top-level review results"* ]] || exit 213
     [[ "$prompt" == *"matt-pocock-code-review/SKILL.md"* ]] || exit 208
     [[ "$prompt" == *"ponytail-review/SKILL.md"* ]] || exit 209
     [[ "$prompt" == *"run-codex-review/SKILL.md"* ]] || exit 210
