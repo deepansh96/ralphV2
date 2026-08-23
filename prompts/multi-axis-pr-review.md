@@ -1,6 +1,7 @@
 # Multi-Axis PR Review
 
-Run four independent reviews of the PR created from `{{BRANCH}}`.
+Run five independent review passes across four skills for the PR created from
+`{{BRANCH}}`.
 
 Issue: {{ISSUE}}
 Repo: {{REPO}}
@@ -24,35 +25,35 @@ the actual PR head revision. Fail instead of reviewing a different local head.
 
 ## Required Delegation
 
-The parent is the review orchestrator, not one of the four reviewers. It owns
-Prepare and Consolidate. The parent must not run any of the four review skills
-or perform their axis-specific review analysis in the parent thread.
+The parent is the review orchestrator, not one of the five review workers. It
+owns Prepare and Consolidate. The parent must not run any review pass or perform
+axis-specific review analysis in the parent thread.
 
 Prepare one shared review packet containing the PR scope, requirements sources,
 base/head revisions, complete diff, local QA result, and repository
 instructions. Give that packet to every top-level review subagent.
 
-Run all delegated review work in two waves using the exact provider-native
-mechanism in the injected contract above.
+Using the exact provider-native mechanism in the injected contract above, spawn
+exactly five top-level subagents in two flat batches. Every worker is a direct
+child of the parent; no worker may spawn another worker.
 
-Wave 1:
+Batch 1 — spawn these two workers concurrently:
 
-1. Spawn exactly one top-level subagent for
-   `{{SKILLS_DIR}}/matt-pocock-code-review/SKILL.md`.
-2. Instruct that worker to load the skill and complete both its Standards and
-   Spec passes itself, preserving the two reports separately.
-3. That worker must not spawn further subagents.
+1. Matt Standards: load
+   `{{SKILLS_DIR}}/matt-pocock-code-review/SKILL.md` and run only its Standards
+   axis.
+2. Matt Spec: load
+   `{{SKILLS_DIR}}/matt-pocock-code-review/SKILL.md` and run only its Spec axis.
 
-Wait for the wave 1 result, then run wave 2 in parallel:
+Wait for both Matt results, then start batch 2 with these three workers
+concurrently:
 
-1. Spawn exactly three subagents concurrently, one for each skill:
-   - `{{SKILLS_DIR}}/ponytail-review/SKILL.md`
-   - `{{SKILLS_DIR}}/run-codex-review/SKILL.md`
-   - `{{SKILLS_DIR}}/supe-review-code-changes/SKILL.md`
-2. Instruct each subagent to load only its assigned skill.
-3. None of these workers may spawn further subagents.
-4. Require each to return findings only to the parent.
-5. Wait for all three to finish.
+1. Ponytail: load `{{SKILLS_DIR}}/ponytail-review/SKILL.md`.
+2. Isolated Codex: load `{{SKILLS_DIR}}/run-codex-review/SKILL.md`.
+3. Supe: load `{{SKILLS_DIR}}/supe-review-code-changes/SKILL.md`.
+
+Give each worker only its assigned pass. Require each to return findings only
+to the parent, and wait for all five results.
 
 For the isolated Codex review, its assigned subagent must use:
 
@@ -63,12 +64,11 @@ node "{{SKILLS_DIR}}/run-codex-review/scripts/review.mjs" \
 ```
 
 All review workers must remain read-only: they must not edit files, branches,
-state, or GitHub. If any of the four top-level review results fails or is
-unusable, fail this step. The Matt result is unusable unless it contains both
-separate axes, except that Spec may explicitly report that no spec is available.
-The parent must not replace missing delegated work with its own review. Do not
-begin Consolidate until the Matt, Ponytail, isolated Codex, and Supe results have
-all returned successfully.
+state, or GitHub. If any of the five top-level review results fails or is
+unusable, fail this step. The Matt Spec worker may explicitly report that no
+spec is available. The parent must not replace missing delegated work with its
+own review. Do not begin Consolidate until the Standards, Spec, Ponytail,
+isolated Codex, and Supe results have all returned successfully.
 
 ## Consolidate
 

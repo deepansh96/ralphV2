@@ -179,11 +179,12 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
   the main agent safely batches QA checklist work across its own workers, then
   verifies results and updates the same PR comment.
 - `multi-axis-pr-review`: injects a provider-specific native delegation contract,
-  runs four flat skill workers in two bounded waves, verifies and votes on their
-  findings, and posts one consolidated PR comment. The Matt worker completes its
-  Standards and Spec passes without nesting. Codex workers use Luna with `max`
-  reasoning; Claude workers use Sonnet with `high` effort through Claude Code's
-  native dynamic Workflow tool.
+  runs five flat review workers in two capacity-safe batches, verifies and votes
+  on their findings, and posts one consolidated PR comment. Two Matt workers run
+  Standards and Spec in parallel; then three workers run Ponytail, isolated
+  Codex, and Supe in parallel. Codex workers use Luna with `max` reasoning;
+  Claude workers use Sonnet with `high` effort through Claude Code's native
+  dynamic Workflow tool.
 - `cleanup-local-resources`: always runs after success or failure and removes pipeline-owned processes, containers, sessions, temporary files, and worktree leftovers.
 
 ## Bundled Skills

@@ -1,6 +1,6 @@
 ---
 name: matt-pocock-code-review
-description: Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes — Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/PRD asked for?). Runs both passes in one dedicated reviewer and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to "review since X".
+description: Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes — Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/PRD asked for?). Supports a Standards-only, Spec-only, or combined pass without spawning subagents. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to "review since X".
 ---
 
 Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
@@ -8,9 +8,11 @@ Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
 - **Standards** — does the code conform to this repo's documented coding standards?
 - **Spec** — does the code faithfully implement the originating issue / PRD / spec?
 
-Run both axes as separate passes in the current reviewer, keep their notes and
-reports separate, then aggregate them. Do not spawn subagents: a caller that
-needs isolation should run this entire skill in one dedicated worker.
+The caller may assign `Axis: Standards`, `Axis: Spec`, or `Axis: Both`. Run only
+the assigned axis. If no axis is supplied, default to `Both` and run the two
+passes separately in the current reviewer. Never spawn subagents: a caller that
+needs isolation or parallelism should invoke this skill in separate top-level
+workers with one axis assigned to each.
 
 Use the requirements and issue-tracker context supplied by the caller. Do not
 install or load a global skill bundle.
@@ -25,7 +27,7 @@ Capture the diff command once: `git diff <fixed-point>...HEAD` (three-dot, so th
 
 Before going further, confirm the fixed point resolves (`git rev-parse <fixed-point>`) and the diff is non-empty. A bad ref or empty diff should fail here — not inside either review pass.
 
-### 2. Identify the spec source
+### 2. Identify the spec source when Spec is in scope
 
 Look for the originating spec, in this order:
 
@@ -34,7 +36,7 @@ Look for the originating spec, in this order:
 3. A PRD/spec file under `docs/`, `specs/`, or `.scratch/` matching the branch name or feature.
 4. If nothing is found, ask the user where the spec is. If they say there isn't one, the **Spec** pass will skip and report "no spec available".
 
-### 3. Identify the standards sources
+### 3. Identify the standards sources when Standards is in scope
 
 Anything in the repo that documents how code should be written, such as `CODING_STANDARDS.md` or `CONTRIBUTING.md`.
 
@@ -58,11 +60,11 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 - **Middle Man** — a class or function that mostly just delegates onward. → cut it, call the real target direct.
 - **Refused Bequest** — a subclass or implementer that ignores or overrides most of what it inherits. → drop the inheritance, use composition.
 
-### 4. Run both review passes
+### 4. Run the assigned review pass or passes
 
-Complete the Standards pass and the Spec pass yourself. Keep separate notes and
-do not use conclusions from one axis to rerank or suppress findings from the
-other axis.
+Complete only the assigned axis. For `Axis: Both`, complete both passes yourself,
+keep separate notes, and do not use conclusions from one axis to rerank or
+suppress findings from the other axis.
 
 **Standards pass** — use:
 
@@ -78,11 +80,14 @@ other axis.
 
 If the spec is missing, skip the Spec pass and note this in the final report.
 
-### 5. Aggregate
+### 5. Report
 
-Present the two reports under `## Standards` and `## Spec` headings, verbatim or lightly cleaned. Do **not** merge or rerank findings — the two axes are deliberately separate (see _Why two axes_).
+Present each completed pass under its matching `## Standards` or `## Spec`
+heading. For `Axis: Both`, do **not** merge or rerank findings — the two axes are
+deliberately separate (see _Why two axes_).
 
-End with a one-line summary: total findings per axis, and the worst issue _within each axis_ (if any). Don't pick a single winner across axes — that's the reranking the separation exists to prevent.
+End with a one-line summary for every completed axis: total findings and its
+worst issue, if any. When both axes run, do not pick a single winner across them.
 
 ## Why two axes
 

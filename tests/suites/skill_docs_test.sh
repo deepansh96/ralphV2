@@ -171,8 +171,10 @@ test_skills_bundle_is_self_contained_and_readme_documents_workflow() {
   assert_contains "$(<"$codebase_design")" "**The deletion test.**"
   assert_contains "$(<"$improve_architecture")" "**Scope before you scan — YAGNI.**"
   assert_contains "$(<"$improve_architecture")" "Subagents return findings only"
-  assert_contains "$(<"$matt_review")" "Do not spawn subagents"
-  assert_contains "$(<"$matt_review")" "Complete the Standards pass and the Spec pass yourself"
+  assert_contains "$(<"$matt_review")" 'Axis: Standards'
+  assert_contains "$(<"$matt_review")" 'Axis: Spec'
+  assert_contains "$(<"$matt_review")" 'Axis: Both'
+  assert_contains "$(<"$matt_review")" "Never spawn subagents"
   [[ "$(<"$matt_review")" != *"Spawn both sub-agents"* ]] || fail "expected the Matt review skill to stay flat"
   assert_contains "$(<"$quiz_grilling")" "explicit read-only boundary"
   assert_contains "$(<"$quiz_grilling")" "Wait-what"
