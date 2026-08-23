@@ -180,7 +180,7 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
   runs four skill-driven reviews in two bounded waves, verifies and votes on
   their findings, and posts one consolidated PR comment. Codex review workers
   use Luna with `max` reasoning; Claude review workers use Sonnet with `high`
-  effort.
+  effort through Claude Code's native dynamic Workflow tool.
 - `cleanup-local-resources`: always runs after success or failure and removes pipeline-owned processes, containers, sessions, temporary files, and worktree leftovers.
 
 ## Bundled Skills

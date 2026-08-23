@@ -32,18 +32,19 @@ Prepare one shared review packet containing the PR scope, requirements sources,
 base/head revisions, complete diff, local QA result, and repository
 instructions. Give that packet to every top-level review subagent.
 
-Spawn four read-only top-level review subagents in two waves so the parent and
-all active subagents stay within the four-agent concurrency limit.
+Run all delegated review work in two waves using the exact provider-native
+mechanism in the injected contract above.
 
 Wave 1:
 
-1. Spawn exactly one subagent for
-   `{{SKILLS_DIR}}/matt-pocock-code-review/SKILL.md`.
-2. Instruct it to load that skill and complete its contract, including its own
-   Standards and Spec subagents. Require both nested results in its response.
+1. Produce two independent delegated results for
+   `{{SKILLS_DIR}}/matt-pocock-code-review/SKILL.md`: one Standards result and
+   one Spec result.
+2. Each result must come from its own review worker. A provider-native
+   coordinator may arrange them, but it must not perform either axis itself.
+3. Preserve both results separately for Consolidate.
 
-Wait for wave 1 to finish and confirm both nested results returned, then run
-wave 2 in parallel:
+Wait for both wave 1 results, then run wave 2 in parallel:
 
 1. Spawn exactly three subagents concurrently, one for each skill:
    - `{{SKILLS_DIR}}/ponytail-review/SKILL.md`
@@ -61,12 +62,11 @@ node "{{SKILLS_DIR}}/run-codex-review/scripts/review.mjs" \
   --base "<actual-pr-base>"
 ```
 
-All review subagents must remain read-only: they must not edit files, branches,
-state, or GitHub. If any top-level review fails, returns no usable result, or
-the Matt review omits either nested result, fail this step. The parent must not
-replace missing delegated work with its own review. Do not begin Consolidate
-until all four top-level reviews and the Matt review's two nested results have
-returned successfully.
+All review workers must remain read-only: they must not edit files, branches,
+state, or GitHub. If any of the five delegated results fails or is unusable,
+fail this step. The parent must not replace missing delegated work with its own
+review. Do not begin Consolidate until the Standards, Spec, Ponytail, isolated
+Codex, and Supe results have all returned successfully.
 
 ## Consolidate
 

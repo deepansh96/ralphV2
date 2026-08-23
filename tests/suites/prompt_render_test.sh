@@ -104,6 +104,8 @@ test_prompt_render_injects_codex_native_delegation_contract() {
   assert_contains "$prompt" '`reasoning_effort`: `max`'
   assert_contains "$prompt" 'fork_turns: "none"'
   assert_contains "$prompt" "omit any of these values"
+  assert_contains "$prompt" "spawn exactly one Matt review coordinator"
+  assert_contains "$prompt" "Standards and Spec reviewers in"
   [[ "$prompt" != *'{{NATIVE_DELEGATION_CONTRACT}}'* ]] || fail "expected delegation placeholder to be rendered"
   [[ "$prompt" != *"Claude Code's native Agent tool"* ]] || fail "expected only the Codex delegation contract"
 }
@@ -129,9 +131,15 @@ test_prompt_render_injects_claude_native_delegation_contract() {
   )"
 
   assert_contains "$prompt" "Native Delegation Contract — Claude Code"
+  assert_contains "$prompt" "native dynamic Workflow tool"
+  assert_contains "$prompt" 'workflow `agent()` call'
   assert_contains "$prompt" 'model: `sonnet`'
   assert_contains "$prompt" 'effort: `high`'
-  assert_contains "$prompt" "Do not omit either value"
+  assert_contains "$prompt" '`Promise.all`'
+  assert_contains "$prompt" "plain Agent tool cannot set effort"
+  assert_contains "$prompt" 'all five workflow `agent()` calls'
+  assert_contains "$prompt" "Matt skill's Standards axis"
+  assert_contains "$prompt" "its Spec axis"
   [[ "$prompt" != *"gpt-5.6-luna"* ]] || fail "expected only the Claude delegation contract"
 }
 
