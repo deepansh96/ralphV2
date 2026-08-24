@@ -12,8 +12,8 @@ and await each dependency boundary before starting dependent work.
 
 On every workflow `agent()` call, explicitly set:
 
-- model: `sonnet`
-- effort: `high`
+- model: `{{SUBAGENT_MODEL}}`
+- effort: `{{SUBAGENT_REASONING_EFFORT}}`
 
 Include the complete task packet in each call, give the worker only its assigned
 scope, and require it to return its result to the parent. The parent plans,

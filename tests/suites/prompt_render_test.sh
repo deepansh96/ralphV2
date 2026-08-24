@@ -108,6 +108,8 @@ test_prompt_render_injects_codex_native_delegation_contract() {
   assert_contains "$prompt" "complete task packet"
   assert_contains "$prompt" "dependency order"
   [[ "$prompt" != *'{{NATIVE_DELEGATION_CONTRACT}}'* ]] || fail "expected delegation placeholder to be rendered"
+  [[ "$prompt" != *'{{SUBAGENT_MODEL}}'* ]] || fail "expected subagent model placeholder to be rendered"
+  [[ "$prompt" != *'{{SUBAGENT_REASONING_EFFORT}}'* ]] || fail "expected subagent effort placeholder to be rendered"
   [[ "$prompt" != *"Native Delegation Contract — Claude Code"* ]] || fail "expected only the Codex delegation contract"
 }
 
@@ -142,6 +144,8 @@ test_prompt_render_injects_claude_native_delegation_contract() {
   assert_contains "$prompt" "every task that the step prompt marks"
   assert_contains "$prompt" "dependency order"
   assert_contains "$prompt" "complete task packet"
+  [[ "$prompt" != *'{{SUBAGENT_MODEL}}'* ]] || fail "expected subagent model placeholder to be rendered"
+  [[ "$prompt" != *'{{SUBAGENT_REASONING_EFFORT}}'* ]] || fail "expected subagent effort placeholder to be rendered"
   [[ "$prompt" != *"gpt-5.6-luna"* ]] || fail "expected only the Claude delegation contract"
 }
 
@@ -155,7 +159,124 @@ test_native_delegation_contracts_are_step_agnostic() {
     [[ "$(<"$contract")" != *"Matt"* ]] || fail "expected $contract to be independent of the Matt skill"
     [[ "$(<"$contract")" != *"PR review"* ]] || fail "expected $contract to be independent of PR review"
     [[ "$(<"$contract")" != *"QA"* ]] || fail "expected $contract to be independent of QA"
+    assert_contains "$(<"$contract")" "{{SUBAGENT_MODEL}}"
+    assert_contains "$(<"$contract")" "{{SUBAGENT_REASONING_EFFORT}}"
+    [[ "$(<"$contract")" != *"gpt-5.6-luna"* ]] || fail "expected $contract not to hardcode the Codex worker model"
+    [[ "$(<"$contract")" != *'model: `sonnet`'* ]] || fail "expected $contract not to hardcode the Claude worker model"
   done
+}
+
+test_ralph_config_defines_native_delegation_defaults() {
+  local config_file
+
+  config_file="$ROOT_DIR/ralph.config.json"
+  [[ -f "$config_file" ]] || fail "expected Ralph config at $config_file"
+  jq -e '.' "$config_file" >/dev/null || fail "expected valid Ralph config JSON"
+  [[ "$(jq -r '.nativeDelegation.codex.model' "$config_file")" == "gpt-5.6-luna" ]] \
+    || fail "expected the Codex subagent model default"
+  [[ "$(jq -r '.nativeDelegation.codex.reasoningEffort' "$config_file")" == "max" ]] \
+    || fail "expected the Codex subagent effort default"
+  [[ "$(jq -r '.nativeDelegation.claude.model' "$config_file")" == "sonnet" ]] \
+    || fail "expected the Claude subagent model default"
+  [[ "$(jq -r '.nativeDelegation.claude.reasoningEffort' "$config_file")" == "high" ]] \
+    || fail "expected the Claude subagent effort default"
+}
+
+test_step_can_override_native_delegation_defaults() {
+  local issue workspace state_file codex_prompt claude_prompt
+
+  issue="9052"
+  workspace="$WORKSPACES_DIR/$issue"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$workspace"
+  state_file="$workspace/state.json"
+  jq -n '{issue: 9052}' > "$state_file"
+
+  source "$ROOT_DIR/scripts/prompt.sh"
+  codex_prompt="$(
+    prompt_render \
+      "$ROOT_DIR/prompts/runthrough-qa-checklist.md" \
+      "$state_file" \
+      "$workspace" \
+      '{"id":"runthrough-qa-checklist","agent":"codex","subagentModel":"gpt-5.6-terra","subagentReasoningEffort":"high"}' \
+      "$ROOT_DIR/skills"
+  )"
+  claude_prompt="$(
+    prompt_render \
+      "$ROOT_DIR/prompts/runthrough-qa-checklist.md" \
+      "$state_file" \
+      "$workspace" \
+      '{"id":"runthrough-qa-checklist","agent":"claude","subagentModel":"opus","subagentReasoningEffort":"medium"}' \
+      "$ROOT_DIR/skills"
+  )"
+
+  assert_contains "$codex_prompt" 'model: `gpt-5.6-terra`'
+  assert_contains "$codex_prompt" '`reasoning_effort`: `high`'
+  [[ "$codex_prompt" != *"gpt-5.6-luna"* ]] || fail "expected the Codex step override to replace the config default"
+  assert_contains "$claude_prompt" 'model: `opus`'
+  assert_contains "$claude_prompt" 'effort: `medium`'
+  [[ "$claude_prompt" != *'model: `sonnet`'* ]] || fail "expected the Claude step override to replace the config default"
+}
+
+test_prompt_render_reads_native_delegation_defaults_from_ralph_config() {
+  local issue workspace state_file test_root prompt
+
+  issue="9053"
+  workspace="$WORKSPACES_DIR/$issue"
+  test_root="$workspace/ralph"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$test_root/prompts/native-delegation"
+  state_file="$workspace/state.json"
+  jq -n '{issue: 9053}' > "$state_file"
+  cp "$ROOT_DIR/prompts/runthrough-qa-checklist.md" "$test_root/prompts/runthrough-qa-checklist.md"
+  cp "$ROOT_DIR/prompts/native-delegation/codex.md" "$test_root/prompts/native-delegation/codex.md"
+  jq -n '{nativeDelegation:{codex:{model:"gpt-5.6-terra",reasoningEffort:"xhigh"}}}' \
+    > "$test_root/ralph.config.json"
+
+  source "$ROOT_DIR/scripts/prompt.sh"
+  prompt="$(
+    prompt_render \
+      "$test_root/prompts/runthrough-qa-checklist.md" \
+      "$state_file" \
+      "$workspace" \
+      '{"id":"runthrough-qa-checklist","agent":"codex"}' \
+      "$ROOT_DIR/skills"
+  )"
+
+  assert_contains "$prompt" 'model: `gpt-5.6-terra`'
+  assert_contains "$prompt" '`reasoning_effort`: `xhigh`'
+  [[ "$prompt" != *"gpt-5.6-luna"* ]] || fail "expected rendering to use the colocated Ralph config"
+}
+
+test_prompt_render_rejects_incomplete_native_delegation_config() {
+  local issue workspace state_file test_root output status
+
+  issue="9054"
+  workspace="$WORKSPACES_DIR/$issue"
+  test_root="$workspace/ralph"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$test_root/prompts/native-delegation"
+  state_file="$workspace/state.json"
+  jq -n '{issue: 9054}' > "$state_file"
+  cp "$ROOT_DIR/prompts/runthrough-qa-checklist.md" "$test_root/prompts/runthrough-qa-checklist.md"
+  cp "$ROOT_DIR/prompts/native-delegation/codex.md" "$test_root/prompts/native-delegation/codex.md"
+  jq -n '{nativeDelegation:{codex:{model:"gpt-5.6-terra"}}}' > "$test_root/ralph.config.json"
+
+  source "$ROOT_DIR/scripts/prompt.sh"
+  set +e
+  output="$(
+    prompt_render \
+      "$test_root/prompts/runthrough-qa-checklist.md" \
+      "$state_file" \
+      "$workspace" \
+      '{"id":"runthrough-qa-checklist","agent":"codex"}' \
+      "$ROOT_DIR/skills" 2>&1
+  )"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 1 ]] || fail "expected incomplete native delegation config to fail"
+  assert_contains "$output" "native delegation defaults are incomplete for agent 'codex'"
 }
 
 test_prompt_render_injects_native_delegation_into_qa() {
@@ -228,6 +349,10 @@ run_test test_prompt_render_fails_when_template_is_missing
 run_test test_prompt_render_injects_codex_native_delegation_contract
 run_test test_prompt_render_injects_claude_native_delegation_contract
 run_test test_native_delegation_contracts_are_step_agnostic
+run_test test_ralph_config_defines_native_delegation_defaults
+run_test test_step_can_override_native_delegation_defaults
+run_test test_prompt_render_reads_native_delegation_defaults_from_ralph_config
+run_test test_prompt_render_rejects_incomplete_native_delegation_config
 run_test test_prompt_render_injects_native_delegation_into_qa
 run_test test_prompt_render_rejects_unconfigured_native_delegation_agent
 

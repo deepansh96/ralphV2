@@ -1,0 +1,12 @@
+{
+  "nativeDelegation": {
+    "codex": {
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "max"
+    },
+    "claude": {
+      "model": "sonnet",
+      "reasoningEffort": "high"
+    }
+  }
+}

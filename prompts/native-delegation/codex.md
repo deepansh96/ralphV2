@@ -3,8 +3,8 @@
 Use Codex's native subagent tooling for every task that the step prompt marks
 as delegated. On every `spawn_agent` call for that work, explicitly set:
 
-- model: `gpt-5.6-luna`
-- `reasoning_effort`: `max`
+- model: `{{SUBAGENT_MODEL}}`
+- `reasoning_effort`: `{{SUBAGENT_REASONING_EFFORT}}`
 
 Use `fork_turns: "none"` and include the complete task packet in the message so
 the worker does not depend on the parent conversation. Do not omit any of these

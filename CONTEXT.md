@@ -104,6 +104,12 @@ _Avoid_: project, environment
 The `state.json` file tracking issue metadata, branch info, and the ordered list of steps with their statuses.
 _Avoid_: config, manifest
 
+**Ralph Config**:
+The repo-wide `ralph.config.json` file containing provider defaults that apply
+across issue workspaces, including native subagent model and reasoning effort.
+An individual step may override those defaults in State.
+_Avoid_: state, workspace
+
 **HITL**:
 Human-in-the-loop. A step blocks for human input by writing a flag file (`hitl-<step-id>.md`) with questions. The human writes answers, then re-runs Ralph.
 _Avoid_: manual review, approval gate

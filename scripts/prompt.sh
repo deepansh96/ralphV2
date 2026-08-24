@@ -3,7 +3,9 @@
 prompt_native_delegation_contract() {
   local template_file="$1"
   local agent="$2"
-  local contract_file
+  local step_json="$3"
+  local contract_file config_file ralph_root contract
+  local subagent_model subagent_reasoning_effort
 
   contract_file="$(dirname "$template_file")/native-delegation/$agent.md"
   if [[ ! -f "$contract_file" ]]; then
@@ -11,7 +13,41 @@ prompt_native_delegation_contract() {
     return 1
   fi
 
-  cat "$contract_file"
+  ralph_root="$(cd "$(dirname "$template_file")/.." && pwd)"
+  config_file="$ralph_root/ralph.config.json"
+  if [[ ! -f "$config_file" ]]; then
+    echo "Error: Ralph config not found: $config_file" >&2
+    return 1
+  fi
+  if ! jq -e '.' "$config_file" >/dev/null 2>&1; then
+    echo "Error: Ralph config is not valid JSON: $config_file" >&2
+    return 1
+  fi
+
+  subagent_model="$(jq -r '.subagentModel // empty' <<<"$step_json")"
+  if [[ -z "$subagent_model" ]]; then
+    subagent_model="$(jq -r --arg agent "$agent" '.nativeDelegation[$agent].model // empty' "$config_file")"
+  fi
+
+  subagent_reasoning_effort="$(jq -r '.subagentReasoningEffort // empty' <<<"$step_json")"
+  if [[ -z "$subagent_reasoning_effort" ]]; then
+    subagent_reasoning_effort="$(
+      jq -r --arg agent "$agent" \
+        '.nativeDelegation[$agent].reasoningEffort // empty' \
+        "$config_file"
+    )"
+  fi
+
+  if [[ -z "$subagent_model" || -z "$subagent_reasoning_effort" ]]; then
+    echo "Error: native delegation defaults are incomplete for agent '$agent' in $config_file" >&2
+    return 1
+  fi
+
+  contract="$(<"$contract_file")"
+  contract="${contract//\{\{SUBAGENT_MODEL\}\}/$subagent_model}"
+  contract="${contract//\{\{SUBAGENT_REASONING_EFFORT\}\}/$subagent_reasoning_effort}"
+
+  printf '%s\n' "$contract"
 }
 
 prompt_render() {
@@ -52,7 +88,7 @@ prompt_render() {
   prompt="${prompt//\{\{AGENT\}\}/$agent}"
 
   if [[ "$prompt" == *'{{NATIVE_DELEGATION_CONTRACT}}'* ]]; then
-    if ! native_delegation_contract="$(prompt_native_delegation_contract "$template_file" "$agent")"; then
+    if ! native_delegation_contract="$(prompt_native_delegation_contract "$template_file" "$agent" "$step_json")"; then
       return 1
     fi
     prompt="${prompt//\{\{NATIVE_DELEGATION_CONTRACT\}\}/$native_delegation_contract}"

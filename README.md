@@ -93,6 +93,32 @@ review-decisions (0-2 rounds, default 0)
 -> cleanup-local-resources
 ```
 
+## Configuration
+
+Repo-wide worker defaults live in `ralph-v2/ralph.config.json`:
+
+```json
+{
+  "nativeDelegation": {
+    "codex": {
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "max"
+    },
+    "claude": {
+      "model": "sonnet",
+      "reasoningEffort": "high"
+    }
+  }
+}
+```
+
+These defaults apply whenever a step uses the native delegation contract. To
+override one delegated step, set `subagentModel` and/or
+`subagentReasoningEffort` on that step in `state.json`. Step values take
+precedence over `ralph.config.json`; omitted step values keep the provider
+default. Prompt files contain placeholders only and do not own model or effort
+choices.
+
 ## State
 
 Each issue has one workspace. Init creates both `state.json` and the empty
@@ -129,6 +155,8 @@ Each step has this shape:
   "agent": "codex",
   "model": "<provider-model>",
   "reasoningEffort": "high",
+  "subagentModel": "<provider-subagent-model>",
+  "subagentReasoningEffort": "max",
   "reviewers": [],
   "hitl": false,
   "sub_issue": 14,
@@ -139,10 +167,12 @@ Each step has this shape:
 
 Generated steps use `"agent": "codex"` by default. Before a step runs, you can
 set `agent` to `claude`, `codex`, or `deepseek` and edit its optional `model`
-and `reasoningEffort` fields in `state.json`. DeepSeek steps run through Pi and
-require Pi 0.70.1+ plus DeepSeek credentials in Pi's auth store or
-`DEEPSEEK_API_KEY`; their defaults are `deepseek-v4-flash` with `high`
-reasoning effort:
+and `reasoningEffort` fields in `state.json`. For a step whose prompt requests
+native delegation, `subagentModel` and `subagentReasoningEffort` optionally
+override the matching provider defaults from `ralph.config.json`. DeepSeek
+steps run through Pi and require Pi 0.70.1+ plus DeepSeek credentials in Pi's
+auth store or `DEEPSEEK_API_KEY`; their defaults are `deepseek-v4-flash` with
+`high` reasoning effort:
 
 - Codex: `low`, `medium`, `high`, `xhigh`, `max`, or `ultra`
 - Claude: `low`, `medium`, `high`, `xhigh`, or `max`
@@ -183,9 +213,10 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
   runs five flat review workers in two capacity-safe batches, verifies and votes
   on their findings, and posts one consolidated PR comment. Two Matt workers run
   Standards and Spec in parallel; then three workers run Ponytail, isolated
-  Codex, and Supe in parallel. Codex workers use Luna with `max` reasoning;
-  Claude workers use Sonnet with `high` effort through Claude Code's native
-  dynamic Workflow tool.
+  Codex, and Supe in parallel. By default, Codex workers use Luna with `max`
+  reasoning and Claude workers use Sonnet with `high` effort through Claude
+  Code's native dynamic Workflow tool; both settings come from
+  `ralph.config.json` and can be overridden per step.
 - `cleanup-local-resources`: always runs after success or failure and removes pipeline-owned processes, containers, sessions, temporary files, and worktree leftovers.
 
 ## Bundled Skills
