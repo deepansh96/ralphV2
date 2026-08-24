@@ -93,6 +93,45 @@ review-decisions (0-2 rounds, default 0)
 -> cleanup-local-resources
 ```
 
+## Configuration
+
+Repo-wide delegated parent and worker defaults live in
+`ralph-v2/ralph.config.json`:
+
+```json
+{
+  "agentDefaults": {
+    "codex": {
+      "model": "gpt-5.6-sol",
+      "reasoningEffort": "medium"
+    },
+    "claude": {
+      "model": "opus",
+      "reasoningEffort": "medium"
+    }
+  },
+  "nativeDelegation": {
+    "codex": {
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "max"
+    },
+    "claude": {
+      "model": "sonnet",
+      "reasoningEffort": "high"
+    }
+  }
+}
+```
+
+`agentDefaults` defines the parent settings and `nativeDelegation` defines the
+worker settings. During preflight, Ralph snapshots both onto the generated
+`runthrough-qa-checklist` and `multi-axis-pr-review` steps. Existing non-empty
+step values are preserved, so later config edits affect new workspaces without
+silently changing an existing workspace. To override one delegated step, edit
+its `model`, `reasoningEffort`, `subagentModel`, and/or
+`subagentReasoningEffort` fields in `state.json`. Prompt files contain no
+concrete model or effort choices.
+
 ## State
 
 Each issue has one workspace. Init creates both `state.json` and the empty
@@ -129,6 +168,8 @@ Each step has this shape:
   "agent": "codex",
   "model": "<provider-model>",
   "reasoningEffort": "high",
+  "subagentModel": "<provider-subagent-model>",
+  "subagentReasoningEffort": "max",
   "reviewers": [],
   "hitl": false,
   "sub_issue": 14,
@@ -137,12 +178,17 @@ Each step has this shape:
 }
 ```
 
-Generated steps use `"agent": "codex"` by default. Before a step runs, you can
-set `agent` to `claude`, `codex`, or `deepseek` and edit its optional `model`
-and `reasoningEffort` fields in `state.json`. DeepSeek steps run through Pi and
-require Pi 0.70.1+ plus DeepSeek credentials in Pi's auth store or
-`DEEPSEEK_API_KEY`; their defaults are `deepseek-v4-flash` with `high`
-reasoning effort:
+Generated steps use `"agent": "codex"` by default. The two native-delegation
+steps also receive explicit parent and worker model/reasoning snapshots during
+preflight. Before a step runs, you can set `agent` to `claude` or `codex` and
+edit all four settings in `state.json`; keep the parent and worker values valid
+for the selected provider. Older delegated steps without snapshots still fall
+back to the matching provider's `ralph.config.json` worker defaults. Other
+steps may set `agent` to `deepseek` and edit their optional `model` and
+`reasoningEffort` fields. DeepSeek
+steps run through Pi and require Pi 0.70.1+ plus DeepSeek credentials in Pi's
+auth store or `DEEPSEEK_API_KEY`; their defaults are `deepseek-v4-flash` with
+`high` reasoning effort:
 
 - Codex: `low`, `medium`, `high`, `xhigh`, `max`, or `ultra`
 - Claude: `low`, `medium`, `high`, `xhigh`, or `max`
@@ -170,13 +216,23 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
 - `review-decisions`: reviews issue decisions against `CONTEXT.md`, `CLAUDE.md`, and ADRs; may block for human input.
 - `create-and-review-prd`: preserves the original issue body, drafts the PRD following the `to-spec` skill (including the testing seams), runs council reviews (controlled by `reviewRounds`, default 0), and updates the parent issue.
 - `create-and-review-slices`: drafts vertical AFK slices following the `to-tickets` skill with explicit blocking edges (native GitHub issue dependencies plus `Blocked by` body lines), runs council reviews (controlled by `reviewRounds`, default 0), creates GitHub sub-issues, and links them under the parent.
-- `preflight`: backfills missing cleanup artifacts for older initialized workspaces, checks the working tree and `baseBranch` contract, creates/pushes the feature branch, and appends the dynamic implementation and post-implementation steps.
+- `preflight`: backfills missing cleanup artifacts for older initialized workspaces, checks the working tree and `baseBranch` contract, creates/pushes the feature branch, appends the dynamic implementation and post-implementation steps, and snapshots parent/worker settings onto delegated QA and review steps.
 - `implement-slice`: reads the assigned sub-issue, verifies blockers are closed, follows TDD at the PRD's pre-agreed seams, commits, pushes, and closes the sub-issue.
 - `final-checks`: reads the complete branch diff, runs project checks, verifies every slice's acceptance criteria, and writes `final-checks.md` without changing product code.
 - `pr-creation`: pushes the feature branch and idempotently creates or updates a PR with a summary and issue-closing links.
 - `prepare-qa-checklist`: posts or updates one PR comment containing local-only manual QA items.
-- `runthrough-qa-checklist`: executes that checklist with local services, stubs, local databases, and browser tooling; updates the same PR comment with results.
-- `multi-axis-pr-review`: runs four skill-driven reviews in two bounded waves, verifies and votes on their findings, and posts one consolidated PR comment.
+- `runthrough-qa-checklist`: injects the provider-native delegation contract;
+  the main agent safely batches QA checklist work across its own workers, then
+  validates their evidence and updates the same PR comment without executing a
+  QA item itself.
+- `multi-axis-pr-review`: injects a provider-specific native delegation contract,
+  runs five flat review workers in two capacity-safe batches, verifies and votes
+  on their findings, and posts one consolidated PR comment. Two Matt workers run
+  Standards and Spec in parallel; then three workers run Ponytail, isolated
+  Codex, and Supe in parallel. By default, Codex workers use Luna with `max`
+  reasoning and Claude workers use Sonnet with `high` effort through Claude
+  Code's native dynamic Workflow tool. Preflight snapshots the configured
+  parent and worker settings into state, and they can be overridden per step.
 - `cleanup-local-resources`: always runs after success or failure and removes pipeline-owned processes, containers, sessions, temporary files, and worktree leftovers.
 
 ## Bundled Skills

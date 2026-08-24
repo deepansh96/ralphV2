@@ -104,6 +104,13 @@ _Avoid_: project, environment
 The `state.json` file tracking issue metadata, branch info, and the ordered list of steps with their statuses.
 _Avoid_: config, manifest
 
+**Ralph Config**:
+The repo-wide `ralph.config.json` file containing provider defaults that apply
+across issue workspaces, including main-agent and native subagent model and
+reasoning effort. Preflight snapshots those defaults onto generated delegated
+steps; an individual step may override the snapshot in State.
+_Avoid_: state, workspace
+
 **HITL**:
 Human-in-the-loop. A step blocks for human input by writing a flag file (`hitl-<step-id>.md`) with questions. The human writes answers, then re-runs Ralph.
 _Avoid_: manual review, approval gate
@@ -116,7 +123,7 @@ _Avoid_: manual review, approval gate
 - Council review **Steps** invoke **Council** with one or more **Reviewers**
 - The `create-and-review-slices` step produces **Slices**, each becoming a GitHub sub-issue with its **Blocking Edges**
 - Each **Slice** maps to one `implement-slice` **Step** in the dynamic phase
-- The post-implementation **Steps** check the branch, create the PR, prepare and execute the **Local QA Checklist**, and run four **Review Axes**
+- The post-implementation **Steps** check the branch, create the PR, prepare and execute the **Local QA Checklist**, and run five review passes across four bundled review skills
 - `cleanup-local-resources` is an **Always-Run Step** created during init and
   deferred until normal work ends; it removes pipeline-owned **Local Resources**
 - A wayfinder **Map**'s destination issue is what `init` consumes; `create-and-review-prd` performs the `to-spec` handoff, while the **Map** itself stays outside the **Pipeline**
