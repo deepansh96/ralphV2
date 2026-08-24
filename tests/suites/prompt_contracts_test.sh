@@ -240,6 +240,16 @@ test_preflight_prompt_defines_full_preflight_workflow_contract() {
   assert_contains "$prompt" "prepare-qa-checklist"
   assert_contains "$prompt" "runthrough-qa-checklist"
   assert_contains "$prompt" "multi-axis-pr-review"
+  assert_contains "$prompt" "ralph.config.json"
+  assert_contains "$prompt" "ralph_config_delegated_step_defaults"
+  assert_contains "$prompt" "state_snapshot_delegated_step_defaults"
+  assert_contains "$prompt" "runthrough-qa-checklist"
+  assert_contains "$prompt" "model"
+  assert_contains "$prompt" "reasoningEffort"
+  assert_contains "$prompt" "subagentModel"
+  assert_contains "$prompt" "subagentReasoningEffort"
+  assert_contains "$prompt" "fills only missing or empty values"
+  assert_contains "$prompt" 'later edits to `ralph.config.json` must not rewrite them'
   assert_contains "$prompt" "cleanup-local-resources"
   assert_contains "$prompt" '"alwaysRun": true'
   assert_contains "$prompt" "local-resources.json"

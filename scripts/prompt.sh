@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 
+PROMPT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=ralph-v2/scripts/config.sh
+source "$PROMPT_SCRIPT_DIR/config.sh"
+
 prompt_native_delegation_contract() {
   local template_file="$1"
   local agent="$2"
   local step_json="$3"
-  local contract_file config_file ralph_root contract
+  local contract_file config_file ralph_root contract defaults
   local subagent_model subagent_reasoning_effort
 
   contract_file="$(dirname "$template_file")/native-delegation/$agent.md"
@@ -15,32 +19,18 @@ prompt_native_delegation_contract() {
 
   ralph_root="$(cd "$(dirname "$template_file")/.." && pwd)"
   config_file="$ralph_root/ralph.config.json"
-  if [[ ! -f "$config_file" ]]; then
-    echo "Error: Ralph config not found: $config_file" >&2
-    return 1
-  fi
-  if ! jq -e '.' "$config_file" >/dev/null 2>&1; then
-    echo "Error: Ralph config is not valid JSON: $config_file" >&2
+  if ! defaults="$(ralph_config_native_delegation_defaults "$config_file" "$agent")"; then
     return 1
   fi
 
   subagent_model="$(jq -r '.subagentModel // empty' <<<"$step_json")"
   if [[ -z "$subagent_model" ]]; then
-    subagent_model="$(jq -r --arg agent "$agent" '.nativeDelegation[$agent].model // empty' "$config_file")"
+    subagent_model="$(jq -r '.model' <<<"$defaults")"
   fi
 
   subagent_reasoning_effort="$(jq -r '.subagentReasoningEffort // empty' <<<"$step_json")"
   if [[ -z "$subagent_reasoning_effort" ]]; then
-    subagent_reasoning_effort="$(
-      jq -r --arg agent "$agent" \
-        '.nativeDelegation[$agent].reasoningEffort // empty' \
-        "$config_file"
-    )"
-  fi
-
-  if [[ -z "$subagent_model" || -z "$subagent_reasoning_effort" ]]; then
-    echo "Error: native delegation defaults are incomplete for agent '$agent' in $config_file" >&2
-    return 1
+    subagent_reasoning_effort="$(jq -r '.reasoningEffort' <<<"$defaults")"
   fi
 
   contract="$(<"$contract_file")"

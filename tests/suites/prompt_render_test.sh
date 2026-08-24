@@ -172,6 +172,14 @@ test_ralph_config_defines_native_delegation_defaults() {
   config_file="$ROOT_DIR/ralph.config.json"
   [[ -f "$config_file" ]] || fail "expected Ralph config at $config_file"
   jq -e '.' "$config_file" >/dev/null || fail "expected valid Ralph config JSON"
+  [[ "$(jq -r '.agentDefaults.codex.model' "$config_file")" == "gpt-5.6-sol" ]] \
+    || fail "expected the Codex main-agent model default"
+  [[ "$(jq -r '.agentDefaults.codex.reasoningEffort' "$config_file")" == "medium" ]] \
+    || fail "expected the Codex main-agent effort default"
+  [[ "$(jq -r '.agentDefaults.claude.model' "$config_file")" == "opus" ]] \
+    || fail "expected the Claude main-agent model default"
+  [[ "$(jq -r '.agentDefaults.claude.reasoningEffort' "$config_file")" == "medium" ]] \
+    || fail "expected the Claude main-agent effort default"
   [[ "$(jq -r '.nativeDelegation.codex.model' "$config_file")" == "gpt-5.6-luna" ]] \
     || fail "expected the Codex subagent model default"
   [[ "$(jq -r '.nativeDelegation.codex.reasoningEffort' "$config_file")" == "max" ]] \
@@ -180,6 +188,21 @@ test_ralph_config_defines_native_delegation_defaults() {
     || fail "expected the Claude subagent model default"
   [[ "$(jq -r '.nativeDelegation.claude.reasoningEffort' "$config_file")" == "high" ]] \
     || fail "expected the Claude subagent effort default"
+}
+
+test_config_resolves_complete_delegated_step_defaults() {
+  local config_file defaults
+
+  config_file="$ROOT_DIR/ralph.config.json"
+  source "$ROOT_DIR/scripts/config.sh"
+
+  defaults="$(ralph_config_delegated_step_defaults "$config_file" codex)"
+
+  [[ "$(jq -r '.agent' <<<"$defaults")" == "codex" ]] || fail "expected Codex agent"
+  [[ "$(jq -r '.model' <<<"$defaults")" == "gpt-5.6-sol" ]] || fail "expected Sol parent"
+  [[ "$(jq -r '.reasoningEffort' <<<"$defaults")" == "medium" ]] || fail "expected medium parent effort"
+  [[ "$(jq -r '.subagentModel' <<<"$defaults")" == "gpt-5.6-luna" ]] || fail "expected Luna worker"
+  [[ "$(jq -r '.subagentReasoningEffort' <<<"$defaults")" == "max" ]] || fail "expected max worker effort"
 }
 
 test_step_can_override_native_delegation_defaults() {
@@ -350,6 +373,7 @@ run_test test_prompt_render_injects_codex_native_delegation_contract
 run_test test_prompt_render_injects_claude_native_delegation_contract
 run_test test_native_delegation_contracts_are_step_agnostic
 run_test test_ralph_config_defines_native_delegation_defaults
+run_test test_config_resolves_complete_delegated_step_defaults
 run_test test_step_can_override_native_delegation_defaults
 run_test test_prompt_render_reads_native_delegation_defaults_from_ralph_config
 run_test test_prompt_render_rejects_incomplete_native_delegation_config
