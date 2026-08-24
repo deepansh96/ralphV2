@@ -177,7 +177,8 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
 - `prepare-qa-checklist`: posts or updates one PR comment containing local-only manual QA items.
 - `runthrough-qa-checklist`: injects the provider-native delegation contract;
   the main agent safely batches QA checklist work across its own workers, then
-  verifies results and updates the same PR comment.
+  validates their evidence and updates the same PR comment without executing a
+  QA item itself.
 - `multi-axis-pr-review`: injects a provider-specific native delegation contract,
   runs five flat review workers in two capacity-safe batches, verifies and votes
   on their findings, and posts one consolidated PR comment. Two Matt workers run
