@@ -106,19 +106,21 @@ write_single_step_state() {
   local issue="$1"
   local step_id="$2"
   local status="$3"
+  local agent="${4:-stub}"
 
   mkdir -p "$WORKSPACES_DIR/$issue/logs"
   jq -n \
     --arg issue "$issue" \
     --arg id "$step_id" \
     --arg status "$status" \
+    --arg agent "$agent" \
     '{
       issue: ($issue | tonumber),
       steps: [
         {
           id: $id,
           type: "stub",
-          agent: "stub",
+          agent: $agent,
           status: $status,
           metrics: { duration: null },
           notes: ""
@@ -829,6 +831,9 @@ if [[ -n "$last_message_file" ]]; then
   printf 'codex saw: %s\n' "$prompt" > "$last_message_file"
 fi
 
+if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
+  printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format."}}'
+fi
 printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":13,"output_tokens":8}}'
 FAKE_CODEX
   chmod +x "$fake_bin/codex"
@@ -888,6 +893,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 prompt="$(cat)"
+if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
+  printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format."}}'
+  printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
+  exit 0
+fi
 [[ "$prompt" == *"Issue: 9020"* ]] || exit 101
 [[ "$prompt" == *"Repo: deepansh96/ralph"* ]] || exit 102
 [[ "$prompt" == *"Workspace: "*"/workspaces/9020"* ]] || exit 103
