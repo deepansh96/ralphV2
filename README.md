@@ -22,6 +22,10 @@ Run commands from the repository root:
 - `ralph.sh logs --issue N` tails the active step log. Use `--step <step-id>` to read a specific step.
 - `cleanup.sh <issue-number>` archives `workspaces/<issue-number>/` into `archive/<date>-<issue-number>/`.
 
+Before the first pipeline step, the `CONTEXT.md` completeness check inherits
+that step's `agent`, `model`, and `reasoningEffort`. It is a pre-run gate, not a
+separate state step.
+
 ## Monitoring
 
 To monitor a running pipeline, poll with sleep intervals rather than continuously:

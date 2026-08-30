@@ -18,12 +18,20 @@ edges:
     condition: when a decision affects live run behavior
   - target: patterns/initialize-issue-workspace.md
     condition: when a decision affects init or branch contracts
-last_updated: 2026-08-24
+last_updated: 2026-08-30
 ---
 
 # Decisions
 
 ## Decision Log
+
+### Inherit context-check execution from the first runnable step
+**Date:** 2026-08-30
+**Status:** Active
+**Decision:** The pre-run `CONTEXT.md` completeness check executes through `agent_run_step` with the first runnable step's `agent`, `model`, and `reasoningEffort`, and parses the selected provider's log format. It remains a gate outside State rather than becoming a separate Step.
+**Reasoning:** A hidden Claude dependency made Codex- or DeepSeek-owned pipelines fail before their configured first step when Claude was unavailable. State already contains the auditable execution settings that should govern the run.
+**Alternatives considered:** Keep Claude hardcoded (rejected because it adds an unrelated credential requirement), or add a configurable context-check pseudo-step (rejected because it duplicates settings and changes the visible pipeline for a small pre-run validation).
+**Consequences:** The first runnable step's provider CLI must be available before the pipeline starts. Context-check logs may use Claude, Codex, or DeepSeek event formats, while the listed step stays pending until the gate passes.
 
 ### Keep native delegation provider-owned and config-driven
 **Date:** 2026-08-24

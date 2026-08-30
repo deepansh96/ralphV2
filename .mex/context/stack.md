@@ -22,7 +22,7 @@ edges:
     condition: when installing or validating local command availability
   - target: patterns/change-pipeline-behavior.md
     condition: when a stack choice affects a new or changed pipeline step
-last_updated: 2026-08-16
+last_updated: 2026-08-30
 ---
 
 # Stack
@@ -39,7 +39,7 @@ last_updated: 2026-08-16
 
 - **`jq`** - mandatory JSON mutation and validation tool; do not replace with fragile sed/awk JSON edits.
 - **`gh`** - GitHub API access; prompts rely on issue body edits, issue views, sub-issue creation, and PR operations.
-- **`claude` CLI** - used for context completeness checks and optional Claude-owned steps; per-step model and `reasoningEffort` map to `--model` and `--effort`.
+- **`claude` CLI** - executes Claude-owned steps; per-step model and `reasoningEffort` map to `--model` and `--effort`. The context completeness check uses the CLI selected by the first runnable step rather than requiring Claude.
 - **`codex` CLI** - default step executor for generated state; run from project root in `scripts/agent.sh`, with per-step model and `reasoningEffort` mapped to `--model` and `model_reasoning_effort`.
 - **`pi` CLI** - executes `deepseek` steps from the project root with `--provider deepseek`; defaults are `deepseek-v4-flash` and `high` reasoning effort, and per-step model and `reasoningEffort` map to `--model` and `--thinking`.
 - **Node.js** - runs the bundled isolated Codex App Server reviewer and the dependency-free temporary quiz-grilling server.
