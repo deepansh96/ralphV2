@@ -17,14 +17,14 @@ edges:
     condition: when editing scripts, prompts, tests, or docs in this architecture
   - target: patterns/run-and-monitor-pipeline.md
     condition: when executing or observing a live pipeline
-last_updated: 2026-08-24
+last_updated: 2026-08-30
 ---
 
 # Architecture
 
 ## System Overview
 
-User starts with a GitHub issue -> `prompts/init.md` creates `workspaces/<issue>/state.json`, the local-resource ledger, and the always-run cleanup step -> `ralph.sh --issue N` validates state and context -> `prompt_render` combines a step prompt with state/workspace values -> `agent_run_step` dispatches to Claude, Codex, or DeepSeek through Pi -> the agent edits project files, GitHub issues, PR comments, or workspace artifacts -> `state_update_step` records completion, failure, HITL, metrics, PID, and notes -> preflight appends dynamic implementation/check/PR/QA/review steps -> post-merge `cleanup.sh` archives the workspace.
+User starts with a GitHub issue -> `prompts/init.md` creates `workspaces/<issue>/state.json`, the local-resource ledger, and the always-run cleanup step -> `ralph.sh --issue N` validates state and runs the context gate with the first runnable step's execution settings -> `prompt_render` combines a step prompt with state/workspace values -> `agent_run_step` dispatches to Claude, Codex, or DeepSeek through Pi -> the agent edits project files, GitHub issues, PR comments, or workspace artifacts -> `state_update_step` records completion, failure, HITL, metrics, PID, and notes -> preflight appends dynamic implementation/check/PR/QA/review steps -> post-merge `cleanup.sh` archives the workspace.
 
 The pipeline is issue-driven and state-driven. `ralph.sh` does not infer missing branch contracts once running; `state.json` decides which step runs next and which agent owns it. Repo-wide provider defaults live in `ralph.config.json`; preflight snapshots parent and worker settings onto generated delegated steps, and explicit step fields override defaults for that issue.
 
@@ -43,7 +43,7 @@ The pipeline is issue-driven and state-driven. `ralph.sh` does not infer missing
 ## External Dependencies
 
 - **GitHub CLI (`gh`)** - required by init and agent prompts to read/edit issues, create sub-issues, push branches, and create/update PRs.
-- **Claude CLI (`claude`)** - used by `context_check` and by steps whose `agent` is `claude`; emits stream JSON logs consumed for metrics.
+- **Claude CLI (`claude`)** - used by steps whose `agent` is `claude`; emits stream JSON logs consumed for metrics. The context gate uses it only when the first runnable step is Claude-owned.
 - **Codex CLI (`codex`)** - default generated step agent; `scripts/agent.sh` runs it from the project root with danger-full-access sandbox and JSON logging.
 - **Pi CLI (`pi`)** - runs steps whose `agent` is `deepseek`; `scripts/agent.sh` selects the DeepSeek provider and consumes Pi's JSON event stream.
 - **Council CLI (`council`)** - multi-agent review harness used by review prompts and `scripts/council-review.sh`.

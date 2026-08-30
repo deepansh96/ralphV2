@@ -18,6 +18,10 @@ _Avoid_: task, stage, phase
 The kind of work a step performs. Maps 1:1 to a prompt template in `prompts/<step-type>.md`.
 _Avoid_: action, command
 
+**Context Check**:
+A pre-run completeness validation of the target project's `CONTEXT.md`. It is not a Step; it inherits the first runnable Step's Agent, model, and reasoning effort.
+_Avoid_: hidden step, Claude check
+
 **Phase**:
 Whether a step is part of the fixed pipeline (`fixed`) or appended dynamically by preflight (`dynamic`).
 _Avoid_: tier, level
@@ -119,6 +123,7 @@ _Avoid_: manual review, approval gate
 
 - A **Pipeline** run processes exactly one GitHub issue
 - A **Pipeline** contains ordered **Steps** (fixed phase first, then dynamic phase)
+- A **Context Check** runs before the first **Step** with that Step's execution settings
 - Each **Step** is executed by one **Agent**
 - Council review **Steps** invoke **Council** with one or more **Reviewers**
 - The `create-and-review-slices` step produces **Slices**, each becoming a GitHub sub-issue with its **Blocking Edges**

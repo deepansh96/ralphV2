@@ -6,11 +6,55 @@ context_project_root() {
   cd "$script_dir/.." && pwd
 }
 
+context_agent_output() {
+  local log_file="$1"
+  local agent="$2"
+  local output
+
+  case "$agent" in
+    claude)
+      output="$(jq -rs '
+        [.[] | select(.type == "result") | .result // empty]
+        | last // empty
+      ' "$log_file" 2>/dev/null || true)"
+      ;;
+    codex)
+      output="$(jq -rs '
+        [
+          .[]
+          | select(.type == "item.completed" and .item.type == "agent_message")
+          | .item.text // empty
+        ]
+        | last // empty
+      ' "$log_file" 2>/dev/null || true)"
+      ;;
+    deepseek)
+      output="$(jq -rs '
+        [
+          .[]
+          | select(.type == "message_end" and .message.role == "assistant")
+          | [.message.content[]? | select(.type == "text") | .text]
+          | join("\n")
+        ]
+        | last // empty
+      ' "$log_file" 2>/dev/null || true)"
+      ;;
+    *)
+      output=""
+      ;;
+  esac
+
+  if [[ -z "$output" ]]; then
+    output="$(<"$log_file")"
+  fi
+  printf '%s\n' "$output"
+}
+
 context_check() {
   local script_dir="$1"
   local state_file="$2"
   local workspace="$3"
-  local project_root context_file
+  local project_root context_file step check_step agent
   local template_file log_file prompt output
 
   project_root="$(context_project_root "$script_dir")"
@@ -25,7 +69,16 @@ context_check() {
   log_file="$workspace/logs/check-context.log"
   mkdir -p "$workspace/logs"
 
-  if ! prompt="$(prompt_render "$template_file" "$state_file" "$workspace" '{"id":"check-context","type":"check-context"}' "$script_dir/skills")"; then
+  if ! step="$(state_get_blocked_step "$state_file")"; then
+    if ! step="$(state_get_current_step "$state_file")"; then
+      echo "Error: no runnable step is available for the CONTEXT.md completeness check" >&2
+      return 1
+    fi
+  fi
+  agent="$(jq -r '.agent // empty' <<<"$step")"
+  check_step="$(jq -c '. + {id: "check-context", type: "check-context"}' <<<"$step")"
+
+  if ! prompt="$(prompt_render "$template_file" "$state_file" "$workspace" "$check_step" "$script_dir/skills")"; then
     return 1
   fi
 
@@ -48,15 +101,12 @@ $(<"$context_file")
 EOF
 )"
 
-  if ! run_claude "$prompt" "$log_file" >/dev/null; then
-    echo "Error: CONTEXT.md completeness check failed to run; see $log_file" >&2
+  if ! agent_run_step "$step" "$prompt" "$log_file" "$project_root" >/dev/null; then
+    echo "Error: CONTEXT.md completeness check failed to run with agent '$agent'; see $log_file" >&2
     return 1
   fi
 
-  output="$(grep '^{' "$log_file" | jq -r 'select(.type == "result") | .result // empty' 2>/dev/null || true)"
-  if [[ -z "$output" ]]; then
-    output="$(<"$log_file")"
-  fi
+  output="$(context_agent_output "$log_file" "$agent")"
 
   if grep -q '^CONTEXT_CHECK:[[:space:]]*PASS\b' <<<"$output"; then
     return 0

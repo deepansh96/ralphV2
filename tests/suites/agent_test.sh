@@ -588,7 +588,10 @@ test_codex_step_uses_project_root_from_state_json() {
 set -euo pipefail
 printf '%s\n' "\$(pwd)" > "$cwd_file"
 while [[ \$# -gt 0 ]]; do shift; done
-cat >/dev/null
+prompt="\$(cat)"
+if [[ "\$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
+  printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format."}}'
+fi
 printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
 FAKE_CODEX
   chmod +x "$fake_bin/codex"
@@ -661,6 +664,14 @@ test_unsupported_agent_marks_step_failed() {
       projectRoot: $project_root,
       steps: [
         {
+          id: "completed-setup",
+          type: "test-fixture",
+          agent: "claude",
+          status: "completed",
+          metrics: {},
+          notes: ""
+        },
+        {
           id: "unsupported-step",
           type: "test-fixture",
           agent: "gemini",
@@ -677,7 +688,7 @@ test_unsupported_agent_marks_step_failed() {
   set -e
 
   [[ "$status" -eq 1 ]] || fail "expected unsupported agent run to exit 1, got $status: $output"
-  status_value="$(jq -r '.steps[0].status' "$WORKSPACES_DIR/$issue/state.json")"
+  status_value="$(jq -r '.steps[] | select(.id == "unsupported-step") | .status' "$WORKSPACES_DIR/$issue/state.json")"
   [[ "$status_value" == "failed" ]] || fail "expected unsupported agent step to be marked failed, got $status_value"
 }
 

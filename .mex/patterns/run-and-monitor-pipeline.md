@@ -15,7 +15,7 @@ edges:
     condition: when understanding run-loop behavior or step state
   - target: patterns/recover-failed-or-stale-step.md
     condition: when a step fails, blocks, or becomes stale
-last_updated: 2026-07-30
+last_updated: 2026-08-30
 ---
 
 # Run And Monitor Pipeline
@@ -41,7 +41,7 @@ Load `context/setup.md` and `context/architecture.md`. Confirm the issue workspa
 - `poll` exits non-zero when the recorded wrapper dies with pending work, even
   when no step is currently active.
 - `logs --issue N` follows the active step; use `--step step-id` for a specific log.
-- Context completeness check runs before the first completed step and requires `CONTEXT.md`.
+- Context completeness check runs before the first completed step, requires `CONTEXT.md`, and inherits the first runnable step's agent, model, and reasoning effort.
 - A failed normal step can be followed by `cleanup-local-resources`; the pipeline still exits non-zero after cleanup.
 
 ## Verify
