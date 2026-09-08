@@ -12,6 +12,7 @@ suites=(
   delegation_test.sh
   claude_delegation_test.sh
   codex_delegation_test.sh
+  delegation_manifest_test.sh
   pipeline_test.sh
   background_poll_test.sh
   council_test.sh

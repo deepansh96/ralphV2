@@ -25,7 +25,10 @@ nonzero on invalid input, and never echoes rejected data. Supported schemas:
 - `child` / `children`: the provider-neutral record / array of records.
 - `manifest`: the exact v1 artifact, including separate requested `parent` and
   `worker` settings, counts, children with `selected` or `superseded`
-  disposition, evidence level, and closed mismatch vocabulary.
+  disposition, evidence level, and closed mismatch vocabulary. `parentId` may
+  be null only when no evidence bound a parent (see `docs/delegation-manifest.md`).
+- `request` / `evidence`: the verifier input assembled by the future runner from
+  State facts and one collector envelope; see `docs/delegation-manifest.md`.
 - `plan`: the exact v1 QA snapshot with canonical `{id,text}` instruction
   objects and assignment objects. IDs and arrays must be unique and sorted.
 - `codes`: an array using only the closed mismatch vocabulary in
@@ -43,7 +46,9 @@ requires already sorted children and unique sorted codes.
 These are structural validators, not proof of delegation. They do not assemble
 manifests, compare effective settings, recompute digests, bind provider evidence,
 check checklist assignment coverage, select replacement workers, or decide
-completion. Those operations belong to the collector and verifier slices.
+completion. Manifest assembly and `pr-review-v1` verification live in
+`scripts/delegation-manifest.sh` (`docs/delegation-manifest.md`); QA policy and
+completion belong to later slices.
 Only parsed, sanitized provider fields may be passed to these helpers; a schema
 cannot determine whether an allowed string contains a secret.
 

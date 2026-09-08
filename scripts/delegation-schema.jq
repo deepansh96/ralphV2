@@ -21,7 +21,7 @@ def manifest_child: . as $record | del(.disposition) | child
 def manifest:
   exact(["schemaVersion","issue","stepId","attemptId","provider","evidenceSource","parentId","policy","requested","expected","observed","children","evidenceLevel","mismatchCodes"])
   and .schemaVersion == 1 and (.issue | positive)
-  and ([.stepId,.attemptId,.parentId] | all(.[]; text)) and (.policy | policy)
+  and ([.stepId,.attemptId] | all(.[]; text)) and (.parentId | nullable_text) and (.policy | policy)
   and ((.provider == "codex" and .evidenceSource == "app-server") or (.provider == "claude" and .evidenceSource == "hooks"))
   and (.requested | exact(["parent","worker"]) and (.parent | settings) and (.worker | settings)
     and ([.parent.model,.parent.reasoningEffort,.worker.model,.worker.reasoningEffort] | all(.[]; text)))
@@ -48,6 +48,19 @@ def plan:
       and (.checklistItemIds | sorted_strings and length > 0 and all(.[]; qa_id)))
     and ([.[].taskId] | . == (sort | unique)));
 def attempt: exact(["id","startedAt"]) and (.id | text) and (.startedAt | integer);
+# Verifier input: State facts plus the collector's bound evidence (null when the
+# collector failed). modelHistory maps childId to every reported model ID.
+def evidence:
+  exact(["attemptId","parentId","children","modelHistory"])
+  and (.attemptId | nullable_text) and (.parentId | nullable_text)
+  and (.children | type == "array" and all(.[]; child))
+  and (.modelHistory | type == "object" and all(.[]; type == "array" and all(.[]; text)));
+def request:
+  exact(["issue","stepId","attemptId","provider","policy","requested","providerFailed","evidence"])
+  and (.issue | positive) and ([.stepId,.attemptId] | all(.[]; text))
+  and (.provider | IN("claude","codex")) and (.policy | policy)
+  and (.requested | exact(["parent","worker"]) and all(.[]; settings and all(.[]; text)))
+  and (.providerFailed | type == "boolean") and (.evidence | . == null or evidence);
 # Validate only the new fields; legacy State has an intentionally open schema.
 def state_contract:
   type == "object" and (.steps | type == "array")
@@ -63,5 +76,7 @@ elif $schema == "codes" then code_array
 elif $schema == "manifest" then manifest
 elif $schema == "plan" then plan
 elif $schema == "attempt" then attempt
+elif $schema == "request" then request
+elif $schema == "evidence" then evidence
 elif $schema == "state" then state_contract
 else false end end

@@ -35,7 +35,8 @@ Then read this file fully before doing anything else in this session.
 
 - Opt-in Claude collection uses session-local foreground Agent definitions, sanitized hooks and strict current-attempt lifecycle correlation. The live two-packet probe passed on Claude 2.1.263; see `docs/claude-delegation.md`. Legacy execution remains unchanged; policy verification and production wiring are still future slices.
 - Opt-in Codex collection reads a finished exec parent's direct children and descendants through a fresh read-only App Server process (thread listing by parent and ancestor, thread reads with turns) and normalizes lifecycle, nesting, and `task_name` identity into the shared child records; see `docs/codex-delegation.md`. Legacy execution remains unchanged.
-- Dormant delegation contract helpers validate v1 metadata, child records, manifests and QA plans; prepare isolated invocation attempts; and atomically write private JSON. See `docs/delegation-contracts.md`. Production activation and policy verification remain future slices.
+- Dormant delegation contract helpers validate v1 metadata, child records, manifests and QA plans; prepare isolated invocation attempts; and atomically write private JSON. See `docs/delegation-contracts.md`. Production activation remains a future slice.
+- The dormant manifest verifier (`scripts/delegation-manifest.sh`) maps either collector envelope onto one manifest, verifies `pr-review-v1` (five exact flat run-1 workers, closed mismatch codes, worker-only settings comparison with Claude family-alias rules), reports `UNVERIFIED`/`OBSERVED`/`VERIFIED`, and writes `workspaces/<issue>/delegation/<step-id>.manifest.json`. The PR-review prompt now requires the exact task IDs and packet markers. See `docs/delegation-manifest.md`. `qa-v1` verification and the runner gate are still future slices.
 
 **Not Built:**
 - No package manager wrapper or compiled artifact; this is a shell and markdown repository.

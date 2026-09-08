@@ -458,6 +458,29 @@ test_multi_axis_pr_review_prompt_defines_four_skill_vote_contract() {
   assert_contains "$prompt" "Deduplicate"
   assert_contains "$prompt" "<!-- ralph:multi-axis-review -->"
   assert_contains "$prompt" "Do not apply"
+
+  # pr-review-v1 identity: exact snake_case task IDs and packet markers.
+  assert_contains "$prompt" '`matt_standards`'
+  assert_contains "$prompt" '`matt_spec`'
+  assert_contains "$prompt" '`ponytail`'
+  assert_contains "$prompt" '`isolated_codex`'
+  assert_contains "$prompt" '`supe`'
+  assert_contains "$prompt" "RALPH-TASK: <task-id>"
+  assert_contains "$prompt" "RALPH-RUN: 1"
+  assert_contains "$prompt" "first two lines"
+  assert_contains "$prompt" '`task_name`'
+  assert_contains "$prompt" "exactly once"
+  assert_contains "$prompt" "no retries"
+  assert_contains "$prompt" "Do not relaunch"
+}
+
+test_native_delegation_fragments_stay_policy_free() {
+  local fragment
+  for fragment in "$ROOT_DIR"/prompts/native-delegation/*.md; do
+    if grep -q -e matt_standards -e isolated_codex -e pr-review-v1 -e qa-v1 "$fragment"; then
+      fail "expected $fragment to carry no step policy"
+    fi
+  done
 }
 
 test_cleanup_local_resources_prompt_defines_owned_always_run_contract() {
@@ -525,6 +548,7 @@ run_test test_pr_creation_prompt_defines_idempotent_pr_only_contract
 run_test test_prepare_qa_checklist_prompt_defines_local_comment_contract
 run_test test_runthrough_qa_checklist_prompt_defines_execution_and_progress_contract
 run_test test_multi_axis_pr_review_prompt_defines_four_skill_vote_contract
+run_test test_native_delegation_fragments_stay_policy_free
 run_test test_cleanup_local_resources_prompt_defines_owned_always_run_contract
 run_test test_removed_review_prompts_are_absent
 run_test test_grill_with_docs_skill_defines_planning_branch_contract

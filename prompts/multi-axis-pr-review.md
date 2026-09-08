@@ -37,20 +37,39 @@ Using the exact provider-native mechanism in the injected contract above, spawn
 exactly five top-level subagents in two flat batches. Every worker is a direct
 child of the parent; no worker may spawn another worker.
 
+### Task identity
+
+Ralph verifies this step from provider evidence after the run, so every worker
+must carry its exact identity. Use these five snake_case task IDs, one per
+worker and nothing else: `matt_standards`, `matt_spec`, `ponytail`,
+`isolated_codex`, and `supe`. Name the provider task exactly that ID (for
+Codex, the `spawn_agent` `task_name`). The first two lines of every worker
+packet must be exactly:
+
+```text
+RALPH-TASK: <task-id>
+RALPH-RUN: 1
+```
+
+Run each task exactly once: no retries, no duplicate workers, no extra workers,
+and no other run number. Do not relaunch a failed or unusable worker; fail this
+step instead. Then continue with the shared review packet.
+
 Batch 1 — spawn these two workers concurrently:
 
-1. Matt Standards: load
+1. `matt_standards` (Matt Standards): load
    `{{SKILLS_DIR}}/matt-pocock-code-review/SKILL.md` and run only its Standards
    axis.
-2. Matt Spec: load
+2. `matt_spec` (Matt Spec): load
    `{{SKILLS_DIR}}/matt-pocock-code-review/SKILL.md` and run only its Spec axis.
 
 Wait for both Matt results, then start batch 2 with these three workers
 concurrently:
 
-1. Ponytail: load `{{SKILLS_DIR}}/ponytail-review/SKILL.md`.
-2. Isolated Codex: load `{{SKILLS_DIR}}/run-codex-review/SKILL.md`.
-3. Supe: load `{{SKILLS_DIR}}/supe-review-code-changes/SKILL.md`.
+1. `ponytail` (Ponytail): load `{{SKILLS_DIR}}/ponytail-review/SKILL.md`.
+2. `isolated_codex` (Isolated Codex): load
+   `{{SKILLS_DIR}}/run-codex-review/SKILL.md`.
+3. `supe` (Supe): load `{{SKILLS_DIR}}/supe-review-code-changes/SKILL.md`.
 
 Give each worker only its assigned pass. Require each to return findings only
 to the parent, and wait for all five results.

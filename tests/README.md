@@ -24,6 +24,7 @@ Run one or more suites by name:
 - `delegation_test.sh`: shared delegation schemas, safe artifact writes, and fresh invocation preparation.
 - `claude_delegation_test.sh`: opt-in Claude hook sanitization, lifecycle correlation, and the fake foreground Agent CLI seam.
 - `codex_delegation_test.sh`: opt-in Codex App Server collection through a fake JSON-RPC server: exact read-only requests, pagination, lifecycle, nesting, task identity, and fail-closed evidence.
+- `delegation_manifest_test.sh`: provider-neutral manifest assembly, the `pr-review-v1` verifier and its exact mismatch codes, model alias rules, evidence levels, provider-failure manifests, and private atomic manifest writes.
 - `pipeline_test.sh`: run-loop behavior, HITL resume, failed-step handling, and simulated workflow steps.
 - `background_poll_test.sh`: background wrapper and polling behavior.
 - `council_test.sh`: council submit/status/read/cleanup wrapper behavior.

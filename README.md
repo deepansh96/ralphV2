@@ -226,7 +226,9 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
   validates their evidence and updates the same PR comment without executing a
   QA item itself.
 - `multi-axis-pr-review`: injects a provider-specific native delegation contract,
-  runs five flat review workers in two capacity-safe batches, verifies and votes
+  runs five flat review workers named `matt_standards`, `matt_spec`,
+  `ponytail`, `isolated_codex`, and `supe` in two capacity-safe batches, each
+  packet opening with `RALPH-TASK` and `RALPH-RUN: 1`, verifies and votes
   on their findings, and posts one consolidated PR comment. Two Matt workers run
   Standards and Spec in parallel; then three workers run Ponytail, isolated
   Codex, and Supe in parallel. By default, Codex workers use Luna with `max`
@@ -243,8 +245,13 @@ passed on Claude Code 2.1.263 with two explicit `claude-sonnet-5`/high workers.
 The isolated [Codex collection probe](docs/codex-delegation.md) reads a finished
 exec parent's direct children and descendants through a fresh read-only
 `codex app-server` process and normalizes their lifecycle into the same child
-records. Production steps remain ungated; the parent owns all worker
-orchestration. Run `./tests/run.sh claude_delegation codex_delegation` for
+records. The [manifest verifier](docs/delegation-manifest.md) turns either
+envelope into one provider-neutral manifest, checks the `pr-review-v1` policy
+(five exact flat workers, no retries), compares worker settings only with the
+requested worker settings, and writes the private 0600 artifact. Production
+steps remain ungated and no runner completion behavior has changed; the parent
+owns all worker orchestration. Run
+`./tests/run.sh claude_delegation codex_delegation delegation_manifest` for
 deterministic coverage; the linked guides document prerequisites and the
 separate opt-in live commands.
 
