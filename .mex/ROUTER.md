@@ -33,7 +33,8 @@ Then read this file fully before doing anything else in this session.
 - Deterministic shell tests under `tests/suites/` fake external tools and cover CLI, state, prompts, agents, council, polling, cleanup, and docs.
 - mex scaffold is installed under `.mex/`; `CLAUDE.md` is a symlink to root `AGENTS.md`.
 
-- Dormant delegation contract helpers validate v1 metadata, child records, manifests and QA plans; prepare isolated invocation attempts; and atomically write private JSON. See `docs/delegation-contracts.md`. Production activation, collection, and policy verification remain future slices.
+- Opt-in Claude collection uses session-local foreground Agent definitions, sanitized hooks and strict current-attempt lifecycle correlation. The live two-packet probe passed on Claude 2.1.263; see `docs/claude-delegation.md`. Legacy execution remains unchanged; policy verification and production wiring are still future slices.
+- Dormant delegation contract helpers validate v1 metadata, child records, manifests and QA plans; prepare isolated invocation attempts; and atomically write private JSON. See `docs/delegation-contracts.md`. Production activation, Codex collection, and policy verification remain future slices.
 
 **Not Built:**
 - No package manager wrapper or compiled artifact; this is a shell and markdown repository.
