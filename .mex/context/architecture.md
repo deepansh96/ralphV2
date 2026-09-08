@@ -17,7 +17,7 @@ edges:
     condition: when editing scripts, prompts, tests, or docs in this architecture
   - target: patterns/run-and-monitor-pipeline.md
     condition: when executing or observing a live pipeline
-last_updated: 2026-08-24
+last_updated: 2026-09-08
 ---
 
 # Architecture
@@ -32,6 +32,7 @@ The pipeline is issue-driven and state-driven. `ralph.sh` does not infer missing
 
 - **`ralph.sh`** - CLI entrypoint and run loop; handles `run`, `status`, `logs`, `poll`, HITL resume, foreground/background dispatch, step limits, and shutdown reset.
 - **`scripts/config.sh`** - validates `ralph.config.json` and resolves one provider's complete delegated-step parent and worker defaults.
+- **`scripts/delegation.sh`** - dormant shared delegation schemas, stable ordering, private atomic JSON writes, and fresh invocation preparation; see `docs/delegation-contracts.md`. No production caller or metadata activation exists yet. Node supplies fsync; jq owns State transformations. Provider orchestration remains with the main agent.
 - **`scripts/state.sh`** - state access and mutation layer; validates failed/stale steps, selects pending or blocked steps, defers `alwaysRun` cleanup behind normal work while prioritizing it after failure, rearms completed cleanup when normal work is retried, appends dynamic steps, snapshots missing delegated-step defaults without overwriting explicit values, and writes PID files.
 - **`scripts/agent.sh`** - execution adapter for `claude`, `codex`, and `deepseek`; maps optional per-step model and `reasoningEffort` overrides to Claude, Codex, or Pi CLI flags, then wraps retries, logging, working directory handling, and metrics extraction.
 - **`scripts/prompt.sh`** - renders prompt templates by replacing `{{ISSUE}}`, `{{REPO}}`, `{{WORKSPACE}}`, `{{BRANCH}}`, `{{BASE_BRANCH}}`, `{{STEP_ID}}`, `{{SUB_ISSUE}}`, `{{SKILLS_DIR}}`, `{{REVIEWERS}}`, and `{{AGENT}}`. Templates that request `{{NATIVE_DELEGATION_CONTRACT}}` receive the matching reusable Claude or Codex prompt fragment. Worker model and effort resolve from per-step `subagentModel` / `subagentReasoningEffort` overrides, then `ralph.config.json` provider defaults; rendering fails when the provider or required settings are missing.

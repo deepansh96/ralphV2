@@ -243,6 +243,12 @@ test_preflight_prompt_defines_full_preflight_workflow_contract() {
   assert_contains "$prompt" "ralph.config.json"
   assert_contains "$prompt" "ralph_config_delegated_step_defaults"
   assert_contains "$prompt" "state_snapshot_delegated_step_defaults"
+  assert_contains "$prompt" '"delegation": {"schemaVersion": 1, "policy": "pr-review-v1"}'
+  assert_contains "$prompt" '"delegationAttempt": {"id": "<runner-owned opaque unique id>", "startedAt": 1787590000}'
+  assert_contains "$prompt" '`qa-v1`'
+  assert_contains "$prompt" 'Do not write or backfill `delegation` or `delegationAttempt`'
+  assert_contains "$prompt" 'Activation belongs to #44'
+
   assert_contains "$prompt" "runthrough-qa-checklist"
   assert_contains "$prompt" "model"
   assert_contains "$prompt" "reasoningEffort"

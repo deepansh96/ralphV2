@@ -9,6 +9,7 @@ suites=(
   context_test.sh
   agent_test.sh
   state_test.sh
+  delegation_test.sh
   pipeline_test.sh
   background_poll_test.sh
   council_test.sh

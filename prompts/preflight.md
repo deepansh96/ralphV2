@@ -223,6 +223,25 @@ execution settings; later edits to `ralph.config.json` must not rewrite them.
 
 Use `state_add_steps "{{WORKSPACE}}/state.json" '<json-array>'` to extend the state file. `state_add_steps` prevents duplicate step IDs and writes atomically.
 
+## Reserved Delegation Contract (Inactive)
+
+The shared v1 contract reserves these step fields for the future gate:
+
+```json
+{
+  "delegation": {"schemaVersion": 1, "policy": "pr-review-v1"},
+  "delegationAttempt": {"id": "<runner-owned opaque unique id>", "startedAt": 1787590000}
+}
+```
+
+Only `pr-review-v1` and `qa-v1` are valid v1 policies. Attempts are runner-owned,
+renewed before each provider invocation, including internal retries and resumes.
+Do not write or backfill `delegation` or `delegationAttempt` in this preflight.
+Activation belongs to #44, after collectors and policy verification exist.
+Keep the current model/effort snapshot behavior unchanged; do not call the
+invocation helper here. Ralph observes delegation; the provider's main agent
+continues to own worker orchestration.
+
 ## Idempotency
 
 Preflight must be safe to re-run.

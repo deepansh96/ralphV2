@@ -14,7 +14,7 @@ edges:
     condition: when setting up the repo, running tests, or debugging environment issues
   - target: patterns/INDEX.md
     condition: when starting a concrete task, especially init, run, recovery, or pipeline changes
-last_updated: 2026-08-24
+last_updated: 2026-09-08
 ---
 
 # Session Bootstrap
@@ -32,6 +32,8 @@ Then read this file fully before doing anything else in this session.
 - Bundled skills in `skills/` provide spec/ticket planning, TDD, domain modeling, dependency-ordered grilling rounds, disposable browser quiz grilling, wayfinder decision tickets with parent-owned research fan-out, agent-document writing, deep-module architecture analysis, optional support for prototypes, manual setup, and clearer explanations, plus five PR review passes across four bundled skills without depending on global skill installs. Slices carry first-class blocking edges (native GitHub issue dependencies plus `Blocked by` body lines). Tracker operations live in `docs/agents/issue-tracker.md` behind the `Issue tracker` pointer in `AGENTS.md`.
 - Deterministic shell tests under `tests/suites/` fake external tools and cover CLI, state, prompts, agents, council, polling, cleanup, and docs.
 - mex scaffold is installed under `.mex/`; `CLAUDE.md` is a symlink to root `AGENTS.md`.
+
+- Dormant delegation contract helpers validate v1 metadata, child records, manifests and QA plans; prepare isolated invocation attempts; and atomically write private JSON. See `docs/delegation-contracts.md`. Production activation, collection, and policy verification remain future slices.
 
 **Not Built:**
 - No package manager wrapper or compiled artifact; this is a shell and markdown repository.
