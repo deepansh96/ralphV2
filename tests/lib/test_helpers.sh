@@ -1255,3 +1255,95 @@ run_test() {
   printf 'Running %s\n' "$name"
   "$name"
 }
+
+# Fake Codex with an `exec --json` mode that reports the fixture parent thread
+# and a JSON-RPC `app-server` mode that serves hand-written thread pages and
+# records every request. Unknown methods are recorded and rejected.
+install_fake_codex_app_server() {
+  local fake_bin="$1"
+  local fixture="$2"
+
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/codex" <<FAKE_CODEX
+#!/usr/bin/env bash
+set -euo pipefail
+fixture="$fixture"
+requests="$fake_bin/app-server-requests.jsonl"
+FAKE_CODEX
+  cat >> "$fake_bin/codex" <<'FAKE_CODEX'
+mode="${1:-}"
+shift || true
+case "$mode" in
+  exec)
+    last_message_file=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --output-last-message) last_message_file="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    prompt="$(cat)"
+    [[ -z "$last_message_file" ]] || printf 'codex saw: %s\n' "$prompt" > "$last_message_file"
+    jq -c '{type:"thread.started",thread_id:.parent}' "$fixture"
+    printf '%s\n' '{"type":"turn.started"}' '{"type":"turn.completed","usage":{"input_tokens":13,"output_tokens":8}}'
+    ;;
+  app-server)
+    exec node "$(dirname "$0")/fake-app-server.cjs" "$fixture" "$requests"
+    ;;
+  *)
+    echo "unexpected codex command: $mode" >&2
+    exit 99
+    ;;
+esac
+FAKE_CODEX
+  chmod +x "$fake_bin/codex"
+
+  cat > "$fake_bin/fake-app-server.cjs" <<'FAKE_APP_SERVER'
+const fs = require('node:fs');
+const readline = require('node:readline');
+const [fixturePath, requestsPath] = process.argv.slice(2);
+const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+const pageIndex = { direct: 0, descendants: 0 };
+const summary = thread => { const copy = { ...thread }; copy.turns = []; return copy; };
+const reply = (id, body) => process.stdout.write(JSON.stringify({ id, ...body }) + '\n');
+const handle = (id, method, params) => {
+  if (method === 'initialize') {
+    if (fixture.initialize && fixture.initialize.error) return reply(id, { error: fixture.initialize.error });
+    return reply(id, { result: { userAgent: 'fake-codex' } });
+  }
+  if (method === 'thread/list') {
+    const hasParent = params && Object.hasOwn(params, 'parentThreadId');
+    const hasAncestor = params && Object.hasOwn(params, 'ancestorThreadId');
+    if (hasParent === hasAncestor) return reply(id, { error: { code: -32602, message: 'exactly one relation filter expected' } });
+    const kind = hasParent ? 'direct' : 'descendants';
+    const relation = hasParent ? params.parentThreadId : params.ancestorThreadId;
+    if (relation !== fixture.parent) return reply(id, { result: { data: [], nextCursor: null } });
+    const pages = fixture[kind] || [{ ids: [], nextCursor: null }];
+    const index = pageIndex[kind];
+    if (index >= pages.length) return reply(id, { error: { code: -32602, message: 'no further pages' } });
+    const expectedCursor = index === 0 ? undefined : pages[index - 1].nextCursor;
+    if (params.cursor !== expectedCursor) return reply(id, { error: { code: -32602, message: 'unexpected cursor' } });
+    pageIndex[kind] += 1;
+    const page = pages[index];
+    if (page.error) return reply(id, { error: page.error });
+    if (page.malformed) return reply(id, { result: { data: 'not-a-list' } });
+    return reply(id, { result: { data: page.ids.map(threadId => summary(fixture.threads[threadId])), nextCursor: page.nextCursor ?? null } });
+  }
+  if (method === 'thread/read') {
+    const override = (fixture.reads || {})[params && params.threadId];
+    if (override && override.error) return reply(id, { error: override.error });
+    const thread = fixture.threads[params && params.threadId];
+    if (!thread) return reply(id, { error: { code: -32602, message: 'thread not found' } });
+    return reply(id, { result: { thread: params.includeTurns ? thread : summary(thread) } });
+  }
+  return reply(id, { error: { code: -32601, message: 'method not supported by the fake' } });
+};
+readline.createInterface({ input: process.stdin }).on('line', line => {
+  let message;
+  try { message = JSON.parse(line); } catch { return; }
+  fs.appendFileSync(requestsPath, JSON.stringify({ method: message.method, params: message.params === undefined ? null : message.params }) + '\n');
+  if (message.id === undefined) return;
+  handle(message.id, message.method, message.params);
+});
+FAKE_APP_SERVER
+}

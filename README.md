@@ -235,14 +235,18 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
   parent and worker settings into state, and they can be overridden per step.
 - `cleanup-local-resources`: always runs after success or failure and removes pipeline-owned processes, containers, sessions, temporary files, and worktree leftovers.
 
-## Opt-in Claude delegation collection
+## Opt-in delegation collection
 
 The isolated [Claude collection probe](docs/claude-delegation.md) uses temporary
 foreground Agent definitions and hooks to correlate safe worker evidence. It has
 passed on Claude Code 2.1.263 with two explicit `claude-sonnet-5`/high workers.
-Production steps remain ungated; the parent owns all worker orchestration. Run
-`./tests/run.sh claude_delegation` for deterministic coverage; the linked guide
-documents prerequisites and the separate opt-in live command.
+The isolated [Codex collection probe](docs/codex-delegation.md) reads a finished
+exec parent's direct children and descendants through a fresh read-only
+`codex app-server` process and normalizes their lifecycle into the same child
+records. Production steps remain ungated; the parent owns all worker
+orchestration. Run `./tests/run.sh claude_delegation codex_delegation` for
+deterministic coverage; the linked guides document prerequisites and the
+separate opt-in live commands.
 
 ## Bundled Skills
 

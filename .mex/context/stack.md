@@ -42,14 +42,14 @@ last_updated: 2026-09-08
 - **`claude` CLI** - used for context completeness checks and optional Claude-owned steps; per-step model and `reasoningEffort` map to `--model` and `--effort`.
 - **`codex` CLI** - default step executor for generated state; run from project root in `scripts/agent.sh`, with per-step model and `reasoningEffort` mapped to `--model` and `model_reasoning_effort`.
 - **`pi` CLI** - executes `deepseek` steps from the project root with `--provider deepseek`; defaults are `deepseek-v4-flash` and `high` reasoning effort, and per-step model and `reasoningEffort` map to `--model` and `--thinking`.
-- **Node.js** - runs the bundled isolated Codex App Server reviewer, the dependency-free temporary quiz-grilling server, and private atomic delegation artifact writes (fsync and secure attempt IDs).
+- **Node.js** - runs the bundled isolated Codex App Server reviewer, the read-only Codex delegation evidence client, the dependency-free temporary quiz-grilling server, and private atomic delegation artifact writes (fsync and secure attempt IDs).
 - **`cloudflared` or `ngrok`** - optional tunnel client for exposing a temporary quiz-grilling link; Cloudflare Quick Tunnels are preferred.
 - **`council` CLI** - fan-out review runner for decision, PRD, and slice-planning workflows.
 - **Shell test fakes** - tests fake `claude`, `codex`, `pi`, `gh`, and `council`; never make deterministic tests depend on real services.
 
 ## What We Deliberately Do NOT Use
 
-- No Python or compiled app runtime for the core pipeline; Node is limited to the bundled isolated Codex reviewer, quiz-grilling support, delegation file primitives, and mex.
+- No Python or compiled app runtime for the core pipeline; Node is limited to the bundled isolated Codex reviewer, Codex delegation evidence reads, quiz-grilling support, delegation file primitives, and mex.
 - No real external services in tests; use fake commands under `tests/lib/`.
 - No background mode from Codex automation; foreground Ralph plus separate status polling is safer.
 - No implicit branch defaults; `.baseBranch` must be set explicitly before preflight.
