@@ -1,34 +1,93 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Answers",
-  "description": "The Answering Agent's reply to one Frontier round: exactly one answer per question ID in the round, or a needsHuman escalation.",
+  "description": "The Answering Agent's reply to one Frontier round: exactly one answer per question ID in the round, or a needsHuman escalation. Strict: every property is required and optional ones are null when unused. Exactly one of answers and needsHuman is non-null, and each answer sets choiceId or text.",
   "type": "object",
-  "required": ["exchangeId"],
+  "additionalProperties": false,
+  "required": [
+    "exchangeId",
+    "answers",
+    "needsHuman"
+  ],
   "properties": {
-    "exchangeId": {"type": "string", "pattern": "^ex-[0-9]{4,}$"},
+    "exchangeId": {
+      "type": "string",
+      "pattern": "^ex-[0-9]{4,}$"
+    },
     "answers": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "items": {
         "type": "object",
-        "required": ["questionId", "rationale", "evidence"],
+        "additionalProperties": false,
+        "required": [
+          "questionId",
+          "choiceId",
+          "text",
+          "rationale",
+          "evidence"
+        ],
         "properties": {
-          "questionId": {"type": "string", "minLength": 1},
-          "choiceId": {"type": "string", "minLength": 1},
-          "text": {"type": "string", "minLength": 1},
-          "rationale": {"type": "string", "minLength": 1},
-          "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
-        },
-        "anyOf": [{"required": ["choiceId"]}, {"required": ["text"]}]
+          "questionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "choiceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
       }
     },
     "needsHuman": {
-      "type": "object",
-      "required": ["questionIds", "reason"],
-      "properties": {
-        "questionIds": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-        "reason": {"type": "string", "minLength": 1}
-      }
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "questionIds",
+            "reason"
+          ],
+          "properties": {
+            "questionIds": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
     }
-  },
-  "oneOf": [{"required": ["answers"]}, {"required": ["needsHuman"]}]
+  }
 }

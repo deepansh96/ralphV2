@@ -74,22 +74,33 @@ grill_record_update() {
   printf '%s\n' "$updated" | grill_record_write_file "$record_file"
 }
 
-# Session lock: an atomic mkdir of <session-dir>/lock holding the owner PID.
-# A live owner fails the caller clearly; a dead owner's lock is reclaimed.
+# Session lock: <session-dir>/lock is a symlink whose target is the owner PID,
+# so creating it (ln -s) claims the lock and records the owner in one atomic
+# step. A live owner fails the caller clearly. A dead owner's lock is removed
+# only while holding <session-dir>/lock.reclaim (an atomic mkdir), and only if
+# it still names that dead PID, so two coordinators reclaiming at once can
+# never both end up holding the lock.
 grill_record_lock() {
   local session_dir="$1"
-  local lock_dir="$session_dir/lock"
-  local pid
+  local lock="$session_dir/lock"
+  local guard="$session_dir/lock.reclaim"
+  local session_id pid
 
-  while ! (umask 077 && mkdir "$lock_dir") 2>/dev/null; do
-    pid="$(cat "$lock_dir/pid" 2>/dev/null || true)"
-    if [[ -z "$pid" ]] || ps -p "$pid" >/dev/null 2>&1; then
-      echo "Error: session $(basename "$session_dir") is locked by another coordinator (PID ${pid:-unknown}); wait for it to exit, or remove $lock_dir if no coordinator is running" >&2
+  session_id="$(basename "$session_dir")"
+  while ! ln -s "$$" "$lock" 2>/dev/null; do
+    pid="$(readlink "$lock" 2>/dev/null || true)"
+    [[ -n "$pid" ]] || continue
+    if [[ "$pid" =~ ^[0-9]+$ ]] && ps -p "$pid" >/dev/null 2>&1; then
+      echo "Error: session $session_id is locked by another coordinator (PID $pid); wait for it to exit, or remove $lock if no coordinator is running" >&2
       return 1
     fi
-    rm -rf "$lock_dir"
+    if ! mkdir "$guard" 2>/dev/null; then
+      echo "Error: another coordinator is reclaiming the lock of session $session_id; try again, or remove $guard if no coordinator is running" >&2
+      return 1
+    fi
+    [[ "$(readlink "$lock" 2>/dev/null || true)" != "$pid" ]] || rm -f "$lock"
+    rmdir "$guard"
   done
-  printf '%s\n' "$$" | grill_record_write_file "$lock_dir/pid"
 }
 
 # Moves a session directory to <ralph-dir>/archive/grilling/<YYYY-MM-DD>-<id>/
@@ -108,9 +119,9 @@ grill_record_archive() {
 
 # Releases the session lock if this process owns it.
 grill_record_unlock() {
-  local lock_dir="$1/lock"
+  local lock="$1/lock"
 
-  if [[ "$(cat "$lock_dir/pid" 2>/dev/null || true)" == "$$" ]]; then
-    rm -rf "$lock_dir"
+  if [[ "$(readlink "$lock" 2>/dev/null || true)" == "$$" ]]; then
+    rm -f "$lock"
   fi
 }

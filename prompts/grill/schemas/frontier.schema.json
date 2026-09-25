@@ -1,56 +1,143 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Frontier",
-  "description": "One Frontier round from the Grilling Agent. Empty questions and reopens mean the Frontier is empty.",
+  "description": "One Frontier round from the Grilling Agent. Empty questions and reopens mean the Frontier is empty. Strict: every property is required and optional ones are null when unused; each recommendation sets choiceId or text.",
   "type": "object",
-  "required": ["exchangeId", "round", "questions"],
+  "additionalProperties": false,
+  "required": [
+    "exchangeId",
+    "round",
+    "questions",
+    "reopens"
+  ],
   "properties": {
-    "exchangeId": {"type": "string", "pattern": "^ex-[0-9]{4,}$"},
-    "round": {"type": "integer", "minimum": 1},
+    "exchangeId": {
+      "type": "string",
+      "pattern": "^ex-[0-9]{4,}$"
+    },
+    "round": {
+      "type": "integer",
+      "minimum": 1
+    },
     "questions": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "title", "body", "choices", "recommendation"],
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "body",
+          "choices",
+          "recommendation",
+          "challenges"
+        ],
         "properties": {
-          "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
-          "title": {"type": "string", "minLength": 1},
-          "body": {"type": "string", "minLength": 1},
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1
+          },
           "choices": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["id", "label"],
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "label",
+                "description"
+              ],
               "properties": {
-                "id": {"type": "string", "minLength": 1},
-                "label": {"type": "string", "minLength": 1},
-                "description": {"type": "string"}
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
               }
             }
           },
           "recommendation": {
             "type": "object",
-            "required": ["rationale"],
+            "additionalProperties": false,
+            "required": [
+              "choiceId",
+              "text",
+              "rationale"
+            ],
             "properties": {
-              "choiceId": {"type": "string", "minLength": 1},
-              "text": {"type": "string", "minLength": 1},
-              "rationale": {"type": "string", "minLength": 1}
-            },
-            "anyOf": [{"required": ["choiceId"]}, {"required": ["text"]}]
+              "choiceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "rationale": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
           },
-          "challenges": {"type": "string"}
+          "challenges": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       }
     },
     "reopens": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "items": {
         "type": "object",
-        "required": ["questionId", "contradiction", "evidence"],
+        "additionalProperties": false,
+        "required": [
+          "questionId",
+          "contradiction",
+          "evidence"
+        ],
         "properties": {
-          "questionId": {"type": "string", "minLength": 1},
-          "contradiction": {"type": "string", "minLength": 1},
-          "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+          "questionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contradiction": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
       }
     }

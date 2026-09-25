@@ -568,7 +568,7 @@ test_grill_message_schemas_are_checked_in() {
   local name
 
   for name in frontier answers summary summary-review; do
-    jq -e '."$schema" and .type == "object" and (.required | index("exchangeId"))' \
+    jq -e '.title and .type == "object" and .additionalProperties == false and (.required | index("exchangeId"))' \
       "$ROOT_DIR/prompts/grill/schemas/$name.schema.json" >/dev/null \
       || fail "expected a JSON Schema for $name messages"
   done

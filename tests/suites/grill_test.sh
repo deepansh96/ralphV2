@@ -1108,7 +1108,8 @@ test_approve_on_an_issue_session_commits_docs_pushes_and_edits_the_issue() {
   [[ "$(gh_writes | jq -c '.[0:5] + [.[5]]')" \
     == '["issue","edit","51","--title","Export reports offline with Postgres storage","--body-file"]' ]] \
     || fail "expected gh issue edit 51 with the fixture title, got: $(gh_writes)"
-  [[ "$(<"$FAKE_GH_LOG.body")" == "Readers export CSV reports stored in Postgres." ]] || fail "expected the fixture issue body"
+  [[ "$(<"$FAKE_GH_LOG.body")" == "Readers export CSV reports stored in Postgres."$'\n\n'"<!-- ralph-grill-session: $session_id -->" ]] \
+    || fail "expected the fixture issue body with the session marker, got: $(<"$FAKE_GH_LOG.body")"
   [[ "$(claude_call_count)" == "0" ]] || fail "expected no Agent calls during approve"
 
   assert_archived "$session_id" completed
@@ -1139,7 +1140,8 @@ test_approve_on_a_requirement_file_session_creates_the_issue() {
   [[ "$(gh_writes | jq -c '.[0:4] + [.[4]]')" \
     == '["issue","create","--title","Export reports offline with Postgres storage","--body-file"]' ]] \
     || fail "expected gh issue create with the fixture title, got: $(gh_writes)"
-  [[ "$(<"$FAKE_GH_LOG.body")" == "Readers export CSV reports stored in Postgres." ]] || fail "expected the fixture issue body"
+  [[ "$(<"$FAKE_GH_LOG.body")" == "Readers export CSV reports stored in Postgres."$'\n\n'"<!-- ralph-grill-session: $session_id -->" ]] \
+    || fail "expected the fixture issue body with the session marker, got: $(<"$FAKE_GH_LOG.body")"
   assert_archived "$session_id" completed
   record="$(<"$(archived_session_dir "$session_id")/session.json")"
   [[ "$(jq -c '.apply.issue | {number, url}' <<<"$record")" \
@@ -1270,11 +1272,17 @@ test_status_shows_state_agents_and_next_action_without_raw_content() {
   [[ "$output" != *"Users need to export reports offline."* ]] || fail "expected status to exclude the requirement"
   [[ "$output" != *"Offline Export"* ]] || fail "expected status to exclude the requirement title"
 
-  jq '.status = "blocked" | .blockReason = "needs_human"' "$session_dir/session.json" > "$GRILL_TMP/needs-human.json"
+  jq '.status = "blocked" | .blockReason = "needs_human" | .humanInputPath = "human-input-ex-0004.md"' \
+    "$session_dir/session.json" > "$GRILL_TMP/needs-human.json"
   cp "$GRILL_TMP/needs-human.json" "$session_dir/session.json"
   output="$(grill status --id "$session_id")"
   assert_contains "$output" "Block reason: needs_human"
-  assert_contains "$output" "Next action: write your input under ## Answers in the human-input file in $session_dir, then run: ralph.sh grill resume --id $session_id"
+  assert_contains "$output" "Next action: write your input under ## Answers in $session_dir/human-input-ex-0004.md, then run: ralph.sh grill resume --id $session_id"
+
+  jq '.blockReason = "transient_failure"' "$session_dir/session.json" > "$GRILL_TMP/transient.json"
+  cp "$GRILL_TMP/transient.json" "$session_dir/session.json"
+  output="$(grill status --id "$session_id")"
+  assert_contains "$output" "Next action: when the provider recovers, run: ralph.sh grill resume --id $session_id"
 
   teardown_grill_repo
 }
@@ -1326,7 +1334,7 @@ test_cleanup_deletes_terminal_sessions_and_refuses_active_ones() {
   grill cleanup --id 20260924-100000-0004 >/dev/null
   [[ ! -e "$archive_dir/2026-09-24-20260924-100000-0004" ]] || fail "expected archived rejected session deleted"
 
-  for status in starting grilling blocked applying; do
+  for status in grilling blocked applying; do
     n=$((n + 1))
     session_id="20260924-110000-000$n"
     write_fixture_session "$GRILL_SESSIONS/$session_id" "$session_id" "$status"
@@ -1335,6 +1343,27 @@ test_cleanup_deletes_terminal_sessions_and_refuses_active_ones() {
     [[ -f "$GRILL_SESSIONS/$session_id/logs/ex-0001-grilling.jsonl" ]] || fail "expected $status session logs intact"
   done
 
+  teardown_grill_repo
+}
+
+test_cleanup_deletes_a_crashed_start_but_not_a_running_one() {
+  local holder
+
+  setup_grill_repo
+  write_fixture_session "$GRILL_SESSIONS/20260924-120000-0001" 20260924-120000-0001 starting
+  write_fixture_session "$GRILL_SESSIONS/20260924-120000-0002" 20260924-120000-0002 starting
+  sleep 30 &
+  holder=$!
+  ln -s "$holder" "$GRILL_SESSIONS/20260924-120000-0002/lock"
+
+  expect_grill_failure "is starting: its start was interrupted" resume --id 20260924-120000-0001
+  grill cleanup --id 20260924-120000-0001 >/dev/null
+  [[ ! -e "$GRILL_SESSIONS/20260924-120000-0001" ]] || fail "expected the crashed start deleted"
+  expect_grill_failure "is locked by another coordinator (PID $holder)" cleanup --id 20260924-120000-0002
+  [[ -f "$GRILL_SESSIONS/20260924-120000-0002/session.json" ]] || fail "expected the running start kept"
+
+  kill "$holder" 2>/dev/null || true
+  wait "$holder" 2>/dev/null || true
   teardown_grill_repo
 }
 
@@ -1382,8 +1411,7 @@ test_resume_fails_on_a_live_lock_and_reclaims_a_dead_one() {
 
   sleep 30 &
   holder=$!
-  mkdir "$session_dir/lock"
-  printf '%s\n' "$holder" > "$session_dir/lock/pid"
+  ln -s "$holder" "$session_dir/lock"
 
   set +e
   output="$(grill resume --id "$session_id" 2>&1)"
@@ -1392,7 +1420,7 @@ test_resume_fails_on_a_live_lock_and_reclaims_a_dead_one() {
   [[ "$status" -ne 0 ]] || fail "expected resume to fail on a live lock"
   assert_contains "$output" "is locked by another coordinator (PID $holder)"
   [[ "$(claude_call_count)" == "0" ]] || fail "expected no Agent calls while locked"
-  [[ "$(<"$session_dir/lock/pid")" == "$holder" ]] || fail "expected the live lock untouched"
+  [[ "$(readlink "$session_dir/lock")" == "$holder" ]] || fail "expected the live lock untouched"
 
   kill "$holder"
   wait "$holder" 2>/dev/null || true
@@ -1401,6 +1429,43 @@ test_resume_fails_on_a_live_lock_and_reclaims_a_dead_one() {
   [[ "$(jq -r '.blockReason' "$session_dir/session.json")" == "awaiting_confirmation" ]] \
     || fail "expected resume to proceed after reclaiming a dead lock"
   [[ ! -e "$session_dir/lock" ]] || fail "expected resume to release the reclaimed lock"
+
+  teardown_grill_repo
+}
+
+# A coordinator that finds a dead owner's lock while another is reclaiming it
+# refuses instead of removing it, and the lock is created with its owner PID
+# in one step, so no lock is ever left without an owner.
+test_lock_reclaim_is_guarded_and_never_steals_a_fresh_lock() {
+  local session_id session_dir dead output status
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(start_then_rewind)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  sleep 0 &
+  dead=$!
+  wait "$dead" 2>/dev/null || true
+
+  ln -s "$dead" "$session_dir/lock"
+  mkdir "$session_dir/lock.reclaim"
+  set +e
+  output="$(grill resume --id "$session_id" 2>&1)"
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || fail "expected resume to refuse while another coordinator reclaims the lock"
+  assert_contains "$output" "another coordinator is reclaiming the lock"
+  [[ "$(readlink "$session_dir/lock")" == "$dead" ]] || fail "expected the lock left to the reclaiming coordinator"
+  [[ "$(claude_call_count)" == "0" ]] || fail "expected no Agent calls while the lock is being reclaimed"
+
+  rmdir "$session_dir/lock.reclaim"
+  (
+    source "$ROOT_DIR/scripts/grill-record.sh"
+    grill_record_lock "$session_dir"
+    [[ "$(readlink "$session_dir/lock")" == "$BASHPID" || "$(readlink "$session_dir/lock")" == "$$" ]] \
+      || fail "expected the reclaimed lock to name its new owner"
+    [[ ! -e "$session_dir/lock.reclaim" ]] || fail "expected the reclaim guard released"
+  )
 
   teardown_grill_repo
 }
@@ -1418,16 +1483,15 @@ test_sessions_with_different_ids_hold_their_locks_at_once() {
 
   sleep 30 &
   holder=$!
-  mkdir "$GRILL_SESSIONS/$first/lock"
-  printf '%s\n' "$holder" > "$GRILL_SESSIONS/$first/lock/pid"
-  exchange_effect ex-0003 "[[ -d '$GRILL_SESSIONS/$first/lock' && -d '$GRILL_SESSIONS/$second/lock' ]] && touch '$GRILL_TMP/both-locked'"
+  ln -s "$holder" "$GRILL_SESSIONS/$first/lock"
+  exchange_effect ex-0003 "[[ -L '$GRILL_SESSIONS/$first/lock' && -L '$GRILL_SESSIONS/$second/lock' ]] && touch '$GRILL_TMP/both-locked'"
 
   grill resume --id "$second" >/dev/null
 
   [[ -f "$GRILL_TMP/both-locked" ]] || fail "expected both sessions locked during the second resume"
   [[ "$(jq -r '.blockReason' "$GRILL_SESSIONS/$second/session.json")" == "awaiting_confirmation" ]] \
     || fail "expected the second session to reach the gate"
-  [[ "$(<"$GRILL_SESSIONS/$first/lock/pid")" == "$holder" ]] || fail "expected the first session lock untouched"
+  [[ "$(readlink "$GRILL_SESSIONS/$first/lock")" == "$holder" ]] || fail "expected the first session lock untouched"
   kill "$holder"
   wait "$holder" 2>/dev/null || true
 
@@ -1777,7 +1841,9 @@ test_codex_argv_carries_role_access_policy() {
     [[ "$(<"$FAKE_CODEX_DIR/calls/$call/pwd")" == "$repo" ]] || fail "expected call $call to run in the repository"
     case "$call" in
       0002|0005)
-        [[ "$(codex_flag_value "$call" --sandbox)" == "read-only" ]] || fail "expected answering call $call read-only"
+        # The profile alone sets read-only: an explicit --sandbox would
+        # override it and drop its network grant.
+        [[ -z "$(codex_flag_value "$call" --sandbox)" ]] || fail "expected answering call $call without --sandbox"
         jq -e 'index("default_permissions=\"ralph-answering\"")
           and index("permissions.ralph-answering.extends=\":read-only\"")
           and index("permissions.ralph-answering.network.enabled=true")' <<<"$config" >/dev/null \
@@ -1794,6 +1860,12 @@ test_codex_argv_carries_role_access_policy() {
         ;;
     esac
   done
+  # The capability probe renders the same policies the calls use.
+  [[ "$(jq -c 'map(select(. != "debug" and . != "prompt-input"))' "$FAKE_CODEX_DIR/probes.log" | sort -u | wc -l | tr -d ' ')" == "2" ]] \
+    || fail "expected one probe policy per role"
+  jq -e 'index("default_permissions=\"ralph-answering\"") and (index("--sandbox") | not)' \
+    <<<"$(grep ralph-answering "$FAKE_CODEX_DIR/probes.log" | head -n 1)" >/dev/null \
+    || fail "expected the answering probe to use the profile without --sandbox"
 
   teardown_grill_repo
 }
@@ -1905,6 +1977,536 @@ test_codex_kill_recovery_reemits_when_received_and_resends_when_not() {
   done
 }
 
+# --- Review fixes for PR #61 ---
+
+# Codex sends --output-schema as a strict response format: every object must
+# set additionalProperties false and list every property as required, and a
+# union may only make a value nullable.
+test_output_schemas_are_strict() {
+  local schema
+
+  for schema in "$ROOT_DIR"/prompts/grill/schemas/*.schema.json; do
+    jq -e '[.. | objects | select(has("properties"))]
+      | length > 0
+        and all(.[]; .additionalProperties == false and ((.required // []) | sort) == (.properties | keys | sort))' \
+      "$schema" >/dev/null || fail "expected every object in $(basename "$schema") strict"
+    jq -e '[.. | objects | select(has("oneOf") or has("allOf"))] | length == 0' "$schema" >/dev/null \
+      || fail "expected no oneOf/allOf in $(basename "$schema")"
+    # The Claude CLI rejects a $schema dialect it cannot resolve.
+    jq -e 'has("$schema") | not' "$schema" >/dev/null || fail "expected no \$schema key in $(basename "$schema")"
+    jq -e '[.. | objects | select(has("anyOf")) | .anyOf | any(.[]; . == {"type": "null"})] | all' "$schema" >/dev/null \
+      || fail "expected anyOf only for nullable values in $(basename "$schema")"
+  done
+}
+
+# Messages in the strict shape (unused members null) validate like their
+# sparse equivalents, and nulls never reach the record.
+test_strict_shape_messages_with_nulls_reach_the_gate() {
+  local session_dir record
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  exchange_fixture ex-0003 '{"exchangeId":"ex-0003","round":1,
+    "questions":[{"id":"storage-backend","title":"Where are exports stored?","body":"Pick one.",
+      "choices":[{"id":"sqlite","label":"SQLite","description":null}],
+      "recommendation":{"choiceId":null,"text":"Use a local file","rationale":"No server."},
+      "challenges":null}],
+    "reopens":null}'
+  exchange_fixture ex-0004 '{"exchangeId":"ex-0004","answers":[
+      {"questionId":"storage-backend","choiceId":null,"text":"A local SQLite file","rationale":"No server.","evidence":["README.md"]}],
+    "needsHuman":null}'
+  exchange_fixture ex-0005 '{"exchangeId":"ex-0005","round":2,"questions":[],"reopens":null}'
+  exchange_fixture ex-0006 "$(summary_fixture ex-0006 "- Storage: SQLite.")"
+  exchange_fixture ex-0007 '{"exchangeId":"ex-0007","faithful":false,
+    "discrepancies":[{"questionId":null,"problem":"Tone.","fix":"None needed."}]}'
+  exchange_fixture ex-0008 "$(summary_fixture ex-0008 "- Storage: SQLite.")"
+
+  grill start --requirement-file "$REQUIREMENT_FILE" --grilling-agent claude --answering-agent claude >/dev/null 2>&1
+
+  session_dir="$(only_session_dir)"
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] || fail "expected strict-shape messages to reach the gate"
+  [[ "$(jq -c '.decisions["storage-backend"].decision' <<<"$record")" == '"A local SQLite file"' ]] \
+    || fail "expected the free-text decision, got $(jq -c '.decisions' <<<"$record")"
+  ! grep -q 'null' "$session_dir/messages/ex-0004.json" || fail "expected null members dropped from the saved message"
+
+  teardown_grill_repo
+}
+
+# An `&` (and other replacement metacharacters) in the requirement reaches
+# both Agents verbatim.
+test_requirement_text_reaches_the_agents_verbatim() {
+  local prompt
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  printf '# R&D export\n\nRun make && make test, then copy a\\&b and {{REPO_ROOT}}.\n' > "$REQUIREMENT_FILE"
+
+  grill start --requirement-file "$REQUIREMENT_FILE" --grilling-agent claude --answering-agent claude >/dev/null 2>&1
+
+  for call in 0001 0002; do
+    prompt="$(claude_flag_value "$call" -p)"
+    assert_contains "$prompt" "# R&D export"
+    assert_contains "$prompt" 'Run make && make test, then copy a\&b and {{REPO_ROOT}}.'
+    [[ "$prompt" != *"{{REQUIREMENT}}"* ]] || fail "expected no placeholder in call $call"
+  done
+
+  teardown_grill_repo
+}
+
+# Without refs/remotes/origin/HEAD the default branch comes from the remote's
+# own HEAD, and an unknown default branch refuses to start instead of
+# guessing.
+test_default_branch_falls_back_to_the_remote_head_and_never_guesses() {
+  local branch
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" remote set-head origin -d
+  git -C "$GRILL_REPO" config init.defaultBranch trunk
+
+  grill start --issue 51 --grilling-agent claude --answering-agent claude >/dev/null 2>&1
+  branch="$(git -C "$GRILL_REPO" branch --show-current)"
+  [[ "$branch" == "grill/issue-51-add-dark-mode" ]] || fail "expected a planning branch from the remote HEAD, got $branch"
+  [[ "$(jq -r '.repo.defaultBranch' "$(only_session_dir)/session.json")" == "main" ]] || fail "expected default branch main"
+
+  git -C "$GRILL_REPO" checkout -q main
+  rm -rf "$GRILL_SESSIONS" "$FAKE_CLAUDE_DIR/calls"
+  git -C "$GRILL_REPO" remote set-url origin "$GRILL_TMP/missing.git"
+  expect_start_failure "could not determine the default branch of remote 'origin'" \
+    --issue 52 --grilling-agent claude --answering-agent claude
+  [[ "$(git -C "$GRILL_REPO" branch --show-current)" == "main" ]] || fail "expected no branch change on refusal"
+
+  teardown_grill_repo
+}
+
+# Starts a two-round session on feature-work with an approve decision written
+# at the gate and prints its ID.
+start_approved_session() {
+  local session_id
+
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1)"
+  write_confirmation_decision "$GRILL_SESSIONS/$session_id/confirmation.md" approve
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+  : > "$FAKE_GH_LOG"
+  printf '%s\n' "$session_id"
+}
+
+test_approve_waits_for_the_session_branch_to_be_checked_out() {
+  local session_id session_dir head output
+
+  setup_grill_repo
+  session_id="$(start_approved_session)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  git -C "$GRILL_REPO" checkout -q -b elsewhere
+  head="$(git -C "$GRILL_REPO" rev-parse HEAD)"
+
+  output="$(grill resume --id "$session_id" 2>&1)"
+
+  assert_contains "$output" "Not approved: the session's branch is feature-work but elsewhere is checked out"
+  [[ "$(git -C "$GRILL_REPO" rev-parse HEAD)" == "$head" ]] || fail "expected no commit on the wrong branch"
+  [[ "$(jq -r '.status' "$session_dir/session.json")" == "blocked" ]] || fail "expected the session to stay at the gate"
+  [[ -z "$(gh_writes)" ]] || fail "expected no issue write"
+
+  git -C "$GRILL_REPO" checkout -q feature-work
+  grill resume --id "$session_id" >/dev/null 2>&1
+
+  [[ "$(git -C "$GRILL_REPO" show --name-only --format= feature-work)" == "CONTEXT.md" ]] \
+    || fail "expected the docs commit on feature-work"
+  [[ "$(git -C "$GRILL_REPO" rev-parse elsewhere)" == "$head" ]] || fail "expected elsewhere untouched"
+  assert_archived "$session_id" completed
+
+  teardown_grill_repo
+}
+
+test_approve_refuses_an_applying_commit_on_another_branch() {
+  local session_id session_dir output status
+
+  setup_grill_repo
+  session_id="$(start_approved_session)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  jq '.status = "applying" | .blockReason = null' "$session_dir/session.json" > "$GRILL_TMP/applying.json"
+  cp "$GRILL_TMP/applying.json" "$session_dir/session.json"
+  git -C "$GRILL_REPO" checkout -q -b elsewhere
+
+  set +e
+  output="$(grill resume --id "$session_id" 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -ne 0 ]] || fail "expected applying on the wrong branch to fail"
+  assert_contains "$output" "the session's branch feature-work is not checked out"
+  [[ "$(jq -c '.apply.commit' "$session_dir/session.json")" == "null" ]] || fail "expected no commit recorded"
+  [[ "$(git -C "$GRILL_REPO" rev-parse elsewhere)" == "$(git -C "$GRILL_REPO" rev-parse main)" ]] \
+    || fail "expected no commit on elsewhere"
+
+  teardown_grill_repo
+}
+
+# A change made after the gate was written is flagged before anything is
+# committed: approve rewrites confirmation.md and asks again.
+test_approve_reflags_changes_made_after_the_gate() {
+  local session_id session_dir output confirmation
+
+  setup_grill_repo
+  session_id="$(start_approved_session)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  printf 'x\n' > "$GRILL_REPO/notes.txt"
+
+  output="$(grill resume --id "$session_id" 2>&1)"
+
+  assert_contains "$output" "Not approved: the repository changed after the gate was written"
+  confirmation="$(<"$session_dir/confirmation.md")"
+  assert_contains "$confirmation" 'Changed outside CONTEXT.md and docs/adr/: `notes.txt`'
+  [[ "$(jq -r '.status' "$session_dir/session.json")" == "blocked" ]] || fail "expected the session to stay at the gate"
+  [[ "$(git -C "$GRILL_REPO" rev-list --count HEAD)" == "1" ]] || fail "expected no commit"
+  [[ "$(claude_call_count)" == "0" ]] || fail "expected no Agent calls"
+
+  write_confirmation_decision "$session_dir/confirmation.md" approve
+  grill resume --id "$session_id" >/dev/null 2>&1
+
+  [[ "$(git -C "$GRILL_REPO" show --name-only --format= HEAD)" == "CONTEXT.md" ]] || fail "expected only CONTEXT.md committed"
+  assert_contains "$(git -C "$GRILL_REPO" status --porcelain --untracked-files=all)" "?? notes.txt"
+  assert_archived "$session_id" completed
+
+  teardown_grill_repo
+}
+
+# A crash after an answers exchange completes but before its decisions are
+# merged loses nothing: resume applies them first.
+test_resume_applies_answers_a_crash_left_unapplied() {
+  local session_id session_dir record
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  jq '.status = "grilling" | .blockReason = null | .round = 1 | .decisions = {}
+    | .exchanges |= (.[:4] | map(del(.effectsApplied)))' "$session_dir/session.json" > "$GRILL_TMP/crashed.json"
+  cp "$GRILL_TMP/crashed.json" "$session_dir/session.json"
+  rm -f "$session_dir/confirmation.md"
+  rm -rf "$FAKE_CLAUDE_DIR/calls" "$FAKE_CLAUDE_DIR/seen"
+
+  grill resume --id "$session_id" >/dev/null 2>&1
+
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] || fail "expected resume to reach the gate"
+  [[ "$(jq -c '.decisions | map_values(.exchangeId)' <<<"$record")" \
+    == '{"storage-backend":"ex-0006","export-format":"ex-0004","sync-mode":"ex-0006"}' ]] \
+    || fail "expected ex-0004's decisions applied on resume, got $(jq -c '.decisions' <<<"$record")"
+  assert_contains "$(claude_flag_value 0001 -p)" "[ralph-exchange:ex-0005]"
+  assert_contains "$(claude_flag_value 0001 -p)" "export-format"
+
+  teardown_grill_repo
+}
+
+test_resume_blocks_on_a_needs_human_reply_a_crash_left_unapplied() {
+  local session_id session_dir record
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(start_needs_human_session)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  jq '.status = "grilling" | .blockReason = null | .humanInputPath = null
+    | .exchanges |= map(del(.effectsApplied))' "$session_dir/session.json" > "$GRILL_TMP/crashed.json"
+  cp "$GRILL_TMP/crashed.json" "$session_dir/session.json"
+  rm -f "$session_dir/human-input-ex-0004.md"
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+
+  grill resume --id "$session_id" >/dev/null 2>&1
+
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "needs_human" ]] || fail "expected the needsHuman reply to block on resume"
+  [[ -f "$session_dir/human-input-ex-0004.md" ]] || fail "expected the human-input file rewritten"
+  [[ "$(claude_call_count)" == "0" ]] || fail "expected no Agent call before the human answers"
+
+  teardown_grill_repo
+}
+
+# A crash right after leaving the block, before the human_input exchange is
+# recorded, still sends the human's input on resume.
+test_resume_sends_human_input_a_crash_left_unsent() {
+  local session_id session_dir record
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(start_needs_human_session)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  printf 'Exports are shared across devices, so use Postgres.\n' >> "$session_dir/human-input-ex-0004.md"
+  exchange_fixture ex-0005 '{"exchangeId":"ex-0005","answers":[
+      {"questionId":"storage-backend","choiceId":"postgres","rationale":"The human says exports are shared.","evidence":["human-input-ex-0004.md"]},
+      {"questionId":"export-format","choiceId":"csv","rationale":"Users open exports in spreadsheets.","evidence":["README.md"]}]}'
+  queue_closing_from 6 2
+  jq '.status = "grilling" | .lastBlockReason = .blockReason | .blockReason = null
+    | .pendingHumanInput = {blockReason: "needs_human", afterExchanges: (.exchanges | length)}' \
+    "$session_dir/session.json" > "$GRILL_TMP/crashed.json"
+  cp "$GRILL_TMP/crashed.json" "$session_dir/session.json"
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+
+  grill resume --id "$session_id" >/dev/null 2>&1
+
+  [[ "$(claude_flag_value 0001 --resume)" == "$UUID_ANSWERING" ]] || fail "expected the human input sent to the Answering session"
+  assert_contains "$(claude_flag_value 0001 -p)" "Exports are shared across devices, so use Postgres."
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -c '[.exchanges[4:6][] | [.id, .kind]]' <<<"$record")" \
+    == '[["ex-0005","human_input"],["ex-0006","correction_relay"]]' ]] || fail "expected human_input then correction_relay"
+  [[ "$(jq -c '.pendingHumanInput' <<<"$record")" == "null" ]] || fail "expected pendingHumanInput cleared"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] || fail "expected grilling to continue to the gate"
+
+  teardown_grill_repo
+}
+
+test_transient_failures_past_the_last_retry_block_and_resume_retries() {
+  local session_dir record output
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  printf '2\n' > "$FAKE_CLAUDE_DIR/exchanges/ex-0003.transient"
+
+  RALPH_RETRY_DELAYS=0 grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude >/dev/null 2>&1
+
+  session_dir="$(only_session_dir)"
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -r '.status' <<<"$record")" == "blocked" ]] || fail "expected blocked, got $(jq -r '.status' <<<"$record")"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "transient_failure" ]] || fail "expected transient_failure"
+  [[ "$(exchange_status "$session_dir" ex-0003)" == "sent" ]] || fail "expected ex-0003 kept in flight"
+  [[ "$(jq -r '.agents.grilling.nativeSessionId' <<<"$record")" == "$UUID_GRILLING" ]] || fail "expected the native session kept"
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+
+  output="$(grill resume --id "$(basename "$session_dir")" 2>&1)"
+
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] || fail "expected resume to reach the gate: $output"
+  [[ "$(jq -c '[.exchanges[].id]' <<<"$record")" \
+    == '["ex-0001","ex-0002","ex-0003","ex-0004","ex-0005","ex-0006"]' ]] || fail "expected no new exchange for the retry"
+  [[ "$(claude_flag_value 0001 --resume)" == "$UUID_GRILLING" ]] || fail "expected the same native session resumed"
+
+  teardown_grill_repo
+}
+
+test_retried_provider_logs_stay_owner_only_and_appear_in_logs() {
+  local session_dir log output
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  touch "$FAKE_CLAUDE_DIR/exchanges/ex-0003.transient"
+
+  (umask 022 && RALPH_RETRY_DELAYS=0 grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude >/dev/null 2>&1)
+
+  session_dir="$(only_session_dir)"
+  for log in "$session_dir"/logs/*; do
+    [[ "$(file_mode "$log")" == "600" ]] || fail "expected $(basename "$log") mode 600, got $(file_mode "$log")"
+  done
+  [[ -f "$session_dir/logs/ex-0003-grilling.jsonl.attempt-1" ]] || fail "expected the failed attempt kept"
+
+  output="$(grill logs --id "$(basename "$session_dir")")"
+  assert_contains "$output" "-- log, failed attempt 1"
+
+  teardown_grill_repo
+}
+
+test_codex_retried_logs_stay_owner_only() {
+  local session_dir log
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  touch "$FAKE_CLAUDE_DIR/exchanges/ex-0003.transient"
+
+  (umask 022 && RALPH_RETRY_DELAYS=0 grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent codex --answering-agent codex >/dev/null 2>&1)
+
+  session_dir="$(only_session_dir)"
+  [[ -f "$session_dir/logs/ex-0003-grilling.jsonl.attempt-1" ]] || fail "expected the failed codex attempt kept"
+  for log in "$session_dir"/logs/*; do
+    [[ "$(file_mode "$log")" == "600" ]] || fail "expected $(basename "$log") mode 600, got $(file_mode "$log")"
+  done
+
+  teardown_grill_repo
+}
+
+# When the native store gives no answer (unknown), a crashed exchange is
+# re-emitted, never resent.
+test_kill_recovery_reemits_when_receipt_is_unknown() {
+  local provider status session_dir prompt
+
+  for provider in claude codex; do
+    setup_grill_repo
+    git -C "$GRILL_REPO" checkout -q -b feature-work
+    queue_two_round_run
+    printf 'received\n' > "$FAKE_CLAUDE_DIR/exchanges/ex-0004.kill"
+
+    status="$(grill_as_job start --requirement-file "$REQUIREMENT_FILE" \
+      --grilling-agent "$provider" --answering-agent "$provider")"
+    [[ "$status" -ne 0 ]] || fail "expected the killed $provider coordinator to exit non-zero"
+    session_dir="$(only_session_dir)"
+    rm -rf "$CLAUDE_CONFIG_DIR/projects" "$CODEX_HOME/sessions"
+    rm -rf "$FAKE_CLAUDE_DIR/calls" "$FAKE_CODEX_DIR/calls"
+
+    grill resume --id "$(basename "$session_dir")" >/dev/null 2>&1
+
+    [[ "$(jq -r '.exchanges[] | select(.id == "ex-0004") | [.received, .recovery] | join(":")' "$session_dir/session.json")" \
+      == "unknown:reemit" ]] || fail "expected $provider unknown receipt to re-emit"
+    if [[ "$provider" == "claude" ]]; then
+      prompt="$(claude_flag_value 0001 -p)"
+    else
+      prompt="$(codex_prompt 0001)"
+    fi
+    assert_contains "$prompt" "Re-emit your reply to exchange ex-0004"
+    [[ "$(jq -r '.blockReason' "$session_dir/session.json")" == "awaiting_confirmation" ]] \
+      || fail "expected $provider recovery to reach the gate"
+    assert_contains "$(grill logs --id "$(basename "$session_dir")")" "-- recovery"
+
+    teardown_grill_repo
+  done
+}
+
+# TERM to the coordinator alone stops the running Agent call at once,
+# releases the lock and leaves the exchange in flight for resume.
+test_term_to_the_coordinator_stops_the_agent_call_and_releases_the_lock() {
+  local pid session_dir started elapsed status=0
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  exchange_effect ex-0003 "touch '$GRILL_TMP/in-ex-0003'; sleep 37"
+
+  (cd "$GRILL_REPO" && PATH="$GRILL_TMP/bin:$PATH" exec "$GRILL_RALPH" grill start \
+    --requirement-file "$REQUIREMENT_FILE" --grilling-agent claude --answering-agent claude) >/dev/null 2>&1 &
+  pid=$!
+  for _ in $(seq 1 100); do
+    [[ ! -f "$GRILL_TMP/in-ex-0003" ]] || break
+    sleep 0.1
+  done
+  [[ -f "$GRILL_TMP/in-ex-0003" ]] || fail "expected ex-0003 to start"
+
+  started="$(date +%s)"
+  kill -TERM "$pid"
+  wait "$pid" || status=$?
+  elapsed=$(( $(date +%s) - started ))
+
+  [[ "$status" -eq 143 ]] || fail "expected exit 143 on TERM, got $status"
+  [[ "$elapsed" -le 5 ]] || fail "expected the coordinator to stop within 5s, took ${elapsed}s"
+  ! pgrep -f "sleep 37" >/dev/null || fail "expected the Agent call's processes stopped"
+  session_dir="$(only_session_dir)"
+  [[ ! -e "$session_dir/lock" ]] || fail "expected the lock released"
+  [[ "$(exchange_status "$session_dir" ex-0003)" == "sent" ]] || fail "expected ex-0003 left in flight"
+
+  rm -f "$FAKE_CLAUDE_DIR/exchanges/ex-0003.sh"
+  grill resume --id "$(basename "$session_dir")" >/dev/null 2>&1
+  [[ "$(jq -r '.blockReason' "$session_dir/session.json")" == "awaiting_confirmation" ]] || fail "expected resume to reach the gate"
+
+  teardown_grill_repo
+}
+
+# A create that succeeded before a crash is found by its session marker on
+# retry, so no duplicate issue is created.
+test_interrupted_issue_create_is_found_instead_of_duplicated() {
+  local session_id session_dir status=0 record
+
+  setup_grill_repo
+  session_id="$(start_approved_session)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  touch "$GRILL_TMP/create-crash"
+
+  FAKE_GH_CREATE_CRASH_ONCE="$GRILL_TMP/create-crash" FAKE_GH_CREATED_ISSUE=91 \
+    grill resume --id "$session_id" >/dev/null 2>&1 || status=$?
+
+  [[ "$status" -ne 0 ]] || fail "expected the interrupted create to fail"
+  [[ "$(jq -r '.status' "$session_dir/session.json")" == "applying" ]] || fail "expected applying"
+  [[ "$(jq -c '.apply.issue' "$session_dir/session.json")" == "null" ]] || fail "expected the issue unrecorded"
+
+  FAKE_GH_CREATED_ISSUE=92 grill resume --id "$session_id" >/dev/null 2>&1
+
+  [[ "$(jq -c 'select(.[0] == "issue" and .[1] == "create")' "$FAKE_GH_LOG" | wc -l | tr -d ' ')" == "1" ]] \
+    || fail "expected exactly one gh issue create"
+  jq -e 'select(.[0] == "issue" and .[1] == "list")' "$FAKE_GH_LOG" >/dev/null || fail "expected the retry to look for the issue"
+  record="$(<"$(archived_session_dir "$session_id")/session.json")"
+  [[ "$(jq -r '.apply.issue.url' <<<"$record")" == "https://github.com/acme/target/issues/91" ]] \
+    || fail "expected the first created issue recorded, got $(jq -c '.apply.issue' <<<"$record")"
+
+  teardown_grill_repo
+}
+
+test_failed_issue_edit_is_retried_alone_on_resume() {
+  local session_id session_dir status=0 commits
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+  session_id="$(grill start --issue 51 --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  write_confirmation_decision "$session_dir/confirmation.md" approve
+  : > "$FAKE_GH_LOG"
+  touch "$GRILL_TMP/gh-fail"
+
+  FAKE_GH_FAIL_ONCE="$GRILL_TMP/gh-fail" grill resume --id "$session_id" >/dev/null 2>&1 || status=$?
+
+  [[ "$status" -ne 0 ]] || fail "expected the failed edit to exit non-zero"
+  [[ "$(jq -r '.status' "$session_dir/session.json")" == "applying" ]] || fail "expected applying"
+  [[ "$(jq -c '.apply.push != null' "$session_dir/session.json")" == "true" ]] || fail "expected the push recorded"
+  commits="$(git -C "$GRILL_REPO" rev-list --count HEAD)"
+
+  grill resume --id "$session_id" >/dev/null 2>&1
+
+  [[ "$(git -C "$GRILL_REPO" rev-list --count HEAD)" == "$commits" ]] || fail "expected no new commit"
+  [[ "$(gh_writes | wc -l | tr -d ' ')" == "2" ]] || fail "expected the failed edit and its retry, got: $(gh_writes)"
+  assert_archived "$session_id" completed
+
+  teardown_grill_repo
+}
+
+# Target repositories often ignore the Ralph directory (or its session
+# storage); the gate's diff must still work there.
+test_gate_works_when_ralph_session_storage_is_gitignored() {
+  local session_dir
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  printf 'ralph-v2/grilling-sessions/\nralph-v2/archive/\n' >> "$GRILL_REPO/.git/info/exclude"
+  queue_two_round_run
+
+  grill start --requirement-file "$REQUIREMENT_FILE" --grilling-agent claude --answering-agent claude >/dev/null 2>&1
+
+  session_dir="$(only_session_dir)"
+  [[ "$(jq -r '.blockReason' "$session_dir/session.json")" == "awaiting_confirmation" ]] \
+    || fail "expected the gate with ignored session storage, got $(jq -r '.status' "$session_dir/session.json")"
+  assert_contains "$(<"$session_dir/confirmation.md")" "Offline Export"
+  assert_contains "$(<"$session_dir/confirmation.md")" "- No flags."
+
+  teardown_grill_repo
+}
+
+test_claude_settings_deny_git_index_and_gh_write_commands() {
+  local settings rule
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  grill start --requirement-file "$REQUIREMENT_FILE" --grilling-agent claude --answering-agent claude >/dev/null 2>&1
+
+  for call in 0001 0002; do
+    settings="$(claude_flag_value "$call" --settings)"
+    for rule in "Bash(git add:*)" "Bash(git rm:*)" "Bash(git restore:*)" "Bash(git clean:*)" \
+      "Bash(gh release create:*)" "Bash(gh label create:*)" "Bash(gh repo edit:*)" \
+      "Bash(gh workflow run:*)" "Bash(gh pr close:*)" "Bash(gh pr review:*)"; do
+      jq -e --arg rule "$rule" '.permissions.deny | index($rule)' <<<"$settings" >/dev/null \
+        || fail "expected call $call to deny $rule"
+    done
+    ! jq -e '.permissions.deny | index("Bash(gh run view:*)") or index("Bash(gh release view:*)")' <<<"$settings" >/dev/null \
+      || fail "expected gh reads left allowed"
+    jq -e '.sandbox.network.allowedDomains | index("api.github.com")' <<<"$settings" >/dev/null \
+      || fail "expected sandboxed gh to reach the GitHub API in call $call"
+    [[ "$(jq -r '.sandbox.enableWeakerNetworkIsolation' <<<"$settings")" == "true" ]] \
+      || fail "expected gh TLS verification allowed in call $call"
+  done
+
+  teardown_grill_repo
+}
+
 run_test test_start_rejects_invalid_inputs
 run_test test_start_creates_owner_only_record_with_frozen_config
 run_test test_start_opens_two_distinct_native_claude_sessions
@@ -1943,8 +2545,10 @@ run_test test_status_logs_and_cleanup_require_a_known_id
 run_test test_status_shows_state_agents_and_next_action_without_raw_content
 run_test test_logs_summarize_activity_per_role_and_exchange
 run_test test_cleanup_deletes_terminal_sessions_and_refuses_active_ones
+run_test test_cleanup_deletes_a_crashed_start_but_not_a_running_one
 
 run_test test_resume_fails_on_a_live_lock_and_reclaims_a_dead_one
+run_test test_lock_reclaim_is_guarded_and_never_steals_a_fresh_lock
 run_test test_sessions_with_different_ids_hold_their_locks_at_once
 run_test test_kill_mid_exchange_leaves_it_in_flight_and_resume_reemits_when_received
 run_test test_resume_after_a_kill_resends_an_exchange_the_session_never_received
@@ -1963,5 +2567,25 @@ run_test test_codex_capability_failure_refuses_before_native_sessions
 run_test test_codex_session_not_found_on_resume_is_context_lost
 run_test test_codex_transient_failure_is_retried_in_the_same_thread
 run_test test_codex_kill_recovery_reemits_when_received_and_resends_when_not
+
+run_test test_output_schemas_are_strict
+run_test test_strict_shape_messages_with_nulls_reach_the_gate
+run_test test_requirement_text_reaches_the_agents_verbatim
+run_test test_default_branch_falls_back_to_the_remote_head_and_never_guesses
+run_test test_approve_waits_for_the_session_branch_to_be_checked_out
+run_test test_approve_refuses_an_applying_commit_on_another_branch
+run_test test_approve_reflags_changes_made_after_the_gate
+run_test test_resume_applies_answers_a_crash_left_unapplied
+run_test test_resume_blocks_on_a_needs_human_reply_a_crash_left_unapplied
+run_test test_resume_sends_human_input_a_crash_left_unsent
+run_test test_transient_failures_past_the_last_retry_block_and_resume_retries
+run_test test_retried_provider_logs_stay_owner_only_and_appear_in_logs
+run_test test_codex_retried_logs_stay_owner_only
+run_test test_kill_recovery_reemits_when_receipt_is_unknown
+run_test test_term_to_the_coordinator_stops_the_agent_call_and_releases_the_lock
+run_test test_interrupted_issue_create_is_found_instead_of_duplicated
+run_test test_failed_issue_edit_is_retried_alone_on_resume
+run_test test_claude_settings_deny_git_index_and_gh_write_commands
+run_test test_gate_works_when_ralph_session_storage_is_gitignored
 
 echo "grill_test.sh passed"

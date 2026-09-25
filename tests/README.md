@@ -29,6 +29,6 @@ Run one or more suites by name:
 - `prompt_contracts_test.sh`: prompt and skill contracts that downstream agents must follow.
 - `skill_docs_test.sh`: bundled skill/link integrity and workflow documentation.
 - `parse_log_test.sh`: log summarization for Claude, Codex, and Pi JSONL output.
-- `grill_test.sh`: `ralph.sh grill` Automated Grilling Sessions against a temporary target repository with a local bare remote and scripted fake `claude`, `uuidgen`, and `gh`.
+- `grill_test.sh`: `ralph.sh grill` Automated Grilling Sessions against a temporary target repository with a local bare remote and scripted fake `claude`, `codex`, `uuidgen`, and `gh`. The fake `claude` and `codex` share one per-exchange fixture library (`install_grill_fake_common` in `tests/lib/test_helpers.sh`).
 
 External tools such as `claude`, `codex`, `pi`, `gh`, and `council` are faked inside the suite. Tests must be deterministic, offline, and safe to run repeatedly.

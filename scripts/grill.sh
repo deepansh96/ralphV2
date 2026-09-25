@@ -35,11 +35,11 @@ grill_main() {
   case "$subcommand" in
     start)
       shift
-      grill_start "$@"
+      grill_supervise grill_start "$@"
       ;;
     resume)
       shift
-      grill_resume "$@"
+      grill_supervise grill_resume "$@"
       ;;
     status|logs|cleanup)
       shift
@@ -103,6 +103,10 @@ grill_ralph_rel() {
   printf '%s\n' "${ralph_rel:+$ralph_rel/}"
 }
 
+# Prints the remote's default branch: the local refs/remotes/<remote>/HEAD, or
+# else the remote's own HEAD. Never guesses: on a wrong guess a session
+# started on the real default branch would skip its planning branch and
+# approve would push there.
 grill_default_branch() {
   local repo_root="$1"
   local remote="$2"
@@ -112,7 +116,13 @@ grill_default_branch() {
     printf '%s\n' "${ref#"$remote"/}"
     return 0
   fi
-  git -C "$repo_root" config init.defaultBranch 2>/dev/null || printf 'main\n'
+  ref="$(git -C "$repo_root" ls-remote --symref "$remote" HEAD 2>/dev/null \
+    | awk '$1 == "ref:" && $3 == "HEAD" { sub("^refs/heads/", "", $2); print $2; exit }')"
+  if [[ -n "$ref" ]]; then
+    printf '%s\n' "$ref"
+    return 0
+  fi
+  grill_die "could not determine the default branch of remote '$remote'; run: git remote set-head $remote --auto"
 }
 
 # Prints the prompt for a role's native session start.
@@ -121,17 +131,25 @@ grill_render_start_prompt() {
   local exchange_id="$2"
   local repo_root="$3"
   local requirement_file="$4"
-  local prompts_dir="$SCRIPT_DIR/prompts/grill"
-  local role_prompt fragment
 
-  role_prompt="$(<"$prompts_dir/$role-agent.md")"
-  fragment="$(<"$prompts_dir/session-start.md")"
-  role_prompt="$role_prompt"$'\n\n'"$fragment"
-  role_prompt="${role_prompt//\{\{SKILLS_DIR\}\}/$SCRIPT_DIR/skills}"
-  role_prompt="${role_prompt//\{\{REPO_ROOT\}\}/$repo_root}"
-  role_prompt="${role_prompt//\{\{EXCHANGE_ID\}\}/$exchange_id}"
-  role_prompt="${role_prompt//\{\{REQUIREMENT\}\}/$(<"$requirement_file")}"
-  printf '%s\n' "$role_prompt"
+  printf '%s\n\n%s\n' "$(<"$SCRIPT_DIR/prompts/grill/$role-agent.md")" \
+    "$(<"$SCRIPT_DIR/prompts/grill/session-start.md")" \
+    | grill_fill_placeholders SKILLS_DIR "$SCRIPT_DIR/skills" REPO_ROOT "$repo_root" \
+      EXCHANGE_ID "$exchange_id" REQUIREMENT "$(<"$requirement_file")"
+}
+
+# Replaces {{KEY}} placeholders in stdin with the given KEY VALUE pairs. Both
+# pattern and replacement are quoted, so values are inserted verbatim (bash
+# 5.2's patsub_replacement would otherwise expand `&` in them).
+grill_fill_placeholders() {
+  local text
+
+  text="$(cat)"
+  while [[ $# -ge 2 ]]; do
+    text="${text//"{{$1}}"/"$2"}"
+    shift 2
+  done
+  printf '%s\n' "$text"
 }
 
 grill_fail_record() {
@@ -153,6 +171,47 @@ grill_hold_lock() {
   trap 'grill_record_unlock "$GRILL_LOCKED_DIR"' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
+}
+
+# Runs a coordinator command (start or resume) in a child process and waits
+# for it. Bash defers a trap until the foreground command finishes, and the
+# coordinator spends its time inside command substitutions around Agent calls,
+# so a signal sent to it directly would wait for the Agent call (and its retry
+# sleeps). The waiting parent reacts at once: it stops the child's whole
+# process tree, Agent calls first, and the child exits through its own traps,
+# releasing the lock with the in-flight exchange left for resume.
+GRILL_CHILD_PID=""
+grill_supervise() {
+  local status=0
+
+  "$@" &
+  GRILL_CHILD_PID=$!
+  trap 'grill_stop_child; exit 130' INT
+  trap 'grill_stop_child; exit 143' TERM
+  wait "$GRILL_CHILD_PID" || status=$?
+  trap - INT TERM
+  GRILL_CHILD_PID=""
+  return "$status"
+}
+
+grill_stop_child() {
+  [[ -n "$GRILL_CHILD_PID" ]] || return 0
+  grill_kill_tree "$GRILL_CHILD_PID"
+  wait "$GRILL_CHILD_PID" 2>/dev/null || true
+}
+
+# Sends TERM to a process and all its descendants, deepest first, each held
+# stopped until then so none can fork a replacement.
+grill_kill_tree() {
+  local pid="$1"
+  local child
+
+  kill -STOP "$pid" 2>/dev/null || true
+  for child in $(pgrep -P "$pid" 2>/dev/null); do
+    grill_kill_tree "$child"
+  done
+  kill -TERM "$pid" 2>/dev/null || true
+  kill -CONT "$pid" 2>/dev/null || true
 }
 
 # Starts one role's native session as a recorded exchange and stores its ID.
@@ -276,7 +335,7 @@ grill_start() {
   start_branch="$(git -C "$repo_root" branch --show-current)"
   [[ -n "$start_branch" ]] || { grill_die "HEAD is detached; check out a branch before grilling"; return 1; }
   start_head="$(git -C "$repo_root" rev-parse HEAD)"
-  default_branch="$(grill_default_branch "$repo_root" "$remote")"
+  default_branch="$(grill_default_branch "$repo_root" "$remote")" || return 1
 
   # Requirement snapshot source and slug.
   if [[ -n "$issue" ]]; then
@@ -415,6 +474,10 @@ grill_resume() {
       grill_die "session $session_id is $status and cannot be resumed; start a new session with: ralph.sh grill start"
       return 1
       ;;
+    starting)
+      grill_die "session $session_id is starting: its start was interrupted and cannot be resumed; delete it with: ralph.sh grill cleanup --id $session_id"
+      return 1
+      ;;
     *)
       grill_die "session $session_id is $status; resume continues only grilling or blocked sessions"
       return 1
@@ -480,18 +543,22 @@ grill_confirmation_decision() {
 # to write and contacts no Agent.
 grill_resume_blocked() {
   local record_file="$1"
-  local session_id input_file block_reason decision answers
+  local session_id input_file block_reason decision
 
   session_id="$(jq -r '.id' "$record_file")"
   input_file="$(dirname "$record_file")/$(jq -r '.humanInputPath' "$record_file")"
   block_reason="$(jq -r '.blockReason' "$record_file")"
+  if [[ "$block_reason" == "transient_failure" ]]; then
+    grill_record_update "$record_file" '.status = "grilling" | .blockReason = null' || return 1
+    grill_resume_grilling "$record_file"
+    return
+  fi
   if [[ "$block_reason" == "awaiting_confirmation" ]]; then
     decision="$(grill_confirmation_decision "$input_file")"
     case "$decision" in
       correct) ;;
       approve)
-        grill_record_update "$record_file" '.status = "applying" | .blockReason = null' || return 1
-        grill_apply "$record_file"
+        grill_approve "$record_file"
         return
         ;;
       reject)
@@ -505,17 +572,19 @@ grill_resume_blocked() {
     esac
   fi
 
-  answers="$(grill_answers_section "$input_file")"
-  if [[ -z "$answers" ]]; then
+  if [[ -z "$(grill_answers_section "$input_file")" ]]; then
     echo "No human input yet: write it under ## Answers in $input_file, then run: ralph.sh grill resume --id $session_id"
     return 0
   fi
 
   # Human input goes to the Answering Agent first; the loop then relays its
   # updated answers to the Grilling Agent.
-  grill_record_update "$record_file" '.status = "grilling" | .lastBlockReason = .blockReason | .blockReason = null' || return 1
-  grill_step_human_input "$record_file" "$block_reason" "$answers" \
-    || [[ "$(jq -r '.status' "$record_file")" == "blocked" ]] || return 1
+  # pendingHumanInput is set in the same write that leaves blocked, so a crash
+  # before the human_input exchange is recorded still sends the input on
+  # resume; it is cleared once that exchange's effects are applied.
+  grill_record_update "$record_file" \
+    '.status = "grilling" | .lastBlockReason = .blockReason | .blockReason = null
+     | .pendingHumanInput = {blockReason: .lastBlockReason, afterExchanges: (.exchanges | length)}' || return 1
   grill_run "$record_file"
 }
 
@@ -567,8 +636,10 @@ grill_status() {
     grilling:*) next="run: ralph.sh grill resume --id $session_id" ;;
     blocked:awaiting_confirmation)
       next="edit $session_dir/confirmation.md, then run: ralph.sh grill resume --id $session_id" ;;
+    blocked:transient_failure)
+      next="when the provider recovers, run: ralph.sh grill resume --id $session_id" ;;
     blocked:*)
-      next="write your input under ## Answers in the human-input file in $session_dir, then run: ralph.sh grill resume --id $session_id" ;;
+      next="write your input under ## Answers in $session_dir/$(jq -r '.humanInputPath' "$record_file"), then run: ralph.sh grill resume --id $session_id" ;;
     applying:*) next="run: ralph.sh grill resume --id $session_id to finish applying" ;;
     *) next="none; delete it with: ralph.sh grill cleanup --id $session_id" ;;
   esac
@@ -585,18 +656,31 @@ grill_status() {
   printf 'Next action: %s\n' "$next"
 }
 
-# Prints summarized provider activity per exchange through the log parser.
+# Prints summarized provider activity per exchange through the log parser:
+# each exchange's log, then its failed transient attempts, re-emit and
+# recovery logs when present.
 grill_logs() {
-  local session_dir record_file id kind role log_path provider
+  local session_dir record_file id kind role provider log_path label attempt
 
   session_dir="$(grill_find_session_dir "$@")" || return 1
   record_file="$session_dir/session.json"
 
-  while IFS=$'\t' read -r id kind role log_path; do
+  while IFS=$'\t' read -r id kind role; do
     provider="$(jq -r --arg role "$role" '.agents[$role].provider' "$record_file")"
     printf '== %s %s (%s Agent, %s)\n' "$id" "$kind" "$role" "$provider"
-    parse_log "$session_dir/$log_path" "$provider" 10 | sed 's/^/  /'
-  done < <(jq -r '.exchanges[] | [.id, .kind, .role, .logPath] | @tsv' "$record_file")
+    while IFS=$'\t' read -r label log_path; do
+      [[ -n "$log_path" ]] || continue
+      for attempt in "$session_dir/$log_path".attempt-*; do
+        [[ -f "$attempt" ]] || continue
+        printf '  -- %s, failed attempt %s\n' "$label" "${attempt##*.attempt-}"
+        parse_log "$attempt" "$provider" 10 | sed 's/^/    /'
+      done
+      [[ -f "$session_dir/$log_path" ]] || continue
+      printf '  -- %s\n' "$label"
+      parse_log "$session_dir/$log_path" "$provider" 10 | sed 's/^/    /'
+    done < <(jq -r --arg id "$id" '.exchanges[] | select(.id == $id)
+      | ["log", .logPath], ["re-emit", .reemitLogPath], ["recovery", .recoveryLogPath] | @tsv' "$record_file")
+  done < <(jq -r '.exchanges[] | [.id, .kind, .role] | @tsv' "$record_file")
 }
 
 # Deletes a terminal session wherever it lives; refuses active ones.
@@ -608,8 +692,13 @@ grill_cleanup() {
   status="$(jq -r '.status' "$session_dir/session.json")"
   case "$status" in
     completed|rejected|context_lost|failed) ;;
+    starting)
+      # A start that crashed before both native sessions existed can never
+      # be resumed. The lock refuses a start that is still running.
+      grill_hold_lock "$session_dir" || return 1
+      ;;
     *)
-      grill_die "session $session_id is $status; cleanup deletes only completed, rejected, context_lost or failed sessions"
+      grill_die "session $session_id is $status; cleanup deletes only completed, rejected, context_lost or failed sessions, or a crashed start"
       return 1
       ;;
   esac
@@ -710,14 +799,8 @@ grill_next_exchange_id() {
 grill_render_fragment() {
   local name="$1"
   shift
-  local text
 
-  text="$(<"$SCRIPT_DIR/prompts/grill/$name.md")"
-  while [[ $# -ge 2 ]]; do
-    text="${text//"{{$1}}"/"$2"}"
-    shift 2
-  done
-  printf '%s\n' "$text"
+  grill_fill_placeholders "$@" < "$SCRIPT_DIR/prompts/grill/$name.md"
 }
 
 # Prints the validated message of the last completed exchange of any of the
@@ -735,6 +818,9 @@ grill_last_message() {
 
 # Prints the single JSON value in an Agent reply when it passes the jq
 # validator; fails otherwise. Extra arguments are passed to the validator.
+# The schemas are strict (every property required, unused ones null), so null
+# object members are dropped first: the validators and the record treat an
+# absent member and a null one alike.
 grill_valid_message() {
   local raw="$1"
   local exchange_id="$2"
@@ -742,7 +828,8 @@ grill_valid_message() {
   shift 3
   local message
 
-  message="$(jq -c -s 'if length == 1 then .[0] else error("expected one JSON value") end' <<<"$raw" 2>/dev/null)" \
+  message="$(jq -c -s 'if length == 1 then .[0] else error("expected one JSON value") end
+    | walk(if type == "object" then with_entries(select(.value != null)) else . end)' <<<"$raw" 2>/dev/null)" \
     && jq -e --arg exchangeId "$exchange_id" "$@" "$GRILL_JQ_DEFS $validator" <<<"$message" >/dev/null 2>&1 \
     && printf '%s\n' "$message"
 }
@@ -859,6 +946,15 @@ grill_send() {
   fi
   case "$status" in
     0) printf '%s\n' "$raw" ;;
+    "$GRILL_ADAPTER_TRANSIENT")
+      # Both native sessions are intact: block, and let resume retry the same
+      # exchange through in-flight recovery.
+      grill_block "$record_file" transient_failure "$exchange_id" \
+        "The $role Agent kept failing transiently (for example, overloaded or rate limited) on $exchange_id after every retry. Both native sessions are kept. See $session_dir/$log_rel.
+
+Nothing needs to be written here: when the provider recovers, run the resume command below." || true
+      return 1
+      ;;
     "$GRILL_ADAPTER_CONTEXT_LOST")
       grill_record_update "$record_file" '.status = "context_lost" | .failureReason = $reason' \
         --arg reason "the $role native session $native was not found at $exchange_id; see $session_dir/$log_rel" || true
@@ -927,7 +1023,7 @@ grill_reopens_with_decisions() {
 # contradiction and previous decision, then merges the answers into decisions.
 grill_step_answers() {
   local record_file="$1"
-  local frontier exchange_id expected prompt answers
+  local frontier exchange_id expected prompt
 
   frontier="$(grill_last_message "$record_file" frontier correction_relay)"
   exchange_id="$(grill_next_exchange_id "$record_file")"
@@ -935,9 +1031,41 @@ grill_step_answers() {
   prompt="$(grill_render_fragment round-answers EXCHANGE_ID "$exchange_id" ROUND "$(jq '.round' "$record_file")" \
     QUESTIONS "$(jq '.questions' <<<"$frontier")" REOPENS "$(grill_reopens_with_decisions "$record_file" "$frontier")")"
 
-  answers="$(grill_exchange "$record_file" answers answering "$exchange_id" "$prompt" answers "$GRILL_JQ_ANSWERS" \
-    --argjson expected "$expected")" || return 1
-  grill_apply_answers "$record_file" "$answers" "$frontier"
+  grill_save_answered_frontier "$record_file" "$exchange_id" "$frontier" || return 1
+  grill_exchange "$record_file" answers answering "$exchange_id" "$prompt" answers "$GRILL_JQ_ANSWERS" \
+    --argjson expected "$expected" >/dev/null || return 1
+  grill_apply_exchange_effects "$record_file" "$exchange_id"
+}
+
+# Saves the Frontier an answers or human_input exchange answers, beside its
+# message, so its effects can be applied again after a crash.
+grill_save_answered_frontier() {
+  local record_file="$1"
+  local exchange_id="$2"
+  local frontier="$3"
+  local session_dir
+
+  session_dir="$(dirname "$record_file")"
+  (umask 077 && mkdir -p "$session_dir/messages") || return 1
+  jq '.' <<<"$frontier" | grill_record_write_file "$session_dir/messages/$exchange_id.frontier.json"
+}
+
+# Applies a completed answers or human_input exchange to the record (merged
+# decisions, or a needsHuman block) and marks it applied. Re-applying is
+# harmless, so a crash between completing the exchange and marking it only
+# repeats this step on resume.
+grill_apply_exchange_effects() {
+  local record_file="$1"
+  local exchange_id="$2"
+  local session_dir
+
+  session_dir="$(dirname "$record_file")"
+  grill_apply_answers "$record_file" "$(<"$session_dir/messages/$exchange_id.json")" \
+    "$(<"$session_dir/messages/$exchange_id.frontier.json")" || return 1
+  grill_record_update "$record_file" \
+    '.exchanges |= map(if .id == $id then .effectsApplied = true else . end)
+     | if .exchanges[] | select(.id == $id) | .kind == "human_input" then .pendingHumanInput = null else . end' \
+    --arg id "$exchange_id"
 }
 
 # Prints the Frontier that the block left unanswered: the one a needsHuman
@@ -969,7 +1097,7 @@ grill_step_human_input() {
   local record_file="$1"
   local block_reason="$2"
   local human_input="$3"
-  local pending exchange_id required prompt answers
+  local pending exchange_id required prompt
 
   pending="$(grill_pending_frontier "$record_file")"
   [[ -n "$pending" ]] || pending='{"exchangeId":null,"questions":[],"reopens":[]}'
@@ -979,9 +1107,10 @@ grill_step_human_input() {
     HUMAN_INPUT "$human_input" QUESTIONS "$(jq '.questions' <<<"$pending")" \
     REOPENS "$(grill_reopens_with_decisions "$record_file" "$pending")" DECISIONS "$(jq '.decisions' "$record_file")")"
 
-  answers="$(grill_exchange "$record_file" human_input answering "$exchange_id" "$prompt" answers \
-    "$GRILL_JQ_HUMAN_ANSWERS" --argjson required "$required")" || return 1
-  grill_apply_answers "$record_file" "$answers" "$pending"
+  grill_save_answered_frontier "$record_file" "$exchange_id" "$pending" || return 1
+  grill_exchange "$record_file" human_input answering "$exchange_id" "$prompt" answers \
+    "$GRILL_JQ_HUMAN_ANSWERS" --argjson required "$required" >/dev/null || return 1
+  grill_apply_exchange_effects "$record_file" "$exchange_id"
 }
 
 # Prints the Markdown for the given question IDs of a Frontier, with choices.
@@ -1076,62 +1205,84 @@ grill_step_summary_final() {
   grill_exchange "$record_file" summary_final grilling "$exchange_id" "$prompt" summary "$GRILL_JQ_SUMMARY" >/dev/null
 }
 
-# Writes confirmation.md: the final summary and issue draft, the diff of the
-# session's uncommitted changes, flags for out-of-scope paths and HEAD/branch
-# drift, and the human's Decision and Answers sections.
-grill_write_confirmation() {
+# Runs a git command against a throwaway index holding HEAD plus every
+# working-tree change (untracked files included) outside Ralph's session
+# storage, so diffs show new files without touching the real index.
+grill_gate_git() {
   local record_file="$1"
-  local session_dir repo_root ralph_rel summary index changed stat diff out_of_scope
-  local start_head head branch current_branch path
-  local -a flags=() pathspec
+  shift
+  local repo_root ralph_rel index status=0
 
-  session_dir="$(dirname "$record_file")"
+  repo_root="$(jq -r '.repo.root' "$record_file")"
+  ralph_rel="$(grill_ralph_rel "$repo_root")"
+  index="$(dirname "$record_file")/.gate-index.$$"
+  rm -f "$index"
+  # Session storage is dropped after `add` rather than excluded by pathspec:
+  # git add refuses an exclude pathspec that names an ignored path, and the
+  # Ralph directory is often ignored in the target repository.
+  if GIT_INDEX_FILE="$index" git -C "$repo_root" read-tree HEAD \
+    && GIT_INDEX_FILE="$index" git -C "$repo_root" add -A -- . \
+    && GIT_INDEX_FILE="$index" git -C "$repo_root" rm -r -q -f --cached --ignore-unmatch -- \
+      "${ralph_rel}grilling-sessions" "${ralph_rel}archive" >/dev/null; then
+    GIT_INDEX_FILE="$index" git -C "$repo_root" "$@" || status=$?
+  else
+    grill_die "could not read the working tree diff in $repo_root" || status=$?
+  fi
+  rm -f "$index"
+  return "$status"
+}
+
+# Prints the gate's flags, one Markdown list item per line: changes outside
+# CONTEXT.md and docs/adr/, HEAD drift, and branch drift since start.
+grill_gate_flags() {
+  local record_file="$1"
+  local repo_root start_head branch changed head current_branch path
+  local -a flags=()
+
   repo_root="$(jq -r '.repo.root' "$record_file")"
   start_head="$(jq -r '.repo.startHead' "$record_file")"
   branch="$(jq -r '.repo.branch' "$record_file")"
-  summary="$(grill_last_message "$record_file" summary_final)"
-  ralph_rel="$(grill_ralph_rel "$repo_root")"
-  pathspec=(. ":(exclude)${ralph_rel}grilling-sessions" ":(exclude)${ralph_rel}archive")
+  changed="$(grill_gate_git "$record_file" diff --cached --no-color --name-only HEAD)" || return 1
 
-  # A throwaway index shows untracked files in the diff without touching the
-  # real index.
-  index="$session_dir/.confirmation-index"
-  rm -f "$index"
-  if ! GIT_INDEX_FILE="$index" git -C "$repo_root" read-tree HEAD \
-    || ! GIT_INDEX_FILE="$index" git -C "$repo_root" add -A -- "${pathspec[@]}"; then
-    rm -f "$index"
-    grill_die "could not read the working tree diff in $repo_root"
-    return 1
-  fi
-  changed="$(GIT_INDEX_FILE="$index" git -C "$repo_root" diff --cached --no-color --name-only HEAD)"
-  stat="$(GIT_INDEX_FILE="$index" git -C "$repo_root" diff --cached --no-color --stat HEAD)"
-  diff="$(GIT_INDEX_FILE="$index" git -C "$repo_root" diff --cached --no-color --no-ext-diff HEAD -- CONTEXT.md docs/adr)"
-  rm -f "$index"
-
-  out_of_scope="$(grep -v -E '^(CONTEXT\.md|docs/adr/.+)$' <<<"$changed" || true)"
   while IFS= read -r path; do
     [[ -z "$path" ]] || flags+=("- Changed outside CONTEXT.md and docs/adr/: \`$path\`")
-  done <<<"$out_of_scope"
+  done < <(grep -v -E '^(CONTEXT\.md|docs/adr/.+)$' <<<"$changed" || true)
   head="$(git -C "$repo_root" rev-parse HEAD)"
   [[ "$head" == "$start_head" ]] || flags+=("- HEAD changed since start: $start_head -> $head")
   current_branch="$(git -C "$repo_root" branch --show-current)"
   [[ "$current_branch" == "$branch" ]] \
     || flags+=("- Branch changed since start: expected \`$branch\`, now \`${current_branch:-detached HEAD}\`")
   [[ ${#flags[@]} -gt 0 ]] || flags=("- No flags.")
+  printf '%s\n' "${flags[@]}"
+}
+
+# Writes confirmation.md: the final summary and issue draft, the diff of the
+# session's uncommitted changes, the gate's flags, and the human's Decision and
+# Answers sections. The flags are recorded so approve can tell whether the
+# repository changed after the human reviewed them.
+grill_write_confirmation() {
+  local record_file="$1"
+  local session_dir summary stat diff flags
+
+  session_dir="$(dirname "$record_file")"
+  summary="$(grill_last_message "$record_file" summary_final)"
+  flags="$(grill_gate_flags "$record_file")" || return 1
+  stat="$(grill_gate_git "$record_file" diff --cached --no-color --stat HEAD)" || return 1
+  diff="$(grill_gate_git "$record_file" diff --cached --no-color --no-ext-diff HEAD -- CONTEXT.md docs/adr)" || return 1
 
   {
     printf '# Confirm Automated Grilling Session %s\n\n' "$(jq -r '.id' "$record_file")"
     printf '## Decision summary\n\n%s\n\n' "$(jq -r '.decisionSummary' <<<"$summary")"
     printf '## Issue draft\n\n### Title\n\n%s\n\n### Body\n\n%s\n\n' \
       "$(jq -r '.issueTitle' <<<"$summary")" "$(jq -r '.issueBody' <<<"$summary")"
-    printf '## Flags\n\n'
-    printf '%s\n' "${flags[@]}"
+    printf '## Flags\n\n%s\n' "$flags"
     printf '\n## Diff stat\n\n````text\n%s\n````\n\n' "${stat:-No changes.}"
     printf '## Diff (CONTEXT.md and docs/adr/)\n\n````diff\n%s\n````\n\n' "${diff:-No changes.}"
     printf '## Decision\n\n'
     printf 'Write one of `approve`, `reject`, or `correct` on the line below. For `correct`, write the correction under `## Answers`.\n\n'
     printf '## Answers\n\n'
-  } | grill_record_write_file "$session_dir/confirmation.md"
+  } | grill_record_write_file "$session_dir/confirmation.md" || return 1
+  grill_record_update "$record_file" '.gateFlags = $flags' --arg flags "$flags"
 }
 
 # The domain-doc paths an approval commits and a rejection discards.
@@ -1151,6 +1302,34 @@ grill_apply_failed() {
   grill_die "$2; the session stays applying: fix the cause, then run: ralph.sh grill resume --id $(jq -r '.id' "$1")"
 }
 
+# Approves from the gate, unless the repository moved since the human
+# reviewed it. On another branch the commit would land on the wrong branch:
+# approve waits, with the decision kept, until the session's branch is checked
+# out again. New flags (a file changed after the gate, HEAD drift) were never
+# seen: confirmation.md is rewritten with them and the session stays at the
+# gate for a fresh decision.
+grill_approve() {
+  local record_file="$1"
+  local session_dir branch current_branch flags
+
+  session_dir="$(dirname "$record_file")"
+  branch="$(jq -r '.repo.branch' "$record_file")"
+  current_branch="$(git -C "$(jq -r '.repo.root' "$record_file")" branch --show-current)"
+  if [[ "$current_branch" != "$branch" ]]; then
+    echo "Not approved: the session's branch is $branch but ${current_branch:-a detached HEAD} is checked out. Check out $branch, then run: ralph.sh grill resume --id $(jq -r '.id' "$record_file")" >&2
+    return 0
+  fi
+  flags="$(grill_gate_flags "$record_file")" || return 1
+  if [[ "$flags" != "$(jq -r '.gateFlags // ""' "$record_file")" ]]; then
+    grill_write_confirmation "$record_file" || return 1
+    echo "Not approved: the repository changed after the gate was written. Review the updated flags in $session_dir/confirmation.md and decide again." >&2
+    return 0
+  fi
+
+  grill_record_update "$record_file" '.status = "applying" | .blockReason = null' || return 1
+  grill_apply "$record_file"
+}
+
 # Runs the approval actions in order: commit only the CONTEXT.md and
 # docs/adr/ changes, push the branch, then edit (--issue) or create
 # (--requirement-file) the issue. Each result is recorded as soon as its action
@@ -1158,7 +1337,7 @@ grill_apply_failed() {
 # applying retries only the unfinished ones. No Agent is contacted.
 grill_apply() {
   local record_file="$1"
-  local session_dir repo_root remote branch summary title path sha output url number archived
+  local session_dir repo_root remote branch summary title path sha output url number archived marker
   local -a paths=()
 
   session_dir="$(dirname "$record_file")"
@@ -1169,6 +1348,10 @@ grill_apply() {
   title="$(jq -r '.issueTitle' <<<"$summary")"
 
   if [[ "$(jq -c '.apply.commit' "$record_file")" == "null" ]]; then
+    if [[ "$(git -C "$repo_root" branch --show-current)" != "$branch" ]]; then
+      grill_apply_failed "$record_file" "the session's branch $branch is not checked out in $repo_root; check it out so the commit lands there"
+      return 1
+    fi
     while IFS= read -r -d '' path; do
       paths+=("$path")
     done < <(git -C "$repo_root" ls-files -z --modified --deleted --others --exclude-standard -- "${GRILL_DOC_PATHS[@]}"
@@ -1199,7 +1382,11 @@ grill_apply() {
   fi
 
   if [[ "$(jq -c '.apply.issue' "$record_file")" == "null" ]]; then
-    jq -r '.issueBody' <<<"$summary" | grill_record_write_file "$session_dir/issue-body.md" || return 1
+    # A created issue carries the session marker, so a create that a crash
+    # interrupted before its result was recorded can be found on retry.
+    marker="<!-- ralph-grill-session: $(jq -r '.id' "$record_file") -->"
+    { jq -r '.issueBody' <<<"$summary"; printf '\n%s\n' "$marker"; } \
+      | grill_record_write_file "$session_dir/issue-body.md" || return 1
     if [[ "$(jq -r '.input.kind' "$record_file")" == "issue" ]]; then
       number="$(jq -r '.input.issue' "$record_file")"
       if ! output="$(cd "$repo_root" && gh issue edit "$number" --title "$title" --body-file "$session_dir/issue-body.md")"; then
@@ -1210,12 +1397,23 @@ grill_apply() {
       grill_record_update "$record_file" '.apply.issue = {action: "edit", number: $number, url: $url}' \
         --argjson number "$number" --arg url "$url" || return 1
     else
-      if ! output="$(cd "$repo_root" && gh issue create --title "$title" --body-file "$session_dir/issue-body.md")"; then
-        grill_apply_failed "$record_file" "could not create the issue with gh"
-        return 1
+      url=""
+      if [[ "$(jq -r '.apply.issueCreateAttempted // false' "$record_file")" == "true" ]]; then
+        if ! output="$(cd "$repo_root" && gh issue list --state all --limit 100 --json number,url,body)"; then
+          grill_apply_failed "$record_file" "could not check with gh whether an earlier attempt already created the issue"
+          return 1
+        fi
+        url="$(jq -r --arg marker "$marker" 'first(.[] | select(.body | contains($marker)) | .url) // empty' <<<"$output")"
+      fi
+      if [[ -z "$url" ]]; then
+        grill_record_update "$record_file" '.apply.issueCreateAttempted = true' || return 1
+        if ! output="$(cd "$repo_root" && gh issue create --title "$title" --body-file "$session_dir/issue-body.md")"; then
+          grill_apply_failed "$record_file" "could not create the issue with gh"
+          return 1
+        fi
+        url="$(tail -n 1 <<<"$output")"
       fi
       # Recorded at once, so a retry never creates a duplicate issue.
-      url="$(tail -n 1 <<<"$output")"
       grill_record_update "$record_file" \
         '.apply.issue = {action: "create", number: ($url | split("/") | last | tonumber? // null), url: $url}' \
         --arg url "$url" || return 1
@@ -1262,7 +1460,7 @@ grill_reject() {
 # at the confirmation gate.
 grill_run() {
   local record_file="$1"
-  local session_dir last_kind frontier
+  local session_dir last_kind frontier unapplied
   local -a step
 
   session_dir="$(dirname "$record_file")"
@@ -1270,20 +1468,30 @@ grill_run() {
     if [[ "$(jq -r '.status' "$record_file")" == "blocked" ]]; then
       if [[ "$(jq -r '.blockReason' "$record_file")" == "awaiting_confirmation" ]]; then
         echo "Awaiting confirmation: review $session_dir/confirmation.md and write your decision there." >&2
+      elif [[ "$(jq -r '.blockReason' "$record_file")" == "transient_failure" ]]; then
+        echo "Blocked (transient_failure): the provider kept failing; when it recovers, run: ralph.sh grill resume --id $(jq -r '.id' "$record_file")" >&2
       else
         echo "Blocked ($(jq -r '.blockReason' "$record_file")): write your input under ## Answers in $session_dir/$(jq -r '.humanInputPath' "$record_file"), then run: ralph.sh grill resume --id $(jq -r '.id' "$record_file")" >&2
       fi
       return 0
     fi
+    # Answers whose effects a crash left unapplied are applied first.
+    unapplied="$(jq -r '[.exchanges[] | select(.status == "completed")] | last
+      | select((.kind == "answers" or .kind == "human_input") and .effectsApplied != true) | .id' "$record_file")"
+    if [[ -n "$unapplied" ]]; then
+      grill_apply_exchange_effects "$record_file" "$unapplied" || return 1
+      continue
+    fi
     last_kind="$(jq -r '[.exchanges[] | select(.status == "completed")] | last | .kind' "$record_file")"
-    # A human_input exchange left in flight does not follow from the last
-    # completed exchange; recover it with the input and block it answered.
-    if [[ "$(jq -r 'first(.exchanges[] | select(.status == "intent" or .status == "sent") | .kind) // empty' "$record_file")" \
-      == "human_input" ]]; then
-      last_kind="in_flight_human_input"
+    # Human input the block was resumed with does not follow from the last
+    # completed exchange: send it (again, when its exchange is in flight).
+    if jq -e '(first(.exchanges[] | select(.status == "intent" or .status == "sent") | .kind) // null) == "human_input"
+      or (.pendingHumanInput != null and (.exchanges | length) == .pendingHumanInput.afterExchanges)' \
+      "$record_file" >/dev/null; then
+      last_kind="pending_human_input"
     fi
     case "$last_kind" in
-      in_flight_human_input)
+      pending_human_input)
         step=(grill_step_human_input "$record_file" "$(jq -r '.lastBlockReason' "$record_file")"
           "$(grill_answers_section "$session_dir/$(jq -r '.humanInputPath' "$record_file")")")
         ;;

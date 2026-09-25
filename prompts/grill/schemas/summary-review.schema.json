@@ -1,21 +1,46 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Summary Review",
-  "description": "The Answering Agent's faithfulness review of the summary draft.",
+  "description": "The Answering Agent's faithfulness review of the summary draft. Strict: every property is required; questionId is null when a discrepancy is not about one question.",
   "type": "object",
-  "required": ["exchangeId", "faithful", "discrepancies"],
+  "additionalProperties": false,
+  "required": [
+    "exchangeId",
+    "faithful",
+    "discrepancies"
+  ],
   "properties": {
-    "exchangeId": {"type": "string", "pattern": "^ex-[0-9]{4,}$"},
-    "faithful": {"type": "boolean"},
+    "exchangeId": {
+      "type": "string",
+      "pattern": "^ex-[0-9]{4,}$"
+    },
+    "faithful": {
+      "type": "boolean"
+    },
     "discrepancies": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["problem", "fix"],
+        "additionalProperties": false,
+        "required": [
+          "questionId",
+          "problem",
+          "fix"
+        ],
         "properties": {
-          "questionId": {"type": "string"},
-          "problem": {"type": "string", "minLength": 1},
-          "fix": {"type": "string", "minLength": 1}
+          "questionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "problem": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fix": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     }

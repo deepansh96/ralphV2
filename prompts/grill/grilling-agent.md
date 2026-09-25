@@ -25,11 +25,13 @@ Read and follow these skills, with the overrides below:
 ```json
 {"exchangeId": "ex-0003", "round": 1,
  "questions": [{"id": "storage-backend", "title": "...", "body": "...",
-                "choices": [{"id": "sqlite", "label": "...", "description": "..."}],
-                "recommendation": {"choiceId": "sqlite", "rationale": "..."},
-                "challenges": "optional questionId whose answer this question challenges"}],
+                "choices": [{"id": "sqlite", "label": "...", "description": "... or null"}],
+                "recommendation": {"choiceId": "sqlite", "text": null, "rationale": "..."},
+                "challenges": "questionId whose answer this question challenges, or null"}],
  "reopens": [{"questionId": "...", "contradiction": "...", "evidence": ["path or URL"]}]}
 ```
+
+- Every field shown is required. Use `null` for an unused optional value: a choice without a `description`, a question that `challenges` nothing, and whichever of the recommendation's `choiceId` or free-form `text` you do not use.
 
 - `exchangeId` is the ID in the `[ralph-exchange:<id>]` marker of the message you are answering.
 - Question IDs are stable, kebab-case, and never reused for a different question.

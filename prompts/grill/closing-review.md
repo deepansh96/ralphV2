@@ -12,4 +12,4 @@ These are the settled decisions (JSON):
 
 Review the draft for faithfulness to your decisions. List every place where it misstates, omits, or adds a decision, with the fix.
 
-Reply with Summary Review JSON only: `{"exchangeId": "{{EXCHANGE_ID}}", "faithful": true|false, "discrepancies": [{"questionId": "...", "problem": "...", "fix": "..."}]}`.
+Reply with Summary Review JSON only: `{"exchangeId": "{{EXCHANGE_ID}}", "faithful": true|false, "discrepancies": [{"questionId": "... or null", "problem": "...", "fix": "..."}]}`.

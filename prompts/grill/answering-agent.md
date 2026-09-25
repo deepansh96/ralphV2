@@ -24,14 +24,18 @@ Reply with one JSON object and nothing else — no prose, no Markdown, no code f
 
 ```json
 {"exchangeId": "ex-0004",
- "answers": [{"questionId": "storage-backend", "choiceId": "sqlite",
-              "rationale": "...", "evidence": ["src/db.ts", "https://example.com/doc"]}]}
+ "answers": [{"questionId": "storage-backend", "choiceId": "sqlite", "text": null,
+              "rationale": "...", "evidence": ["src/db.ts", "https://example.com/doc"]}],
+ "needsHuman": null}
 ```
 
-Give exactly one answer per question ID in the round; partial answer sets are invalid. If you cannot decide, reply instead with:
+Give exactly one answer per question ID in the round; partial answer sets are invalid. Each answer sets `choiceId` to a choice's ID or `text` to a free-form decision, and the other to `null`. If you cannot decide, reply instead with:
 
 ```json
-{"exchangeId": "ex-0004", "needsHuman": {"questionIds": ["storage-backend"], "reason": "..."}}
+{"exchangeId": "ex-0004", "answers": null,
+ "needsHuman": {"questionIds": ["storage-backend"], "reason": "..."}}
 ```
+
+Every field shown is required; exactly one of `answers` and `needsHuman` is `null`.
 
 `exchangeId` is the ID in the `[ralph-exchange:<id>]` marker of the message you are answering.
