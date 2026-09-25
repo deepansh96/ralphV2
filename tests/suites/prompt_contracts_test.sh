@@ -507,6 +507,60 @@ test_grill_with_docs_skill_defines_planning_branch_contract() {
   assert_contains "$skill" "wayfinder"
 }
 
+test_grilling_agent_prompt_defines_frontier_only_contract() {
+  local prompt_file prompt
+
+  prompt_file="$ROOT_DIR/prompts/grill/grilling-agent.md"
+  [[ -f "$prompt_file" ]] || fail "expected Grilling Agent prompt at $prompt_file"
+  prompt="$(<"$prompt_file")"
+
+  assert_contains "$prompt" "{{SKILLS_DIR}}/grilling/SKILL.md"
+  assert_contains "$prompt" "{{SKILLS_DIR}}/grill-with-docs/SKILL.md"
+  assert_contains "$prompt" "{{SKILLS_DIR}}/domain-modeling/SKILL.md"
+  assert_contains "$prompt" "Frontier JSON only"
+  assert_contains "$prompt" "Never create or switch branches, commit, push, or run \`gh\` write commands"
+  assert_contains "$prompt" "Look up facts yourself"
+  assert_contains "$prompt" "never replace an answer"
+  assert_contains "$prompt" "reopened only through an explicit \`reopens\` entry that names the contradiction"
+  assert_contains "$prompt" "[ralph-exchange:<id>]"
+}
+
+test_answering_agent_prompt_defines_evidence_and_read_only_contract() {
+  local prompt_file prompt
+
+  prompt_file="$ROOT_DIR/prompts/grill/answering-agent.md"
+  [[ -f "$prompt_file" ]] || fail "expected Answering Agent prompt at $prompt_file"
+  prompt="$(<"$prompt_file")"
+
+  assert_contains "$prompt" "You own every decision"
+  assert_contains "$prompt" "Cite evidence for every answer"
+  assert_contains "$prompt" "needsHuman"
+  assert_contains "$prompt" "Never guess"
+  assert_contains "$prompt" "Never create, edit, or delete files"
+  assert_contains "$prompt" "Never run Git writes"
+  assert_contains "$prompt" "exactly one answer per question ID"
+  assert_contains "$prompt" "reopened only through such a contradiction"
+  assert_contains "$prompt" "[ralph-exchange:<id>]"
+}
+
+test_session_start_fragment_carries_exchange_marker_and_requirement() {
+  local prompt
+
+  prompt="$(<"$ROOT_DIR/prompts/grill/session-start.md")"
+
+  assert_contains "$prompt" "[ralph-exchange:{{EXCHANGE_ID}}]"
+  assert_contains "$prompt" "{{REQUIREMENT}}"
+}
+
+test_human_grilling_skills_carry_no_automated_grilling_contract() {
+  local file
+
+  while IFS= read -r file; do
+    ! grep -qE 'ralph-exchange|Answering Agent|Grilling Agent|Frontier JSON|needsHuman' "$file" \
+      || fail "expected human-grilling skill to stay unchanged: $file"
+  done < <(find "$ROOT_DIR/skills/grill-with-docs" "$ROOT_DIR/skills/grilling" "$ROOT_DIR/skills/quiz-grilling" -type f)
+}
+
 run_test test_init_prompt_defines_complete_workspace_initialization_contract
 run_test test_initialized_workspace_status_shows_default_four_pending_fixed_steps
 run_test test_review_decisions_prompt_defines_council_filtering_and_hitl_contract
@@ -522,5 +576,9 @@ run_test test_multi_axis_pr_review_prompt_defines_four_skill_vote_contract
 run_test test_cleanup_local_resources_prompt_defines_owned_always_run_contract
 run_test test_removed_review_prompts_are_absent
 run_test test_grill_with_docs_skill_defines_planning_branch_contract
+run_test test_grilling_agent_prompt_defines_frontier_only_contract
+run_test test_answering_agent_prompt_defines_evidence_and_read_only_contract
+run_test test_session_start_fragment_carries_exchange_marker_and_requirement
+run_test test_human_grilling_skills_carry_no_automated_grilling_contract
 
 echo "prompt_contracts_test.sh passed"

@@ -22,6 +22,20 @@ Run commands from the repository root:
 - `ralph.sh logs --issue N` tails the active step log. Use `--step <step-id>` to read a specific step.
 - `cleanup.sh <issue-number>` archives `workspaces/<issue-number>/` into `archive/<date>-<issue-number>/`.
 
+### Automated Grilling Sessions
+
+```bash
+./ralph-v2/ralph.sh grill start --issue N --grilling-agent claude --answering-agent claude
+./ralph-v2/ralph.sh grill start --requirement-file PATH --grilling-agent claude --answering-agent claude \
+  [--grilling-model M] [--grilling-effort E] [--answering-model M] [--answering-effort E]
+```
+
+- `grill start` opens an opt-in Automated Grilling Session: a Grilling Agent and a separate Answering Agent, each in its own native Claude session. It needs exactly one of `--issue` or `--requirement-file`, and both agent flags (`codex|claude`; the Codex adapter is not available yet). Omitted model/effort flags fall back to `agentDefaults` in `ralph.config.json`, and the resolved values are frozen in the record.
+- `start` refuses a dirty worktree in the target repository (the Git toplevel above the Ralph directory; Ralph's own `grilling-sessions/` and `archive/` are ignored). On the default branch it creates `grill/issue-<N>-<slug>` or `grill/<slug>` and refuses if that branch already exists.
+- `start` refuses before any native session exists when the installed CLI cannot express the role access policy: the Answering Agent never writes, the Grilling Agent writes only inside the repository, and both get read-only web and `gh` access. It never uses `--dangerously-skip-permissions`.
+- The Grilling Session Record lives at `grilling-sessions/<id>/session.json` (gitignored, dirs `0700`, files `0600`) with the requirement snapshot in `requirement.md` and raw provider logs in `logs/`. `start` prints the session ID.
+- Modules: `scripts/grill.sh` (coordinator), `scripts/grill-record.sh` (record store), `scripts/grill-adapters.sh` (session adapters). Role prompts live in `prompts/grill/`.
+
 ## Monitoring
 
 To monitor a running pipeline, poll with sleep intervals rather than continuously:

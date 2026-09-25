@@ -1255,3 +1255,121 @@ run_test() {
   printf 'Running %s\n' "$name"
   "$name"
 }
+
+# Scripted fake `claude` for Automated Grilling Sessions. Each non-help
+# invocation is recorded under $FAKE_CLAUDE_DIR/calls/NNNN/ (argv.json, pwd,
+# stdin). Result text is popped from $FAKE_CLAUDE_DIR/queue/* in name order,
+# falling back to a readiness acknowledgement. Prompts are appended to a fake
+# session store at $FAKE_CLAUDE_DIR/sessions/<native-id>.
+# FAKE_CLAUDE_HELP_OMIT removes a flag from `--help` output so capability
+# checks can be failed.
+install_fake_grill_claude() {
+  local fake_bin="$1"
+
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/claude" <<'FAKE_CLAUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "--help" ]]; then
+  help_text="$(cat <<'HELP'
+Usage: claude [options] [command] [prompt]
+  -p, --print                           Print response and exit
+  --output-format <format>              Output format
+  --verbose                             Verbose output
+  --model <model>                       Model for the current session
+  --effort <level>                      Effort level for the current session
+  --session-id <uuid>                   Use a specific session ID
+  -r, --resume [value]                  Resume a conversation by session ID
+  --permission-mode <mode>              Permission mode to use for the session
+  --allowedTools, --allowed-tools <tools...>
+  --disallowedTools, --disallowed-tools <tools...>
+  --settings <file-or-json>             Path to a settings JSON file or a JSON string
+  --json-schema <schema>                JSON Schema for structured output
+HELP
+)"
+  if [[ -n "${FAKE_CLAUDE_HELP_OMIT:-}" ]]; then
+    help_text="$(grep -v -F -- "$FAKE_CLAUDE_HELP_OMIT" <<<"$help_text")"
+  fi
+  printf '%s\n' "$help_text"
+  exit 0
+fi
+
+state_dir="${FAKE_CLAUDE_DIR:?FAKE_CLAUDE_DIR is required}"
+mkdir -p "$state_dir/calls" "$state_dir/sessions" "$state_dir/queue"
+call_count="$(find "$state_dir/calls" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+call_dir="$state_dir/calls/$(printf '%04d' $((call_count + 1)))"
+mkdir -p "$call_dir"
+jq -n '$ARGS.positional' --args -- "$@" > "$call_dir/argv.json"
+pwd > "$call_dir/pwd"
+if [[ -t 0 ]]; then
+  : > "$call_dir/stdin"
+else
+  cat > "$call_dir/stdin" || true
+fi
+
+prompt=""
+native_id=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p) prompt="$2"; shift 2 ;;
+    --session-id|--resume) native_id="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+printf '%s\n' "$prompt" >> "$state_dir/sessions/${native_id:-unknown}"
+
+result="ready"
+next="$(find "$state_dir/queue" -mindepth 1 -maxdepth 1 -type f | sort | head -n 1)"
+if [[ -n "$next" ]]; then
+  result="$(<"$next")"
+  rm -f "$next"
+fi
+
+jq -n -c --arg id "$native_id" '{type: "system", subtype: "init", session_id: $id}'
+jq -n -c --arg id "$native_id" --arg result "$result" \
+  '{type: "result", subtype: "success", is_error: false, session_id: $id, result: $result}'
+FAKE_CLAUDE
+  chmod +x "$fake_bin/claude"
+}
+
+# Fake `uuidgen` that pops UUIDs from $FAKE_UUID_QUEUE (one per line).
+install_fake_uuidgen() {
+  local fake_bin="$1"
+
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/uuidgen" <<'FAKE_UUIDGEN'
+#!/usr/bin/env bash
+set -euo pipefail
+
+queue="${FAKE_UUID_QUEUE:?FAKE_UUID_QUEUE is required}"
+next="$(head -n 1 "$queue")"
+[[ -n "$next" ]] || { echo "fake uuidgen queue is empty" >&2; exit 1; }
+tail -n +2 "$queue" > "$queue.tmp"
+mv "$queue.tmp" "$queue"
+printf '%s\n' "$next"
+FAKE_UUIDGEN
+  chmod +x "$fake_bin/uuidgen"
+}
+
+# Fake `gh` that records argv to $FAKE_GH_LOG and answers `gh issue view`
+# with the JSON in $FAKE_GH_ISSUE_JSON.
+install_fake_grill_gh() {
+  local fake_bin="$1"
+
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/gh" <<'FAKE_GH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+jq -n -c '$ARGS.positional' --args -- "$@" >> "${FAKE_GH_LOG:?FAKE_GH_LOG is required}"
+if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
+  printf '%s\n' "${FAKE_GH_ISSUE_JSON:?FAKE_GH_ISSUE_JSON is required}"
+  exit 0
+fi
+echo "fake gh: unsupported command: $*" >&2
+exit 1
+FAKE_GH
+  chmod +x "$fake_bin/gh"
+}
