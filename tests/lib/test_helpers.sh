@@ -1255,3 +1255,359 @@ run_test() {
   printf 'Running %s\n' "$name"
   "$name"
 }
+
+# Scripted fake `claude` for Automated Grilling Sessions. Each non-help
+# invocation is recorded under $FAKE_CLAUDE_DIR/calls/NNNN/ (argv.json, pwd,
+# stdin). The prompt's `[ralph-exchange:<id>]` marker selects a per-exchange
+# fixture: $FAKE_CLAUDE_DIR/exchanges/<id>.sh runs first in the working
+# directory (to simulate Agent edits), then $FAKE_CLAUDE_DIR/exchanges/<id>.json
+# is the result text; a repeated call for the same exchange ID (a re-emit)
+# reads <id>.<n>.json for its nth call when present. Without a fixture, result text is popped from
+# $FAKE_CLAUDE_DIR/queue/* in name order, falling back to a readiness
+# acknowledgement. Prompts are appended as user messages to a fake session
+# store in Claude's layout, $CLAUDE_CONFIG_DIR/projects/<cwd>/<native-id>.jsonl.
+# Per-exchange modes: <id>.transient fails the first call with a transient 529
+# error; <id>.kill (containing `received` or `lost`) interrupts the whole
+# process group once, after or before the prompt reaches the store. A file
+# $FAKE_CLAUDE_DIR/lost/<native-id> makes resuming that session fail as not
+# found.
+# FAKE_CLAUDE_HELP_OMIT removes a flag from `--help` output so capability
+# checks can be failed.
+install_fake_grill_claude() {
+  local fake_bin="$1"
+
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/claude" <<'FAKE_CLAUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "--help" ]]; then
+  help_text="$(cat <<'HELP'
+Usage: claude [options] [command] [prompt]
+  -p, --print                           Print response and exit
+  --output-format <format>              Output format
+  --verbose                             Verbose output
+  --model <model>                       Model for the current session
+  --effort <level>                      Effort level for the current session
+  --session-id <uuid>                   Use a specific session ID
+  -r, --resume [value]                  Resume a conversation by session ID
+  --permission-mode <mode>              Permission mode to use for the session
+  --allowedTools, --allowed-tools <tools...>
+  --disallowedTools, --disallowed-tools <tools...>
+  --settings <file-or-json>             Path to a settings JSON file or a JSON string
+  --json-schema <schema>                JSON Schema for structured output
+HELP
+)"
+  if [[ -n "${FAKE_CLAUDE_HELP_OMIT:-}" ]]; then
+    help_text="$(grep -v -F -- "$FAKE_CLAUDE_HELP_OMIT" <<<"$help_text")"
+  fi
+  printf '%s\n' "$help_text"
+  exit 0
+fi
+
+state_dir="${FAKE_CLAUDE_DIR:?FAKE_CLAUDE_DIR is required}"
+mkdir -p "$state_dir/calls" "$state_dir/queue"
+call_count="$(find "$state_dir/calls" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+call_dir="$state_dir/calls/$(printf '%04d' $((call_count + 1)))"
+mkdir -p "$call_dir"
+jq -n '$ARGS.positional' --args -- "$@" > "$call_dir/argv.json"
+pwd > "$call_dir/pwd"
+if [[ -t 0 ]]; then
+  : > "$call_dir/stdin"
+else
+  cat > "$call_dir/stdin" || true
+fi
+
+prompt=""
+native_id=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p) prompt="$2"; shift 2 ;;
+    --session-id|--resume) native_id="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+if [[ -f "$state_dir/lost/${native_id:-unknown}" ]]; then
+  echo "No conversation found with session ID: $native_id" >&2
+  exit 1
+fi
+
+exchange_id="$(grep -oE '\[ralph-exchange:ex-[0-9]+\]' <<<"$prompt" | head -n 1 | sed -E 's/^\[ralph-exchange:(.*)\]$/\1/' || true)"
+fixture="$state_dir/exchanges/$exchange_id"
+if [[ -n "$exchange_id" && -f "$fixture.transient" ]]; then
+  rm -f "$fixture.transient"
+  echo 'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}' >&2
+  exit 1
+fi
+
+store_prompt() {
+  local store="${CLAUDE_CONFIG_DIR:?CLAUDE_CONFIG_DIR is required}/projects/$(pwd | sed 's/[^A-Za-z0-9]/-/g')"
+  mkdir -p "$store"
+  jq -n -c --arg id "$native_id" --arg prompt "$prompt" \
+    '{type: "user", sessionId: $id, message: {role: "user", content: $prompt}}' >> "$store/${native_id:-unknown}.jsonl"
+}
+
+# Interrupts the whole process group (as Ctrl-C does), once.
+if [[ -n "$exchange_id" && -f "$fixture.kill" ]]; then
+  kill_mode="$(<"$fixture.kill")"
+  rm -f "$fixture.kill"
+  [[ "$kill_mode" != "received" ]] || store_prompt
+  kill -INT 0
+  sleep 5
+  exit 130
+fi
+store_prompt
+
+# A second call for the same exchange ID (a re-emit) reads <id>.2.json first.
+if [[ -n "$exchange_id" ]]; then
+  mkdir -p "$state_dir/seen"
+  printf 'x' >> "$state_dir/seen/$exchange_id"
+  seen="$(wc -c < "$state_dir/seen/$exchange_id" | tr -d ' ')"
+  [[ "$seen" -lt 2 || ! -f "$fixture.$seen.json" ]] || fixture="$fixture.$seen"
+fi
+if [[ -n "$exchange_id" && -f "$fixture.sh" ]]; then
+  bash "$fixture.sh"
+fi
+
+result="ready"
+if [[ -n "$exchange_id" && -f "$fixture.json" ]]; then
+  result="$(<"$fixture.json")"
+else
+  next="$(find "$state_dir/queue" -mindepth 1 -maxdepth 1 -type f | sort | head -n 1)"
+  if [[ -n "$next" ]]; then
+    result="$(<"$next")"
+    rm -f "$next"
+  fi
+fi
+
+jq -n -c --arg id "$native_id" '{type: "system", subtype: "init", session_id: $id}'
+jq -n -c --arg id "$native_id" --arg result "$result" \
+  '{type: "result", subtype: "success", is_error: false, session_id: $id, result: $result}'
+FAKE_CLAUDE
+  chmod +x "$fake_bin/claude"
+}
+
+# Fake `uuidgen` that pops UUIDs from $FAKE_UUID_QUEUE (one per line).
+install_fake_uuidgen() {
+  local fake_bin="$1"
+
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/uuidgen" <<'FAKE_UUIDGEN'
+#!/usr/bin/env bash
+set -euo pipefail
+
+queue="${FAKE_UUID_QUEUE:?FAKE_UUID_QUEUE is required}"
+next="$(head -n 1 "$queue")"
+[[ -n "$next" ]] || { echo "fake uuidgen queue is empty" >&2; exit 1; }
+tail -n +2 "$queue" > "$queue.tmp"
+mv "$queue.tmp" "$queue"
+printf '%s\n' "$next"
+FAKE_UUIDGEN
+  chmod +x "$fake_bin/uuidgen"
+}
+
+# Scripted fake `codex` for Automated Grilling Sessions, sharing the per-exchange
+# fixture conventions of install_fake_grill_claude through
+# $FAKE_CODEX_DIR/exchanges (.json, .N.json, .sh, .transient, .kill). Each
+# `exec` invocation is recorded under $FAKE_CODEX_DIR/calls/NNNN/ (argv.json,
+# pwd, stdin); the prompt is read from stdin (`-`). `exec` starts a thread
+# whose ID is popped from $FAKE_CODEX_THREAD_QUEUE and reported in a
+# `thread.started` event; `exec resume <id>` continues it. Prompts are
+# appended to a fake session store in Codex's layout,
+# $CODEX_HOME/sessions/YYYY/MM/DD/rollout-<ts>-<thread-id>.jsonl, whose first
+# line is the session_meta record. A file $FAKE_CODEX_DIR/lost/<thread-id>
+# makes resuming that thread fail as not found.
+# FAKE_CODEX_HELP_OMIT removes a flag from every `--help` output, and
+# FAKE_CODEX_NO_READ_ONLY_NETWORK makes the `codex sandbox` probe of a
+# read-only network profile fail, so capability checks can be failed.
+install_fake_grill_codex() {
+  local fake_bin="$1"
+
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/codex" <<'FAKE_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+
+state_dir="${FAKE_CODEX_DIR:?FAKE_CODEX_DIR is required}"
+
+print_help() {
+  local help_text="$1"
+  if [[ -n "${FAKE_CODEX_HELP_OMIT:-}" ]]; then
+    help_text="$(grep -v -F -- "$FAKE_CODEX_HELP_OMIT" <<<"$help_text")"
+  fi
+  printf '%s\n' "$help_text"
+  exit 0
+}
+
+case "$*" in
+  --help)
+    print_help "Usage: codex [OPTIONS] [PROMPT]
+  -c, --config <key=value>
+  -m, --model <MODEL>
+  -s, --sandbox <SANDBOX_MODE>  [possible values: read-only, workspace-write, danger-full-access]
+  -C, --cd <DIR>
+  -a, --ask-for-approval <APPROVAL_POLICY>"
+    ;;
+  "exec --help")
+    print_help "Usage: codex exec [OPTIONS] [PROMPT]
+Commands:
+  resume  Resume a previous session by id or pick the most recent with --last
+      --json
+      --output-schema <FILE>"
+    ;;
+  "exec resume --help")
+    print_help "Usage: codex exec resume [OPTIONS] [SESSION_ID] [PROMPT]
+      --last
+      --json
+      --output-schema <FILE>"
+    ;;
+esac
+
+if [[ "${1:-}" == "sandbox" ]]; then
+  mkdir -p "$state_dir"
+  jq -n -c '$ARGS.positional' --args -- "$@" >> "$state_dir/probes.log"
+  if [[ -n "${FAKE_CODEX_NO_READ_ONLY_NETWORK:-}" ]]; then
+    echo "Error: unknown configuration field permissions" >&2
+    exit 1
+  fi
+  exit 0
+fi
+
+mkdir -p "$state_dir/calls"
+call_count="$(find "$state_dir/calls" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+call_dir="$state_dir/calls/$(printf '%04d' $((call_count + 1)))"
+mkdir -p "$call_dir"
+jq -n '$ARGS.positional' --args -- "$@" > "$call_dir/argv.json"
+pwd > "$call_dir/pwd"
+cat > "$call_dir/stdin" || true
+prompt="$(<"$call_dir/stdin")"
+
+# Global options come before `exec`; `exec resume` takes the thread ID as its
+# first positional argument.
+while [[ $# -gt 0 && "$1" != "exec" ]]; do
+  case "$1" in
+    -c|-m|-s|-C|-a|--config|--model|--sandbox|--cd|--ask-for-approval) shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ "${1:-}" == "exec" ]] || { echo "fake codex: expected exec" >&2; exit 2; }
+shift
+thread_id=""
+if [[ "${1:-}" == "resume" ]]; then
+  shift
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --output-schema|-o|--output-last-message|-c|-m) shift 2 ;;
+      -*) shift ;;
+      *) thread_id="$1"; break ;;
+    esac
+  done
+  [[ -n "$thread_id" ]] || { echo "fake codex: resume needs a thread ID" >&2; exit 2; }
+  if [[ -f "$state_dir/lost/$thread_id" ]]; then
+    echo "Error: thread/resume: thread/resume failed: no rollout found for thread id $thread_id (code -32600)" >&2
+    exit 1
+  fi
+else
+  queue="${FAKE_CODEX_THREAD_QUEUE:?FAKE_CODEX_THREAD_QUEUE is required}"
+  thread_id="$(head -n 1 "$queue")"
+  [[ -n "$thread_id" ]] || { echo "fake codex thread queue is empty" >&2; exit 1; }
+  tail -n +2 "$queue" > "$queue.tmp"
+  mv "$queue.tmp" "$queue"
+fi
+
+exchange_id="$(grep -oE '\[ralph-exchange:ex-[0-9]+\]' <<<"$prompt" | head -n 1 | sed -E 's/^\[ralph-exchange:(.*)\]$/\1/' || true)"
+fixture="$state_dir/exchanges/$exchange_id"
+if [[ -n "$exchange_id" && -f "$fixture.transient" ]]; then
+  rm -f "$fixture.transient"
+  jq -n -c --arg id "$thread_id" '{type: "thread.started", thread_id: $id}'
+  jq -n -c '{type: "turn.failed", error: {message: "stream error: exceeded retry limit, last status: 429 Too Many Requests, rate limit reached"}}'
+  exit 1
+fi
+
+store_prompt() {
+  local store="${CODEX_HOME:?CODEX_HOME is required}/sessions/2026/09/25"
+  local rollout="$store/rollout-2026-09-25T00-00-00-$thread_id.jsonl"
+  mkdir -p "$store"
+  [[ -f "$rollout" ]] || jq -n -c --arg id "$thread_id" --arg cwd "$(pwd)" \
+    '{type: "session_meta", payload: {id: $id, cwd: $cwd}}' > "$rollout"
+  jq -n -c --arg prompt "$prompt" \
+    '{type: "response_item", payload: {type: "message", role: "user", content: [{type: "input_text", text: $prompt}]}}' >> "$rollout"
+}
+
+# Interrupts the whole process group (as Ctrl-C does), once.
+if [[ -n "$exchange_id" && -f "$fixture.kill" ]]; then
+  kill_mode="$(<"$fixture.kill")"
+  rm -f "$fixture.kill"
+  [[ "$kill_mode" != "received" ]] || store_prompt
+  kill -INT 0
+  sleep 5
+  exit 130
+fi
+store_prompt
+
+# A second call for the same exchange ID (a re-emit) reads <id>.2.json first.
+if [[ -n "$exchange_id" ]]; then
+  mkdir -p "$state_dir/seen"
+  printf 'x' >> "$state_dir/seen/$exchange_id"
+  seen="$(wc -c < "$state_dir/seen/$exchange_id" | tr -d ' ')"
+  [[ "$seen" -lt 2 || ! -f "$fixture.$seen.json" ]] || fixture="$fixture.$seen"
+fi
+if [[ -n "$exchange_id" && -f "$fixture.sh" ]]; then
+  bash "$fixture.sh"
+fi
+
+result="ready"
+if [[ -n "$exchange_id" && -f "$fixture.json" ]]; then
+  result="$(<"$fixture.json")"
+fi
+
+jq -n -c --arg id "$thread_id" '{type: "thread.started", thread_id: $id}'
+jq -n -c '{type: "turn.started"}'
+jq -n -c --arg text "$result" '{type: "item.completed", item: {id: "item_0", type: "agent_message", text: $text}}'
+jq -n -c '{type: "turn.completed", usage: {input_tokens: 1, output_tokens: 1}}'
+FAKE_CODEX
+  chmod +x "$fake_bin/codex"
+}
+
+# Fake `gh` that records argv to $FAKE_GH_LOG and answers `gh issue view`
+# with the JSON in $FAKE_GH_ISSUE_JSON.
+install_fake_grill_gh() {
+  local fake_bin="$1"
+
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/gh" <<'FAKE_GH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+jq -n -c '$ARGS.positional' --args -- "$@" >> "${FAKE_GH_LOG:?FAKE_GH_LOG is required}"
+if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
+  printf '%s\n' "${FAKE_GH_ISSUE_JSON:?FAKE_GH_ISSUE_JSON is required}"
+  exit 0
+fi
+# FAKE_GH_FAIL_ONCE names a marker file: while it exists, the first write
+# (issue edit or create) removes it and fails.
+if [[ -n "${FAKE_GH_FAIL_ONCE:-}" && -f "$FAKE_GH_FAIL_ONCE" ]]; then
+  rm -f "$FAKE_GH_FAIL_ONCE"
+  echo "fake gh: HTTP 502 (scripted failure)" >&2
+  exit 1
+fi
+if [[ "${1:-}" == "issue" && ( "${2:-}" == "edit" || "${2:-}" == "create" ) ]]; then
+  # The --body-file content is copied beside the log, since the coordinator
+  # may move its session directory afterwards.
+  args=("$@")
+  for ((i = 0; i < ${#args[@]} - 1; i++)); do
+    [[ "${args[i]}" != "--body-file" ]] || cat "${args[i + 1]}" > "$FAKE_GH_LOG.body"
+  done
+  if [[ "$2" == "edit" ]]; then
+    printf 'https://github.com/acme/target/issues/%s\n' "$3"
+  else
+    printf 'https://github.com/acme/target/issues/%s\n' "${FAKE_GH_CREATED_ISSUE:-77}"
+  fi
+  exit 0
+fi
+echo "fake gh: unsupported command: $*" >&2
+exit 1
+FAKE_GH
+  chmod +x "$fake_bin/gh"
+}

@@ -17,6 +17,7 @@ suites=(
   prompt_contracts_test.sh
   skill_docs_test.sh
   parse_log_test.sh
+  grill_test.sh
 )
 
 if [[ $# -gt 0 ]]; then

@@ -8,12 +8,16 @@ agent_retry_delays() {
   printf '%s\n' "${RALPH_RETRY_DELAYS:-30 60 120}"
 }
 
+agent_log_has_transient_error() {
+  grep -Eiq 'overloaded|529|rate limit|ETIMEDOUT|ECONNRESET' "$1"
+}
+
 agent_log_is_retryable_failure() {
   local log_file="$1"
 
   [[ -s "$log_file" ]] || return 0
 
-  if grep -Eiq 'overloaded|529|rate limit|ETIMEDOUT|ECONNRESET' "$log_file"; then
+  if agent_log_has_transient_error "$log_file"; then
     return 0
   fi
 
