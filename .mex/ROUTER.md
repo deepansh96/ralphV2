@@ -14,7 +14,7 @@ edges:
     condition: when setting up the repo, running tests, or debugging environment issues
   - target: patterns/INDEX.md
     condition: when starting a concrete task, especially init, run, recovery, or pipeline changes
-last_updated: 2026-08-16
+last_updated: 2026-08-24
 ---
 
 # Session Bootstrap
@@ -27,9 +27,9 @@ Then read this file fully before doing anything else in this session.
 
 **Working:**
 - Core CLI entrypoint `ralph.sh` supports `run`, `status`, `logs`, and `poll` for issue workspaces.
-- Pipeline state lives in `workspaces/<issue>/state.json` with fixed steps, dynamic steps, optional per-step model/reasoning overrides, metrics, HITL flags, and stale PID recovery.
-- Prompt templates in `prompts/` render step-specific instructions and dispatch through `scripts/agent.sh` to Claude, Codex, or DeepSeek through Pi. Init installs always-run local-resource cleanup; preflight appends implementation steps followed by final checks, PR creation, local QA preparation/execution, and four-axis PR review.
-- Bundled skills in `skills/` provide spec/ticket planning, TDD, domain modeling, dependency-ordered grilling rounds, disposable browser quiz grilling, wayfinder decision tickets with parent-owned research fan-out, agent-document writing, deep-module architecture analysis, optional support for prototypes, manual setup, and clearer explanations, and the four independent PR review axes without depending on global skill installs. Slices carry first-class blocking edges (native GitHub issue dependencies plus `Blocked by` body lines). Tracker operations live in `docs/agents/issue-tracker.md` behind the `Issue tracker` pointer in `AGENTS.md`.
+- Pipeline state lives in `workspaces/<issue>/state.json` with fixed steps, dynamic steps, per-step main-agent and subagent model/reasoning snapshots and overrides, metrics, HITL flags, and stale PID recovery. Repo-wide parent and worker defaults live in `ralph.config.json`.
+- Prompt templates in `prompts/` render step-specific instructions and dispatch through `scripts/agent.sh` to Claude, Codex, or DeepSeek through Pi. QA execution and multi-axis review inject the same reusable provider-native worker contract for Claude or Codex, with model and effort resolved from step snapshots then Ralph config, while leaving flat spawning and coordination to the main agent. Init installs always-run local-resource cleanup; preflight appends implementation steps followed by final checks, PR creation, local QA preparation/execution, and five-pass PR review, then snapshots the delegated steps' parent and worker settings.
+- Bundled skills in `skills/` provide spec/ticket planning, TDD, domain modeling, dependency-ordered grilling rounds, disposable browser quiz grilling, wayfinder decision tickets with parent-owned research fan-out, agent-document writing, deep-module architecture analysis, optional support for prototypes, manual setup, and clearer explanations, plus five PR review passes across four bundled skills without depending on global skill installs. Slices carry first-class blocking edges (native GitHub issue dependencies plus `Blocked by` body lines). Tracker operations live in `docs/agents/issue-tracker.md` behind the `Issue tracker` pointer in `AGENTS.md`.
 - Deterministic shell tests under `tests/suites/` fake external tools and cover CLI, state, prompts, agents, council, polling, cleanup, and docs.
 - mex scaffold is installed under `.mex/`; `CLAUDE.md` is a symlink to root `AGENTS.md`.
 

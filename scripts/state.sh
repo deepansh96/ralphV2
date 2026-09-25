@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+STATE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=ralph-v2/scripts/config.sh
+source "$STATE_SCRIPT_DIR/config.sh"
+
 state_read() {
   local state_file="$1"
 
@@ -185,6 +189,65 @@ state_add_steps() {
     --argjson new_steps "$steps_json" \
     '.steps = ((.steps // []) + $new_steps)' \
     "$state_file" > "$tmp_file"; then
+    rm -f "$tmp_file"
+    return 1
+  fi
+
+  mv "$tmp_file" "$state_file"
+}
+
+state_snapshot_delegated_step_defaults() {
+  local state_file="$1"
+  local config_file="$2"
+  local step_id="$3"
+  local agent defaults tmp_file
+
+  agent="$(
+    jq -r --arg id "$step_id" \
+      'first(.steps[]? | select(.id == $id) | .agent) // empty' \
+      "$state_file"
+  )"
+  if [[ -z "$agent" ]]; then
+    echo "Error: delegated step '$step_id' is missing or has no agent" >&2
+    return 1
+  fi
+
+  if ! defaults="$(ralph_config_delegated_step_defaults "$config_file" "$agent")"; then
+    return 1
+  fi
+
+  tmp_file="$(mktemp "${state_file}.tmp.XXXXXX")"
+  if ! jq \
+    --arg id "$step_id" \
+    --argjson defaults "$defaults" \
+    '
+      def missing: . == null or . == "";
+      .steps |= map(
+        if .id == $id then
+          .model = (if (.model | missing) then $defaults.model else .model end)
+          | .reasoningEffort = (
+              if (.reasoningEffort | missing)
+              then $defaults.reasoningEffort
+              else .reasoningEffort
+              end
+            )
+          | .subagentModel = (
+              if (.subagentModel | missing)
+              then $defaults.subagentModel
+              else .subagentModel
+              end
+            )
+          | .subagentReasoningEffort = (
+              if (.subagentReasoningEffort | missing)
+              then $defaults.subagentReasoningEffort
+              else .subagentReasoningEffort
+              end
+            )
+        else
+          .
+        end
+      )
+    ' "$state_file" > "$tmp_file"; then
     rm -f "$tmp_file"
     return 1
   fi

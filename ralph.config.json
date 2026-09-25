@@ -1,0 +1,22 @@
+{
+  "agentDefaults": {
+    "codex": {
+      "model": "gpt-5.6-sol",
+      "reasoningEffort": "medium"
+    },
+    "claude": {
+      "model": "opus",
+      "reasoningEffort": "medium"
+    }
+  },
+  "nativeDelegation": {
+    "codex": {
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "max"
+    },
+    "claude": {
+      "model": "sonnet",
+      "reasoningEffort": "high"
+    }
+  }
+}

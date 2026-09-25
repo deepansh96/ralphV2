@@ -182,6 +182,80 @@ test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates() {
   [[ "$(jq '.steps | length' "$state_file")" == "9" ]] || fail "expected duplicate failure not to append steps"
 }
 
+test_state_snapshots_delegated_defaults_without_overwriting_explicit_values() {
+  local issue state_file config_file
+
+  issue="9055"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue/logs"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  config_file="$WORKSPACES_DIR/$issue/ralph.config.json"
+
+  jq -n '{
+    agentDefaults: {
+      codex: {model: "codex-parent", reasoningEffort: "medium"},
+      claude: {model: "claude-parent", reasoningEffort: "high"}
+    },
+    nativeDelegation: {
+      codex: {model: "codex-worker", reasoningEffort: "max"},
+      claude: {model: "claude-worker", reasoningEffort: "medium"}
+    }
+  }' > "$config_file"
+  jq -n '{
+    issue: 9055,
+    steps: [
+      {
+        id: "runthrough-qa-checklist",
+        type: "runthrough-qa-checklist",
+        agent: "codex",
+        status: "pending"
+      },
+      {
+        id: "multi-axis-pr-review",
+        type: "multi-axis-pr-review",
+        agent: "claude",
+        subagentModel: "explicit-worker",
+        status: "pending"
+      }
+    ]
+  }' > "$state_file"
+
+  source "$ROOT_DIR/scripts/state.sh"
+  state_snapshot_delegated_step_defaults \
+    "$state_file" "$config_file" runthrough-qa-checklist
+  state_snapshot_delegated_step_defaults \
+    "$state_file" "$config_file" multi-axis-pr-review
+
+  jq -e '
+    .steps[]
+    | select(.id == "runthrough-qa-checklist")
+    | .model == "codex-parent"
+      and .reasoningEffort == "medium"
+      and .subagentModel == "codex-worker"
+      and .subagentReasoningEffort == "max"
+  ' "$state_file" >/dev/null || fail "expected Codex delegated defaults to be snapshotted"
+  jq -e '
+    .steps[]
+    | select(.id == "multi-axis-pr-review")
+    | .model == "claude-parent"
+      and .reasoningEffort == "high"
+      and .subagentModel == "explicit-worker"
+      and .subagentReasoningEffort == "medium"
+  ' "$state_file" >/dev/null || fail "expected explicit worker model to be preserved"
+
+  jq '.agentDefaults.codex.model = "changed-parent" | .nativeDelegation.codex.model = "changed-worker"' \
+    "$config_file" > "$config_file.tmp"
+  mv "$config_file.tmp" "$config_file"
+  state_snapshot_delegated_step_defaults \
+    "$state_file" "$config_file" runthrough-qa-checklist
+
+  jq -e '
+    .steps[]
+    | select(.id == "runthrough-qa-checklist")
+    | .model == "codex-parent" and .subagentModel == "codex-worker"
+  ' "$state_file" >/dev/null || fail "expected an existing snapshot to remain stable"
+}
+
 test_state_get_current_step_prioritizes_always_run_cleanup_after_failure() {
   local issue state_file current
 
@@ -550,6 +624,7 @@ test_state_validate_resets_stale_in_progress_step_with_dead_pid_file() {
 
 run_test test_run_rejects_failed_steps
 run_test test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates
+run_test test_state_snapshots_delegated_defaults_without_overwriting_explicit_values
 run_test test_state_get_current_step_prioritizes_always_run_cleanup_after_failure
 run_test test_state_get_current_step_defers_always_run_cleanup_until_normal_work_finishes
 run_test test_state_validate_rearms_completed_cleanup_when_normal_work_retries

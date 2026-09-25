@@ -18,12 +18,20 @@ edges:
     condition: when a decision affects live run behavior
   - target: patterns/initialize-issue-workspace.md
     condition: when a decision affects init or branch contracts
-last_updated: 2026-08-16
+last_updated: 2026-08-24
 ---
 
 # Decisions
 
 ## Decision Log
+
+### Keep native delegation provider-owned and config-driven
+**Date:** 2026-08-24
+**Status:** Active
+**Decision:** Step prompts may request one reusable provider-specific native delegation contract selected from their main `agent`. Repo-wide defaults live in `ralph.config.json`: Codex parents use Sol/medium with Luna/max workers, while Claude parents use Opus/medium with Sonnet/high workers. Preflight snapshots all four effective settings onto generated delegated steps; optional step fields override those snapshots. Each step defines its own flat topology: multi-axis review launches separate Matt Standards and Spec workers together, then Ponytail, isolated Codex, and Supe together; QA lets the main agent form dependency-safe worker batches, keeps shared-resource mutations serialized, and limits the parent to evidence validation rather than QA execution. Ralph renders the instructions but never launches or coordinates workers itself.
+**Reasoning:** Claude Code and Codex are post-trained to operate their own delegation tools, but workers inherit the parent configuration when the prompt does not name a model and effort. Codex can set both values on a subagent spawn. Claude Code's plain Agent tool can set a model per invocation but cannot set effort, while its Workflow `agent()` function can set both; live testing also confirmed that a workflow worker cannot spawn a second-level Agent. A flat topology works on both providers, keeps the main agent in control, preserves Standards/Spec context isolation, and lets the same provider contract serve review, QA, and future delegated steps without carrying step-specific policy.
+**Alternatives considered:** Let workers inherit the parent (rejected because a Sol/medium parent produced Sol/medium workers), or add a Ralph-owned fan-out runner (rejected because it duplicates provider-native orchestration and cannot share one model vocabulary across providers).
+**Consequences:** Delegated QA and multi-axis review steps support Claude or Codex as their main agent and fail during preflight snapshotting or prompt rendering for an unconfigured provider or incomplete configuration. Prompt fragments no longer hardcode model or effort. Changing `ralph.config.json` affects newly generated or legacy unsnapshotted delegated steps without silently changing existing snapshots. Claude main agents explicitly opt in to a session-scoped dynamic workflow; Codex main agents use native subagent calls directly. Workers never spawn workers. Review produces five independent results in flat 2+3 batches that fit the live Codex runtime. The QA parent owns assignment, shared writes, evidence completeness, reporting, cleanup, and worktree integrity, but it must re-delegate missing evidence instead of running a checklist item. Each main agent must fail rather than silently falling back when its native tool cannot apply the requested worker settings.
 
 ### Keep browser-based grilling disposable and parent-owned
 **Date:** 2026-08-16
@@ -47,7 +55,7 @@ last_updated: 2026-08-16
 **Decision:** Remove per-slice review and review-fixes. After all implementation slices, run `final-checks`, `pr-creation`, `prepare-qa-checklist`, `runthrough-qa-checklist`, `multi-axis-pr-review`, and `cleanup-local-resources`. Init creates the last step with `alwaysRun: true`; the scheduler defers it behind normal work so it can still run after success or any earlier failure.
 **Reasoning:** Each concern now has one auditable step and one prompt. PR creation stays free of QA/review behavior, local QA is visible and updated in one PR comment, and four specialized skills review the completed PR independently. Cleanup must cover resources and rough files from any pipeline step, including failed runs.
 **Alternatives considered:** Keep the combined PR review and optional fixes (rejected: it mixes PR creation, QA planning, review, and remediation), or keep per-slice review (rejected: the requested review boundary is the completed PR).
-**Consequences:** Review findings are reported but not automatically fixed. The four review axes use two waves to fit the four-agent limit. The runner skips normal pending steps after a failure, runs pending `alwaysRun` cleanup, and still exits non-zero with the original failure recorded, including step-limited runs.
+**Consequences:** Review findings are reported but not automatically fixed. Five review passes across four skills run as two flat batches owned by the main agent: two Matt axes, then three other skills. The batch size fits Codex's live four-slot runtime while keeping every worker top-level. The runner skips normal pending steps after a failure, runs pending `alwaysRun` cleanup, and still exits non-zero with the original failure recorded, including step-limited runs.
 
 ### Declare slice dependencies as first-class blocking edges
 **Date:** 2026-07-09
