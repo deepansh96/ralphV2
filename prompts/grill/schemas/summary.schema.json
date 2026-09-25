@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Summary",
+  "description": "The Grilling Agent's decision summary and issue draft (summary draft and summary final).",
+  "type": "object",
+  "required": ["exchangeId", "decisionSummary", "issueTitle", "issueBody"],
+  "properties": {
+    "exchangeId": {"type": "string", "pattern": "^ex-[0-9]{4,}$"},
+    "decisionSummary": {"type": "string", "minLength": 1},
+    "issueTitle": {"type": "string", "minLength": 1},
+    "issueBody": {"type": "string", "minLength": 1}
+  }
+}

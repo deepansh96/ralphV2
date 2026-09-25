@@ -1258,9 +1258,13 @@ run_test() {
 
 # Scripted fake `claude` for Automated Grilling Sessions. Each non-help
 # invocation is recorded under $FAKE_CLAUDE_DIR/calls/NNNN/ (argv.json, pwd,
-# stdin). Result text is popped from $FAKE_CLAUDE_DIR/queue/* in name order,
-# falling back to a readiness acknowledgement. Prompts are appended to a fake
-# session store at $FAKE_CLAUDE_DIR/sessions/<native-id>.
+# stdin). The prompt's `[ralph-exchange:<id>]` marker selects a per-exchange
+# fixture: $FAKE_CLAUDE_DIR/exchanges/<id>.sh runs first in the working
+# directory (to simulate Agent edits), then $FAKE_CLAUDE_DIR/exchanges/<id>.json
+# is the result text. Without a fixture, result text is popped from
+# $FAKE_CLAUDE_DIR/queue/* in name order, falling back to a readiness
+# acknowledgement. Prompts are appended to a fake session store at
+# $FAKE_CLAUDE_DIR/sessions/<native-id>.
 # FAKE_CLAUDE_HELP_OMIT removes a flag from `--help` output so capability
 # checks can be failed.
 install_fake_grill_claude() {
@@ -1320,11 +1324,21 @@ done
 
 printf '%s\n' "$prompt" >> "$state_dir/sessions/${native_id:-unknown}"
 
+exchange_id="$(grep -oE '\[ralph-exchange:ex-[0-9]+\]' <<<"$prompt" | head -n 1 | sed -E 's/^\[ralph-exchange:(.*)\]$/\1/' || true)"
+fixture="$state_dir/exchanges/$exchange_id"
+if [[ -n "$exchange_id" && -f "$fixture.sh" ]]; then
+  bash "$fixture.sh"
+fi
+
 result="ready"
-next="$(find "$state_dir/queue" -mindepth 1 -maxdepth 1 -type f | sort | head -n 1)"
-if [[ -n "$next" ]]; then
-  result="$(<"$next")"
-  rm -f "$next"
+if [[ -n "$exchange_id" && -f "$fixture.json" ]]; then
+  result="$(<"$fixture.json")"
+else
+  next="$(find "$state_dir/queue" -mindepth 1 -maxdepth 1 -type f | sort | head -n 1)"
+  if [[ -n "$next" ]]; then
+    result="$(<"$next")"
+    rm -f "$next"
+  fi
 fi
 
 jq -n -c --arg id "$native_id" '{type: "system", subtype: "init", session_id: $id}'

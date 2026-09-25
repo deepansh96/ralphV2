@@ -53,8 +53,70 @@ setup_grill_repo() {
   export FAKE_GH_ISSUE_JSON='{"title":"Add Dark Mode!","body":"Readers want a dark theme."}'
   unset FAKE_CLAUDE_HELP_OMIT
   printf '%s\n%s\n' "$UUID_GRILLING" "$UUID_ANSWERING" > "$FAKE_UUID_QUEUE"
-  mkdir -p "$FAKE_CLAUDE_DIR"
+  mkdir -p "$FAKE_CLAUDE_DIR/exchanges"
   : > "$FAKE_GH_LOG"
+  queue_minimal_run
+}
+
+# Scripts the result text the fake claude returns for one exchange ID.
+exchange_fixture() {
+  printf '%s\n' "$2" > "$FAKE_CLAUDE_DIR/exchanges/$1.json"
+}
+
+# Scripts a shell side effect the fake claude runs in its working directory
+# before answering one exchange ID.
+exchange_effect() {
+  printf '%s\n' "$2" > "$FAKE_CLAUDE_DIR/exchanges/$1.sh"
+}
+
+summary_fixture() {
+  jq -n -c --arg id "$1" --arg summary "$2" \
+    '{exchangeId: $id, decisionSummary: $summary, issueTitle: "Offline export", issueBody: "Export reports offline."}'
+}
+
+# The shortest run to the confirmation gate: an empty first Frontier, then the
+# closing exchanges.
+queue_minimal_run() {
+  exchange_fixture ex-0003 '{"exchangeId":"ex-0003","round":1,"questions":[],"reopens":[]}'
+  exchange_fixture ex-0004 "$(summary_fixture ex-0004 "- Nothing to decide.")"
+  exchange_fixture ex-0005 '{"exchangeId":"ex-0005","faithful":true,"discrepancies":[]}'
+  exchange_fixture ex-0006 "$(summary_fixture ex-0006 "- Nothing to decide.")"
+}
+
+# Two Frontier rounds (the second reopens a decision), an empty Frontier, and
+# the closing exchanges. The first round edits CONTEXT.md inline.
+queue_two_round_run() {
+  exchange_effect ex-0003 'printf "# Context\n\n**Offline Export**: a report saved for offline reading.\n" > CONTEXT.md'
+  exchange_fixture ex-0003 '{"exchangeId":"ex-0003","round":1,
+    "questions":[
+      {"id":"storage-backend","title":"Where are exports stored?","body":"Pick the storage backend.",
+       "choices":[{"id":"sqlite","label":"SQLite","description":"Local file"},
+                  {"id":"postgres","label":"Postgres","description":"Server database"}],
+       "recommendation":{"choiceId":"sqlite","rationale":"No server exists yet."}},
+      {"id":"export-format","title":"Which format?","body":"Pick the export format.",
+       "choices":[{"id":"csv","label":"CSV","description":"Plain text"}],
+       "recommendation":{"choiceId":"csv","rationale":"Spreadsheets open it."}}],
+    "reopens":[]}'
+  exchange_fixture ex-0004 '{"exchangeId":"ex-0004","answers":[
+      {"questionId":"storage-backend","choiceId":"sqlite","rationale":"The app has no server.","evidence":["README.md"]},
+      {"questionId":"export-format","choiceId":"csv","rationale":"Users open exports in spreadsheets.","evidence":["https://example.com/csv"]}]}'
+  exchange_fixture ex-0005 '{"exchangeId":"ex-0005","round":2,
+    "questions":[
+      {"id":"sync-mode","title":"How do exports sync?","body":"Pick the sync mode.",
+       "choices":[{"id":"manual","label":"Manual","description":"User triggers sync"}],
+       "recommendation":{"choiceId":"manual","rationale":"Simplest."}}],
+    "reopens":[{"questionId":"storage-backend","contradiction":"README says exports are shared across devices.","evidence":["README.md"]}]}'
+  exchange_fixture ex-0006 '{"exchangeId":"ex-0006","answers":[
+      {"questionId":"sync-mode","choiceId":"manual","rationale":"No background jobs exist.","evidence":["README.md"]},
+      {"questionId":"storage-backend","choiceId":"postgres","rationale":"Shared exports need a server.","evidence":["README.md"]}]}'
+  exchange_fixture ex-0007 '{"exchangeId":"ex-0007","round":3,"questions":[],"reopens":[]}'
+  exchange_fixture ex-0008 "$(summary_fixture ex-0008 "- Draft summary: SQLite storage.")"
+  exchange_fixture ex-0009 '{"exchangeId":"ex-0009","faithful":false,
+    "discrepancies":[{"questionId":"storage-backend","problem":"Summary says SQLite.","fix":"Say Postgres."}]}'
+  exchange_fixture ex-0010 "$(jq -n -c '{exchangeId: "ex-0010",
+    decisionSummary: "- Storage: Postgres (reopened).\n- Format: CSV.\n- Sync: manual.",
+    issueTitle: "Export reports offline with Postgres storage",
+    issueBody: "Readers export CSV reports stored in Postgres."}')"
 }
 
 teardown_grill_repo() {
@@ -149,8 +211,8 @@ test_start_creates_owner_only_record_with_frozen_config() {
 
   record="$(<"$session_dir/session.json")"
   [[ "$(jq -r '.id' <<<"$record")" == "$session_id" ]] || fail "expected record id"
-  [[ "$(jq -r '.status' <<<"$record")" == "grilling" ]] || fail "expected status grilling"
-  [[ "$(jq -r '.blockReason' <<<"$record")" == "null" ]] || fail "expected null blockReason"
+  [[ "$(jq -r '.status' <<<"$record")" == "blocked" ]] || fail "expected status blocked"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] || fail "expected awaiting_confirmation"
   [[ "$(jq -r '.input.kind' <<<"$record")" == "requirement_file" ]] || fail "expected input kind"
   [[ "$(jq -r '.input.requirementSha256' <<<"$record")" == "$REQUIREMENT_SHA256" ]] || fail "expected requirement sha256"
   [[ "$(jq -r '.input.requirementPath' <<<"$record")" == "requirement.md" ]] || fail "expected requirement path"
@@ -181,7 +243,7 @@ test_start_opens_two_distinct_native_claude_sessions() {
     --grilling-agent claude --answering-agent claude \
     --grilling-model opus --answering-model opus >/dev/null
 
-  [[ "$(claude_call_count)" == "2" ]] || fail "expected exactly two native sessions"
+  [[ "$(find "$FAKE_CLAUDE_DIR/sessions" -type f | wc -l | tr -d ' ')" == "2" ]] || fail "expected exactly two native sessions"
   [[ "$(claude_flag_value 0001 --session-id)" == "$UUID_GRILLING" ]] || fail "expected grilling session first"
   [[ "$(claude_flag_value 0002 --session-id)" == "$UUID_ANSWERING" ]] || fail "expected answering session second"
   [[ "$(claude_flag_value 0001 --model)" == "opus" ]] || fail "expected grilling model"
@@ -200,8 +262,8 @@ test_start_opens_two_distinct_native_claude_sessions() {
   record="$(<"$session_dir/session.json")"
   [[ "$(jq -r '.agents.grilling.nativeSessionId' <<<"$record")" == "$UUID_GRILLING" ]] || fail "expected stored grilling native ID"
   [[ "$(jq -r '.agents.answering.nativeSessionId' <<<"$record")" == "$UUID_ANSWERING" ]] || fail "expected stored answering native ID"
-  [[ "$(jq -c '[.exchanges[] | {id, role, status}]' <<<"$record")" \
-    == '[{"id":"ex-0001","role":"grilling","status":"completed"},{"id":"ex-0002","role":"answering","status":"completed"}]' ]] \
+  [[ "$(jq -c '[.exchanges[:2][] | {id, kind, role, status}]' <<<"$record")" \
+    == '[{"id":"ex-0001","kind":"session_start","role":"grilling","status":"completed"},{"id":"ex-0002","kind":"session_start","role":"answering","status":"completed"}]' ]] \
     || fail "expected both start exchanges recorded"
   [[ "$(file_mode "$session_dir/logs/ex-0001-grilling.jsonl")" == "600" ]] || fail "expected grilling log mode 600"
   [[ "$(file_mode "$session_dir/logs/ex-0002-answering.jsonl")" == "600" ]] || fail "expected answering log mode 600"
@@ -352,6 +414,287 @@ test_start_refuses_existing_planning_branch() {
   teardown_grill_repo
 }
 
+test_start_relays_frontier_rounds_to_the_confirmation_gate() {
+  local status session_id session_dir record confirmation
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+
+  set +e
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude | tail -n 1)"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 0 ]] || fail "expected start to exit 0 at the confirmation gate"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -r '.status' <<<"$record")" == "blocked" ]] || fail "expected status blocked"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] || fail "expected awaiting_confirmation"
+  [[ "$(jq -r '.round' <<<"$record")" == "3" ]] || fail "expected three Frontier rounds"
+  [[ "$(claude_call_count)" == "10" ]] || fail "expected ten exchanges"
+  [[ "$(jq -c '[.exchanges[] | [.id, .kind, .role, .status]]' <<<"$record")" == "$(jq -n -c '[
+      ["ex-0001","session_start","grilling","completed"],
+      ["ex-0002","session_start","answering","completed"],
+      ["ex-0003","frontier","grilling","completed"],
+      ["ex-0004","answers","answering","completed"],
+      ["ex-0005","frontier","grilling","completed"],
+      ["ex-0006","answers","answering","completed"],
+      ["ex-0007","frontier","grilling","completed"],
+      ["ex-0008","summary_draft","grilling","completed"],
+      ["ex-0009","summary_review","answering","completed"],
+      ["ex-0010","summary_final","grilling","completed"]]')" ]] \
+    || fail "expected sequential completed exchanges, got: $(jq -c '.exchanges' <<<"$record")"
+  [[ "$(jq -r '.exchanges[4].logPath' <<<"$record")" == "logs/ex-0005-grilling.jsonl" ]] || fail "expected exchange log path"
+
+  confirmation="$(<"$session_dir/confirmation.md")"
+  [[ "$(file_mode "$session_dir/confirmation.md")" == "600" ]] || fail "expected confirmation.md mode 600"
+  assert_contains "$confirmation" "- Storage: Postgres (reopened)."
+  assert_contains "$confirmation" "Export reports offline with Postgres storage"
+  assert_contains "$confirmation" "Readers export CSV reports stored in Postgres."
+  assert_contains "$confirmation" "CONTEXT.md | 3 +++"
+  assert_contains "$confirmation" "+**Offline Export**: a report saved for offline reading."
+  assert_contains "$confirmation" "## Decision"
+  assert_contains "$confirmation" "approve"
+  assert_contains "$confirmation" "## Answers"
+  [[ "$confirmation" != *"Draft summary: SQLite storage."* ]] || fail "expected the final summary, not the draft"
+
+  teardown_grill_repo
+}
+
+test_every_exchange_after_start_resumes_the_stored_native_session() {
+  local call flag expected argv
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+
+  grill start --requirement-file "$REQUIREMENT_FILE" --grilling-agent claude --answering-agent claude >/dev/null
+
+  for call in 0003 0004 0005 0006 0007 0008 0009 0010; do
+    case "$call" in
+      0004|0006|0009) expected="$UUID_ANSWERING" ;;
+      *) expected="$UUID_GRILLING" ;;
+    esac
+    argv="$(claude_argv "$call")"
+    [[ "$(claude_flag_value "$call" --resume)" == "$expected" ]] || fail "expected call $call to resume $expected"
+    [[ "$argv" != *'"--session-id"'* ]] || fail "expected call $call not to start a new session"
+    assert_contains "$argv" '"--json-schema"'
+    assert_contains "$(claude_flag_value "$call" -p)" "[ralph-exchange:ex-$call]"
+  done
+  for call in 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010; do
+    argv="$(claude_argv "$call")"
+    for flag in --continue --last --fork-session -c; do
+      ! jq -e --arg f "$flag" 'index($f)' <<<"$argv" >/dev/null || fail "call $call must not pass $flag"
+    done
+  done
+  [[ "$(claude_flag_value 0005 --model)" == "opus" ]] || fail "expected the frozen model on resumed calls"
+  [[ "$(claude_flag_value 0004 --permission-mode)" == "default" ]] || fail "expected answering policy on resumed calls"
+
+  teardown_grill_repo
+}
+
+test_answers_merge_into_decisions_and_reopens_route_the_contradiction() {
+  local session_id record answering_prompt grilling_prompt
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude | tail -n 1)"
+
+  record="$(<"$GRILL_SESSIONS/$session_id/session.json")"
+  [[ "$(jq -c '.decisions' <<<"$record")" == "$(jq -n -c '{
+      "storage-backend": {exchangeId: "ex-0006", decision: "postgres", reopenedBy: "ex-0005"},
+      "export-format": {exchangeId: "ex-0004", decision: "csv", reopenedBy: null},
+      "sync-mode": {exchangeId: "ex-0006", decision: "manual", reopenedBy: null}}')" ]] \
+    || fail "expected merged decisions, got: $(jq -c '.decisions' <<<"$record")"
+
+  answering_prompt="$(claude_flag_value 0004 -p)"
+  assert_contains "$answering_prompt" "Where are exports stored?"
+  assert_contains "$answering_prompt" "export-format"
+  answering_prompt="$(claude_flag_value 0006 -p)"
+  assert_contains "$answering_prompt" "sync-mode"
+  assert_contains "$answering_prompt" "README says exports are shared across devices."
+  grilling_prompt="$(claude_flag_value 0005 -p)"
+  assert_contains "$grilling_prompt" "Users open exports in spreadsheets."
+  grilling_prompt="$(claude_flag_value 0009 -p)"
+  assert_contains "$grilling_prompt" "Draft summary: SQLite storage."
+  grilling_prompt="$(claude_flag_value 0010 -p)"
+  assert_contains "$grilling_prompt" "Say Postgres."
+
+  teardown_grill_repo
+}
+
+test_partial_answer_set_is_invalid() {
+  local status record
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+  exchange_fixture ex-0004 '{"exchangeId":"ex-0004","answers":[
+      {"questionId":"storage-backend","choiceId":"sqlite","rationale":"The app has no server.","evidence":["README.md"]}]}'
+
+  set +e
+  grill start --requirement-file "$REQUIREMENT_FILE" --grilling-agent claude --answering-agent claude >/dev/null 2>&1
+  status=$?
+  set -e
+
+  [[ "$status" -ne 0 ]] || fail "expected a partial answer set to stop the session"
+  record="$(<"$(only_session_dir)/session.json")"
+  [[ "$(jq -c '.decisions' <<<"$record")" == "{}" ]] || fail "expected no decisions from a partial answer set"
+  [[ "$(claude_call_count)" == "4" ]] || fail "expected no exchange after the invalid answers"
+
+  teardown_grill_repo
+}
+
+test_answer_without_evidence_is_invalid() {
+  local status
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+  exchange_fixture ex-0004 '{"exchangeId":"ex-0004","answers":[
+      {"questionId":"storage-backend","choiceId":"sqlite","rationale":"The app has no server.","evidence":["README.md"]},
+      {"questionId":"export-format","choiceId":"csv","rationale":"Spreadsheets.","evidence":[]}]}'
+
+  set +e
+  grill start --requirement-file "$REQUIREMENT_FILE" --grilling-agent claude --answering-agent claude >/dev/null 2>&1
+  status=$?
+  set -e
+
+  [[ "$status" -ne 0 ]] || fail "expected an answer without evidence to stop the session"
+  [[ "$(claude_call_count)" == "4" ]] || fail "expected no exchange after the invalid answers"
+
+  teardown_grill_repo
+}
+
+test_confirmation_flags_out_of_scope_changes_and_head_drift() {
+  local session_id record start_head confirmation
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  start_head="$(git -C "$GRILL_REPO" rev-parse HEAD)"
+  queue_two_round_run
+  exchange_effect ex-0005 'mkdir -p docs/adr src
+printf "# Use Postgres\n" > docs/adr/0001-use-postgres.md
+printf "stray\n" > src/app.txt
+printf "committed\n" > notes.txt
+git add notes.txt && git commit -q -m "Sneaky commit"'
+
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude | tail -n 1)"
+
+  record="$(<"$GRILL_SESSIONS/$session_id/session.json")"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] || fail "expected awaiting_confirmation"
+  confirmation="$(<"$GRILL_SESSIONS/$session_id/confirmation.md")"
+  assert_contains "$confirmation" "Changed outside CONTEXT.md and docs/adr/: \`src/app.txt\`"
+  [[ "$confirmation" != *"outside CONTEXT.md and docs/adr/: \`docs/adr"* ]] || fail "ADR files are in scope"
+  [[ "$confirmation" != *"grilling-sessions"* ]] || fail "Ralph session storage must not be flagged"
+  assert_contains "$confirmation" "HEAD changed since start: $start_head -> $(git -C "$GRILL_REPO" rev-parse HEAD)"
+  assert_contains "$confirmation" "+# Use Postgres"
+
+  teardown_grill_repo
+}
+
+test_confirmation_without_drift_has_no_flags() {
+  local session_id confirmation
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude | tail -n 1)"
+
+  confirmation="$(<"$GRILL_SESSIONS/$session_id/confirmation.md")"
+  assert_contains "$confirmation" "- No flags."
+  [[ "$confirmation" != *"Changed outside"* ]] || fail "expected no out-of-scope flag"
+  [[ "$confirmation" != *"HEAD changed"* ]] || fail "expected no HEAD drift flag"
+
+  teardown_grill_repo
+}
+
+test_provider_logs_are_owner_only_per_exchange_and_role() {
+  local session_dir log
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+
+  grill start --requirement-file "$REQUIREMENT_FILE" --grilling-agent claude --answering-agent claude >/dev/null
+
+  session_dir="$(only_session_dir)"
+  for log in ex-0003-grilling ex-0004-answering ex-0005-grilling ex-0006-answering ex-0007-grilling \
+    ex-0008-grilling ex-0009-answering ex-0010-grilling; do
+    [[ -f "$session_dir/logs/$log.jsonl" ]] || fail "expected provider log $log"
+    [[ "$(file_mode "$session_dir/logs/$log.jsonl")" == "600" ]] || fail "expected $log mode 600"
+    assert_contains "$(<"$session_dir/logs/$log.jsonl")" '"type":"result"'
+  done
+
+  teardown_grill_repo
+}
+
+# Rewinds a gated record to the state right after both native sessions start.
+rewind_to_after_start() {
+  local session_dir="$1"
+  local rewound
+
+  rewound="$(jq '.status = "grilling" | .blockReason = null | .round = 0 | .decisions = {} | .exchanges |= .[:2]' \
+    "$session_dir/session.json")"
+  printf '%s\n' "$rewound" > "$session_dir/session.json"
+  rm -f "$session_dir/confirmation.md"
+}
+
+test_resume_continues_a_grilling_session_to_the_gate() {
+  local session_id session_dir record
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude | tail -n 1)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  rewind_to_after_start "$session_dir"
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+
+  grill resume --id "$session_id" >/dev/null
+
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] || fail "expected resume to reach the gate"
+  [[ "$(claude_call_count)" == "4" ]] || fail "expected four resumed exchanges"
+  [[ "$(claude_flag_value 0001 --resume)" == "$UUID_GRILLING" ]] || fail "expected resume of the grilling session"
+  assert_contains "$(claude_flag_value 0001 -p)" "[ralph-exchange:ex-0003]"
+  [[ -f "$session_dir/confirmation.md" ]] || fail "expected confirmation.md after resume"
+
+  teardown_grill_repo
+}
+
+test_resume_rejects_configuration_flags() {
+  local session_id flag output status before
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude | tail -n 1)"
+  rewind_to_after_start "$GRILL_SESSIONS/$session_id"
+  before="$(claude_call_count)"
+
+  for flag in --grilling-agent --answering-agent --grilling-model --grilling-effort \
+    --answering-model --answering-effort; do
+    set +e
+    output="$(grill resume --id "$session_id" "$flag" claude 2>&1)"
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || fail "expected resume $flag to fail"
+    assert_contains "$output" "configuration is frozen"
+  done
+  [[ "$(claude_call_count)" == "$before" ]] || fail "expected no Agent contact on rejected resume"
+
+  teardown_grill_repo
+}
+
 test_grilling_sessions_are_gitignored() {
   grep -qx 'grilling-sessions/' "$ROOT_DIR/.gitignore" || fail "expected grilling-sessions/ in .gitignore"
 }
@@ -368,5 +711,15 @@ run_test test_start_on_default_branch_creates_issue_planning_branch
 run_test test_start_on_default_branch_creates_requirement_planning_branch
 run_test test_start_refuses_existing_planning_branch
 run_test test_grilling_sessions_are_gitignored
+run_test test_start_relays_frontier_rounds_to_the_confirmation_gate
+run_test test_every_exchange_after_start_resumes_the_stored_native_session
+run_test test_answers_merge_into_decisions_and_reopens_route_the_contradiction
+run_test test_partial_answer_set_is_invalid
+run_test test_answer_without_evidence_is_invalid
+run_test test_confirmation_flags_out_of_scope_changes_and_head_drift
+run_test test_confirmation_without_drift_has_no_flags
+run_test test_provider_logs_are_owner_only_per_exchange_and_role
+run_test test_resume_continues_a_grilling_session_to_the_gate
+run_test test_resume_rejects_configuration_flags
 
 echo "grill_test.sh passed"

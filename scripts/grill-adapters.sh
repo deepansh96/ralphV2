@@ -5,10 +5,13 @@
 #   adapter_capabilities <provider>
 #   adapter_new_native_id <provider>
 #   adapter_start <role> <config-json> <prompt> <log>   -> prints native session ID
+#   adapter_send <role> <config-json> <native-id> <prompt> <schema-file> <log>
+#                                                       -> prints the final message
 # <config-json> carries provider, model, reasoningEffort, repoRoot and, for
 # providers whose IDs the coordinator generates, nativeSessionId.
 # Access is always granted through provider-native permission and sandbox
-# controls, never --dangerously-skip-permissions.
+# controls, never --dangerously-skip-permissions. Sessions are only ever
+# resumed by explicit native ID, never --continue, --last or --fork-session.
 
 GRILL_CLAUDE_REQUIRED_FLAGS=(
   --session-id
@@ -17,6 +20,7 @@ GRILL_CLAUDE_REQUIRED_FLAGS=(
   --allowedTools
   --disallowedTools
   --settings
+  --json-schema
 )
 
 adapter_capabilities() {
@@ -48,6 +52,21 @@ adapter_start() {
   provider="$(jq -r '.provider' <<<"$config")"
   case "$provider" in
     claude) claude_adapter_start "$@" ;;
+    *)
+      echo "Error: no session adapter is available for provider '$provider'" >&2
+      return 1
+      ;;
+  esac
+}
+
+adapter_send() {
+  local role="$1"
+  local config="$2"
+  local provider
+
+  provider="$(jq -r '.provider' <<<"$config")"
+  case "$provider" in
+    claude) claude_adapter_send "$@" ;;
     *)
       echo "Error: no session adapter is available for provider '$provider'" >&2
       return 1
@@ -127,24 +146,25 @@ claude_adapter_policy_args() {
   printf '%s\n' --settings "$(claude_adapter_settings "$role")"
 }
 
-claude_adapter_start() {
+# Runs one claude print-mode call for a role with its access policy, writing
+# the raw stream to <log>. Extra arguments select the session and schema.
+claude_adapter_run() {
   local role="$1"
   local config="$2"
   local prompt="$3"
   local log_file="$4"
-  local native_id model effort repo_root policy status
+  shift 4
+  local model effort repo_root policy status
   local -a claude_args policy_args
 
-  native_id="$(jq -r '.nativeSessionId // empty' <<<"$config")"
   model="$(jq -r '.model // empty' <<<"$config")"
   effort="$(jq -r '.reasoningEffort // empty' <<<"$config")"
   repo_root="$(jq -r '.repoRoot' <<<"$config")"
-  [[ -n "$native_id" ]] || { echo "Error: claude adapter needs a coordinator-generated session ID" >&2; return 1; }
 
   policy="$(claude_adapter_policy_args "$role")" || return 1
   mapfile -t policy_args <<<"$policy"
 
-  claude_args=(-p "$prompt" --session-id "$native_id" --output-format stream-json --verbose)
+  claude_args=(-p "$prompt" "$@" --output-format stream-json --verbose)
   [[ -z "$model" ]] || claude_args+=(--model "$model")
   [[ -z "$effort" ]] || claude_args+=(--effort "$effort")
   claude_args+=("${policy_args[@]}")
@@ -154,11 +174,47 @@ claude_adapter_start() {
   status=$?
   set -e
 
-  if [[ "$status" -ne 0 ]] \
-    || ! grep '^{' "$log_file" | jq -se 'any(.[]; .type == "result" and .is_error != true)' >/dev/null 2>&1; then
+  [[ "$status" -eq 0 ]] \
+    && grep '^{' "$log_file" | jq -se 'any(.[]; .type == "result" and .is_error != true)' >/dev/null 2>&1
+}
+
+claude_adapter_start() {
+  local role="$1"
+  local config="$2"
+  local prompt="$3"
+  local log_file="$4"
+  local native_id
+
+  native_id="$(jq -r '.nativeSessionId // empty' <<<"$config")"
+  [[ -n "$native_id" ]] || { echo "Error: claude adapter needs a coordinator-generated session ID" >&2; return 1; }
+
+  if ! claude_adapter_run "$role" "$config" "$prompt" "$log_file" --session-id "$native_id"; then
     echo "Error: claude failed to start the $role session; see $log_file" >&2
     return 1
   fi
 
   printf '%s\n' "$native_id"
+}
+
+# Resumes the stored session and prints its final message: the structured
+# output when the CLI returns one, otherwise the result text.
+claude_adapter_send() {
+  local role="$1"
+  local config="$2"
+  local native_id="$3"
+  local prompt="$4"
+  local schema_file="$5"
+  local log_file="$6"
+
+  [[ -n "$native_id" ]] || { echo "Error: claude adapter needs a native session ID to resume" >&2; return 1; }
+
+  if ! claude_adapter_run "$role" "$config" "$prompt" "$log_file" \
+    --resume "$native_id" --json-schema "$(jq -c . "$schema_file")"; then
+    echo "Error: claude failed to resume the $role session $native_id; see $log_file" >&2
+    return 1
+  fi
+
+  grep '^{' "$log_file" | jq -s -r '
+    [.[] | select(.type == "result")] | last
+    | if (.structured_output | type) == "object" then (.structured_output | tojson) else .result end'
 }

@@ -552,6 +552,28 @@ test_session_start_fragment_carries_exchange_marker_and_requirement() {
   assert_contains "$prompt" "{{REQUIREMENT}}"
 }
 
+test_exchange_fragments_carry_exchange_marker_and_json_only_reply() {
+  local name prompt
+
+  for name in round-frontier round-answers closing-draft closing-review closing-final; do
+    prompt="$(<"$ROOT_DIR/prompts/grill/$name.md")"
+    assert_contains "$prompt" "[ralph-exchange:{{EXCHANGE_ID}}]"
+    assert_contains "$prompt" "JSON only"
+  done
+  assert_contains "$(<"$ROOT_DIR/prompts/grill/round-answers.md")" "contradiction"
+  assert_contains "$(<"$ROOT_DIR/prompts/grill/closing-final.md")" "there is no further review"
+}
+
+test_grill_message_schemas_are_checked_in() {
+  local name
+
+  for name in frontier answers summary summary-review; do
+    jq -e '."$schema" and .type == "object" and (.required | index("exchangeId"))' \
+      "$ROOT_DIR/prompts/grill/schemas/$name.schema.json" >/dev/null \
+      || fail "expected a JSON Schema for $name messages"
+  done
+}
+
 test_human_grilling_skills_carry_no_automated_grilling_contract() {
   local file
 
@@ -579,6 +601,8 @@ run_test test_grill_with_docs_skill_defines_planning_branch_contract
 run_test test_grilling_agent_prompt_defines_frontier_only_contract
 run_test test_answering_agent_prompt_defines_evidence_and_read_only_contract
 run_test test_session_start_fragment_carries_exchange_marker_and_requirement
+run_test test_exchange_fragments_carry_exchange_marker_and_json_only_reply
+run_test test_grill_message_schemas_are_checked_in
 run_test test_human_grilling_skills_carry_no_automated_grilling_contract
 
 echo "prompt_contracts_test.sh passed"

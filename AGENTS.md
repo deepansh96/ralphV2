@@ -82,5 +82,5 @@ GitHub, via the `gh` CLI. Tracker operations — sub-issues, native blocking edg
 - Status: `./ralph.sh status --issue N`
 - Logs: `./ralph.sh logs --issue N --step step-id`
 - Cleanup: `./cleanup.sh N`
-- Automated grilling: `./ralph.sh grill start (--issue N | --requirement-file PATH) --grilling-agent claude --answering-agent claude` (coordinator `scripts/grill.sh`, record store `scripts/grill-record.sh`, adapters `scripts/grill-adapters.sh`, role prompts `prompts/grill/`)
+- Automated grilling: `./ralph.sh grill start (--issue N | --requirement-file PATH) --grilling-agent claude --answering-agent claude`, then `./ralph.sh grill resume --id ID` (coordinator `scripts/grill.sh`, record store `scripts/grill-record.sh`, adapters `scripts/grill-adapters.sh`, role prompts and message schemas `prompts/grill/`)
 - mex drift: `npx mex-agent check --quiet`

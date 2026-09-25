@@ -30,6 +30,7 @@ Usage:
   ralph.sh logs --issue N [--step step-id]
   ralph.sh poll --issue N
   ralph.sh grill start (--issue N | --requirement-file PATH) --grilling-agent A --answering-agent A
+  ralph.sh grill resume --id SESSION_ID
 USAGE
 }
 

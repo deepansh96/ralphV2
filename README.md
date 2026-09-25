@@ -28,12 +28,16 @@ Run commands from the repository root:
 ./ralph-v2/ralph.sh grill start --issue N --grilling-agent claude --answering-agent claude
 ./ralph-v2/ralph.sh grill start --requirement-file PATH --grilling-agent claude --answering-agent claude \
   [--grilling-model M] [--grilling-effort E] [--answering-model M] [--answering-effort E]
+./ralph-v2/ralph.sh grill resume --id SESSION_ID
 ```
 
 - `grill start` opens an opt-in Automated Grilling Session: a Grilling Agent and a separate Answering Agent, each in its own native Claude session. It needs exactly one of `--issue` or `--requirement-file`, and both agent flags (`codex|claude`; the Codex adapter is not available yet). Omitted model/effort flags fall back to `agentDefaults` in `ralph.config.json`, and the resolved values are frozen in the record.
 - `start` refuses a dirty worktree in the target repository (the Git toplevel above the Ralph directory; Ralph's own `grilling-sessions/` and `archive/` are ignored). On the default branch it creates `grill/issue-<N>-<slug>` or `grill/<slug>` and refuses if that branch already exists.
 - `start` refuses before any native session exists when the installed CLI cannot express the role access policy: the Answering Agent never writes, the Grilling Agent writes only inside the repository, and both get read-only web and `gh` access. It never uses `--dangerously-skip-permissions`.
 - The Grilling Session Record lives at `grilling-sessions/<id>/session.json` (gitignored, dirs `0700`, files `0600`) with the requirement snapshot in `requirement.md` and raw provider logs in `logs/`. `start` prints the session ID.
+- After both sessions start, the coordinator relays rounds: Frontier (Grilling Agent) → Answers (Answering Agent) → answers merged into `decisions` → next Frontier, until the Frontier is empty. Then the Grilling Agent drafts the decision summary and issue, the Answering Agent reviews it once for faithfulness, and the Grilling Agent resolves the review. Every call resumes the stored native session by ID, and every prompt carries `[ralph-exchange:ex-NNNN]`. The coordinator validates each message itself against the checked-in schemas in `prompts/grill/schemas/`. A `reopens` entry sends the contradiction to the Answering Agent, and the new answer records `reopenedBy`.
+- The run stops at the confirmation gate: `confirmation.md` in the session directory holds the summary, the issue draft, the diff, and flags for changes outside `CONTEXT.md`/`docs/adr/` and HEAD/branch drift. The record becomes `blocked/awaiting_confirmation` and the command exits 0.
+- `grill resume --id` continues a `grilling` session with the frozen configuration and rejects agent/model/effort flags.
 - Modules: `scripts/grill.sh` (coordinator), `scripts/grill-record.sh` (record store), `scripts/grill-adapters.sh` (session adapters). Role prompts live in `prompts/grill/`.
 
 ## Monitoring
