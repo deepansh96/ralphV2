@@ -8,6 +8,8 @@ export GIT_COMMITTER_NAME="Ralph Test" GIT_COMMITTER_EMAIL="ralph@example.com"
 
 UUID_GRILLING="11111111-1111-4111-8111-111111111111"
 UUID_ANSWERING="22222222-2222-4222-8222-222222222222"
+THREAD_GRILLING="019a0000-aaaa-7aaa-8aaa-aaaaaaaaaaaa"
+THREAD_ANSWERING="019a0000-bbbb-7bbb-8bbb-bbbbbbbbbbbb"
 REQUIREMENT_TEXT=$'# Offline Export\n\nUsers need to export reports offline.'
 REQUIREMENT_SHA256="04870b16254c43c51e6e243932fb6791ff6028191de64f8b8c12472d4ce9f1b9"
 
@@ -19,7 +21,8 @@ REQUIREMENT_FILE=""
 
 # Builds a temporary target repository with a local bare remote and a Ralph
 # install at <repo>/ralph-v2 (symlinked to this checkout), plus fake claude,
-# uuidgen and gh on PATH.
+# codex, uuidgen and gh on PATH. Both fake Agents read the same exchange
+# fixtures.
 setup_grill_repo() {
   GRILL_TMP="$(mktemp -d)"
   GRILL_REPO="$GRILL_TMP/repo"
@@ -45,16 +48,22 @@ setup_grill_repo() {
   printf '%s\n' "$REQUIREMENT_TEXT" > "$REQUIREMENT_FILE"
 
   install_fake_grill_claude "$GRILL_TMP/bin"
+  install_fake_grill_codex "$GRILL_TMP/bin"
   install_fake_uuidgen "$GRILL_TMP/bin"
   install_fake_grill_gh "$GRILL_TMP/bin"
   export FAKE_CLAUDE_DIR="$GRILL_TMP/claude"
   export CLAUDE_CONFIG_DIR="$FAKE_CLAUDE_DIR/config"
+  export FAKE_CODEX_DIR="$GRILL_TMP/codex"
+  export CODEX_HOME="$FAKE_CODEX_DIR/home"
+  export FAKE_CODEX_THREAD_QUEUE="$GRILL_TMP/threads"
   export FAKE_UUID_QUEUE="$GRILL_TMP/uuids"
   export FAKE_GH_LOG="$GRILL_TMP/gh.log"
   export FAKE_GH_ISSUE_JSON='{"title":"Add Dark Mode!","body":"Readers want a dark theme."}'
-  unset FAKE_CLAUDE_HELP_OMIT
+  unset FAKE_CLAUDE_HELP_OMIT FAKE_CODEX_HELP_OMIT FAKE_CODEX_NO_READ_ONLY_NETWORK
   printf '%s\n%s\n' "$UUID_GRILLING" "$UUID_ANSWERING" > "$FAKE_UUID_QUEUE"
-  mkdir -p "$FAKE_CLAUDE_DIR/exchanges"
+  printf '%s\n%s\n' "$THREAD_GRILLING" "$THREAD_ANSWERING" > "$FAKE_CODEX_THREAD_QUEUE"
+  mkdir -p "$FAKE_CLAUDE_DIR/exchanges" "$FAKE_CODEX_DIR"
+  ln -s "$FAKE_CLAUDE_DIR/exchanges" "$FAKE_CODEX_DIR/exchanges"
   : > "$FAKE_GH_LOG"
   queue_minimal_run
 }
@@ -142,6 +151,28 @@ claude_flag_value() {
     "$FAKE_CLAUDE_DIR/calls/$1/argv.json"
 }
 
+codex_call_count() {
+  find "$FAKE_CODEX_DIR/calls" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' '
+}
+
+codex_argv() {
+  cat "$FAKE_CODEX_DIR/calls/$1/argv.json"
+}
+
+codex_prompt() {
+  cat "$FAKE_CODEX_DIR/calls/$1/stdin"
+}
+
+# Prints the argument after `exec resume` and its options: the resumed thread.
+codex_resumed_thread() {
+  jq -r '(index("resume") // -1) as $r | if $r < 0 then "" else
+    [.[($r + 1):][] ] as $rest
+    | [range(0; $rest | length) as $i
+       | select(($rest[$i] | startswith("-") | not)
+                and ($i == 0 or (($rest[$i - 1] | IN("--output-schema", "-o", "-c", "-m")) | not)))
+       | $rest[$i]] | first // "" end' "$FAKE_CODEX_DIR/calls/$1/argv.json"
+}
+
 session_count() {
   find "$GRILL_SESSIONS" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' '
 }
@@ -168,6 +199,7 @@ expect_start_failure() {
   assert_contains "$output" "$expected"
   [[ "$(session_count)" == "0" ]] || fail "expected no Grilling Session Record for: $*"
   [[ "$(claude_call_count)" == "0" ]] || fail "expected no native session for: $*"
+  [[ "$(codex_call_count)" == "0" ]] || fail "expected no native codex session for: $*"
 }
 
 test_start_rejects_invalid_inputs() {
@@ -1637,6 +1669,242 @@ printf "\n**Sync**: manual.\n" >> CONTEXT.md'
   teardown_grill_repo
 }
 
+codex_flag_value() {
+  jq -r --arg flag "$2" '. as $a | [range(0; length) | select($a[.] == $flag) | $a[. + 1]] | first // ""' \
+    "$FAKE_CODEX_DIR/calls/$1/argv.json"
+}
+
+codex_config_values() {
+  jq -c '. as $a | [range(0; length) | select($a[.] == "-c") | $a[. + 1]]' "$FAKE_CODEX_DIR/calls/$1/argv.json"
+}
+
+test_codex_pair_stores_two_distinct_captured_thread_ids() {
+  local record call expected argv
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+
+  grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent codex --answering-agent codex \
+    --grilling-model gpt-5.6-sol --answering-model gpt-5.6-sol >/dev/null
+
+  record="$(<"$(only_session_dir)/session.json")"
+  [[ "$(jq -r '.agents.grilling.nativeSessionId' <<<"$record")" == "$THREAD_GRILLING" ]] \
+    || fail "expected the captured grilling thread ID, got $(jq -r '.agents.grilling.nativeSessionId' <<<"$record")"
+  [[ "$(jq -r '.agents.answering.nativeSessionId' <<<"$record")" == "$THREAD_ANSWERING" ]] \
+    || fail "expected the captured answering thread ID"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] || fail "expected a codex pair to reach the gate"
+  [[ "$(codex_call_count)" == "10" ]] || fail "expected one codex call per exchange, got $(codex_call_count)"
+  [[ "$(claude_call_count)" == "0" ]] || fail "expected no claude calls"
+
+  for call in 0001 0002; do
+    ! jq -e 'index("resume")' <<<"$(codex_argv "$call")" >/dev/null || fail "expected call $call to start a new thread"
+    assert_contains "$(codex_prompt "$call")" "[ralph-exchange:ex-$call]"
+  done
+  for call in 0003 0004 0005 0006 0007 0008 0009 0010; do
+    case "$call" in
+      0004|0006|0009) expected="$THREAD_ANSWERING" ;;
+      *) expected="$THREAD_GRILLING" ;;
+    esac
+    argv="$(codex_argv "$call")"
+    jq -e 'index("exec") as $e | $e != null and .[$e + 1] == "resume"' <<<"$argv" >/dev/null \
+      || fail "expected call $call to be exec resume"
+    [[ "$(codex_resumed_thread "$call")" == "$expected" ]] || fail "expected call $call to resume $expected"
+    assert_contains "$argv" '"--output-schema"'
+    assert_contains "$(codex_prompt "$call")" "[ralph-exchange:ex-$call]"
+  done
+  for call in 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010; do
+    ! jq -e 'index("--last")' <<<"$(codex_argv "$call")" >/dev/null || fail "call $call must not pass --last"
+    [[ "$(codex_flag_value "$call" --model)" == "gpt-5.6-sol" ]] || fail "expected the frozen model on call $call"
+  done
+
+  teardown_grill_repo
+}
+
+test_mixed_agent_pairs_reach_the_confirmation_gate() {
+  local pair grilling answering record expected_grilling expected_answering grilling_calls answering_calls
+
+  for pair in "codex claude $THREAD_GRILLING $UUID_GRILLING 6 4" "claude codex $UUID_GRILLING $THREAD_GRILLING 6 4"; do
+    read -r grilling answering expected_grilling expected_answering grilling_calls answering_calls <<<"$pair"
+    setup_grill_repo
+    git -C "$GRILL_REPO" checkout -q -b feature-work
+    queue_two_round_run
+
+    grill start --requirement-file "$REQUIREMENT_FILE" \
+      --grilling-agent "$grilling" --answering-agent "$answering" >/dev/null
+
+    record="$(<"$(only_session_dir)/session.json")"
+    [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] \
+      || fail "expected $grilling/$answering to reach the gate, got $(jq -c '{status, blockReason, failureReason}' <<<"$record")"
+    [[ "$(jq -r '.agents.grilling.nativeSessionId' <<<"$record")" == "$expected_grilling" ]] \
+      || fail "expected $grilling/$answering grilling ID $expected_grilling"
+    [[ "$(jq -r '.agents.answering.nativeSessionId' <<<"$record")" == "$expected_answering" ]] \
+      || fail "expected $grilling/$answering answering ID $expected_answering"
+    [[ "$(jq -c '.decisions | map_values(.decision)' <<<"$record")" \
+      == '{"storage-backend":"postgres","export-format":"csv","sync-mode":"manual"}' ]] \
+      || fail "expected $grilling/$answering decisions, got $(jq -c '.decisions' <<<"$record")"
+    if [[ "$grilling" == "codex" ]]; then
+      [[ "$(codex_call_count)" == "$grilling_calls" && "$(claude_call_count)" == "$answering_calls" ]] \
+        || fail "expected codex to grill and claude to answer"
+    else
+      [[ "$(claude_call_count)" == "$grilling_calls" && "$(codex_call_count)" == "$answering_calls" ]] \
+        || fail "expected claude to grill and codex to answer"
+    fi
+    teardown_grill_repo
+  done
+}
+
+test_codex_argv_carries_role_access_policy() {
+  local call argv config repo
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  repo="$(cd "$GRILL_REPO" && pwd -P)"
+
+  grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent codex --answering-agent codex >/dev/null
+
+  # Minimal run: calls 0002 and 0005 are the Answering Agent's.
+  [[ "$(codex_call_count)" == "6" ]] || fail "expected six codex calls, got $(codex_call_count)"
+  for call in 0001 0002 0003 0004 0005 0006; do
+    argv="$(codex_argv "$call")"
+    config="$(codex_config_values "$call")"
+    [[ "$argv" != *"danger-full-access"* ]] || fail "call $call must never use danger-full-access"
+    [[ "$argv" != *"--dangerously"* ]] || fail "call $call must never bypass the sandbox"
+    [[ "$(codex_flag_value "$call" --ask-for-approval)" == "never" ]] || fail "expected call $call never to ask for approval"
+    [[ "$(codex_flag_value "$call" --cd)" == "$repo" ]] || fail "expected call $call rooted at the repository"
+    [[ "$(<"$FAKE_CODEX_DIR/calls/$call/pwd")" == "$repo" ]] || fail "expected call $call to run in the repository"
+    case "$call" in
+      0002|0005)
+        [[ "$(codex_flag_value "$call" --sandbox)" == "read-only" ]] || fail "expected answering call $call read-only"
+        jq -e 'index("default_permissions=\"ralph-answering\"")
+          and index("permissions.ralph-answering.extends=\":read-only\"")
+          and index("permissions.ralph-answering.network.enabled=true")' <<<"$config" >/dev/null \
+          || fail "expected answering call $call to enable network under read-only, got $config"
+        ! jq -e 'any(.[]; startswith("sandbox_workspace_write"))' <<<"$config" >/dev/null \
+          || fail "expected no workspace-write settings on answering call $call"
+        ;;
+      *)
+        [[ "$(codex_flag_value "$call" --sandbox)" == "workspace-write" ]] || fail "expected grilling call $call workspace-write"
+        jq -e 'index("sandbox_workspace_write.network_access=true")
+          and index("sandbox_workspace_write.exclude_tmpdir_env_var=true")
+          and index("sandbox_workspace_write.exclude_slash_tmp=true")' <<<"$config" >/dev/null \
+          || fail "expected grilling call $call with network and no tmp write roots, got $config"
+        ;;
+    esac
+  done
+
+  teardown_grill_repo
+}
+
+test_codex_capability_failure_refuses_before_native_sessions() {
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+
+  export FAKE_CODEX_NO_READ_ONLY_NETWORK=1
+  expect_start_failure "cannot express the required access policy" \
+    --requirement-file "$REQUIREMENT_FILE" --grilling-agent claude --answering-agent codex
+  unset FAKE_CODEX_NO_READ_ONLY_NETWORK
+
+  export FAKE_CODEX_HELP_OMIT="--output-schema"
+  expect_start_failure "cannot express the required access policy" \
+    --requirement-file "$REQUIREMENT_FILE" --grilling-agent codex --answering-agent codex
+  unset FAKE_CODEX_HELP_OMIT
+
+  teardown_grill_repo
+}
+
+start_codex_then_rewind() {
+  local session_id
+
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent codex --answering-agent codex | tail -n 1)"
+  rewind_to_after_start "$GRILL_SESSIONS/$session_id"
+  rm -rf "$FAKE_CODEX_DIR/calls"
+  printf '%s\n' "$session_id"
+}
+
+test_codex_session_not_found_on_resume_is_context_lost() {
+  local session_id session_dir output status
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(start_codex_then_rewind)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  mkdir -p "$FAKE_CODEX_DIR/lost"
+  touch "$FAKE_CODEX_DIR/lost/$THREAD_GRILLING"
+
+  set +e
+  output="$(RALPH_RETRY_DELAYS=0 grill resume --id "$session_id" 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -ne 0 ]] || fail "expected a lost codex thread to fail resume"
+  assert_contains "$output" "context_lost"
+  [[ "$(jq -r '.status' "$session_dir/session.json")" == "context_lost" ]] || fail "expected context_lost record"
+  [[ "$(codex_call_count)" == "1" ]] || fail "expected no retry or replacement after not found"
+  [[ "$(codex_resumed_thread 0001)" == "$THREAD_GRILLING" ]] || fail "expected the stored thread resumed"
+  assert_contains "$(<"$session_dir/logs/ex-0003-grilling.jsonl")" "no rollout found"
+
+  teardown_grill_repo
+}
+
+test_codex_transient_failure_is_retried_in_the_same_thread() {
+  local session_dir
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  touch "$FAKE_CODEX_DIR/exchanges/ex-0003.transient"
+
+  RALPH_RETRY_DELAYS=0 grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent codex --answering-agent codex >/dev/null
+
+  session_dir="$(only_session_dir)"
+  [[ "$(jq -r '.blockReason' "$session_dir/session.json")" == "awaiting_confirmation" ]] || fail "expected the retry to reach the gate"
+  [[ "$(codex_call_count)" == "7" ]] || fail "expected one extra call for the retry"
+  [[ "$(codex_resumed_thread 0003)" == "$THREAD_GRILLING" ]] || fail "expected the failed call to resume the grilling thread"
+  [[ "$(codex_resumed_thread 0004)" == "$THREAD_GRILLING" ]] || fail "expected the retry to resume the grilling thread"
+  assert_contains "$(<"$session_dir/logs/ex-0003-grilling.jsonl.attempt-1")" "429"
+
+  teardown_grill_repo
+}
+
+test_codex_kill_recovery_reemits_when_received_and_resends_when_not() {
+  local mode session_dir record prompt status
+
+  for mode in received lost; do
+    setup_grill_repo
+    git -C "$GRILL_REPO" checkout -q -b feature-work
+    queue_two_round_run
+    printf '%s\n' "$mode" > "$FAKE_CODEX_DIR/exchanges/ex-0004.kill"
+
+    status="$(grill_as_job start --requirement-file "$REQUIREMENT_FILE" --grilling-agent codex --answering-agent codex)"
+
+    [[ "$status" -ne 0 ]] || fail "expected the killed coordinator to exit non-zero ($mode)"
+    session_dir="$(only_session_dir)"
+    [[ "$(exchange_status "$session_dir" ex-0004)" =~ ^(intent|sent)$ ]] || fail "expected ex-0004 left in flight ($mode)"
+    rm -rf "$FAKE_CODEX_DIR/calls"
+
+    grill resume --id "$(basename "$session_dir")" >/dev/null
+
+    record="$(<"$session_dir/session.json")"
+    [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] || fail "expected resume to reach the gate ($mode)"
+    [[ "$(jq -r '.exchanges[] | select(.id == "ex-0004") | .received' <<<"$record")" \
+      == "$([[ "$mode" == "received" ]] && echo yes || echo no)" ]] || fail "expected received answer for $mode"
+    [[ "$(codex_resumed_thread 0001)" == "$THREAD_ANSWERING" ]] || fail "expected the answering thread resumed ($mode)"
+    prompt="$(codex_prompt 0001)"
+    assert_contains "$prompt" "[ralph-exchange:ex-0004]"
+    if [[ "$mode" == "received" ]]; then
+      assert_contains "$prompt" "Re-emit your reply to exchange ex-0004"
+    else
+      assert_contains "$prompt" "Where are exports stored?"
+      [[ "$prompt" != *"Re-emit your reply"* ]] || fail "expected the original round, not a re-emit"
+    fi
+    teardown_grill_repo
+  done
+}
+
 run_test test_start_rejects_invalid_inputs
 run_test test_start_creates_owner_only_record_with_frozen_config
 run_test test_start_opens_two_distinct_native_claude_sessions
@@ -1688,5 +1956,12 @@ run_test test_answering_agent_modifying_a_file_in_summary_review_fails_as_policy
 run_test test_answering_agent_commit_fails_as_policy_violation
 run_test test_answering_agent_mutation_during_human_input_fails_as_policy_violation
 run_test test_grilling_agent_doc_edits_are_not_a_policy_violation
+run_test test_codex_pair_stores_two_distinct_captured_thread_ids
+run_test test_mixed_agent_pairs_reach_the_confirmation_gate
+run_test test_codex_argv_carries_role_access_policy
+run_test test_codex_capability_failure_refuses_before_native_sessions
+run_test test_codex_session_not_found_on_resume_is_context_lost
+run_test test_codex_transient_failure_is_retried_in_the_same_thread
+run_test test_codex_kill_recovery_reemits_when_received_and_resends_when_not
 
 echo "grill_test.sh passed"
