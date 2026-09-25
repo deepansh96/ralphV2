@@ -9,8 +9,8 @@ credentials are needed.
 
 Nothing calls these helpers in production yet. `ralph.sh`, `scripts/agent.sh`,
 and `scripts/state.sh` complete steps exactly as before. #44 connects the
-verifier to the runner; #43 and #46 add `qa-v1`, which this verifier reports as
-`POLICY_UNSUPPORTED` today. Ralph remains an observer and gate: the provider's
+verifier to the runner. `qa-v1` (#43) is documented in `docs/qa-delegation.md`;
+QA replacement runs arrive in #46. Ralph remains an observer and gate: the provider's
 main agent still chooses, names, spawns, waits for, and replaces its workers.
 Ralph never launches, groups, schedules, or retries them.
 
@@ -57,6 +57,9 @@ The request shape is:
                 "children": [], "modelHistory": {} }
 }
 ```
+
+A `qa-v1` request adds one more field, `qa`, from
+`delegation_qa_verification` (`docs/qa-delegation.md`).
 
 `evidence` is `null` when the collector failed or returned unbound evidence.
 `providerFailed: true` records a provider exit failure; the runner may still
@@ -129,12 +132,12 @@ Expected identities are the five `(taskId, run 1)` pairs for `isolated_codex`,
 | `ATTEMPT_MISSING` / `ATTEMPT_MISMATCH` | Evidence is not bound to the current State attempt. |
 | `EVIDENCE_UNAVAILABLE` | The request carried no evidence. |
 | `PROVIDER_FAILED` | The provider invocation failed; the manifest is always `UNVERIFIED`. |
-| `POLICY_UNSUPPORTED` | The policy has no verifier yet (`qa-v1`). |
+| `POLICY_UNSUPPORTED` | Reserved; both v1 policies have verifiers. |
 
 Task identity is judged only when the policy is supported and evidence exists;
 lifecycle, nesting, parent, and settings checks apply to every listed record.
 `MANIFEST_WRITE_FAILED` is reserved for the runner when `delegation_manifest_write`
-fails. The remaining vocabulary belongs to `qa-v1`.
+fails. The remaining vocabulary belongs to `qa-v1` (`docs/qa-delegation.md`).
 
 ## Prompt contract
 

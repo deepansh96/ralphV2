@@ -17,7 +17,7 @@ edges:
     condition: when editing scripts, prompts, tests, or docs in this architecture
   - target: patterns/run-and-monitor-pipeline.md
     condition: when executing or observing a live pipeline
-last_updated: 2026-09-08
+last_updated: 2026-09-25
 ---
 
 # Architecture
@@ -34,7 +34,8 @@ The pipeline is issue-driven and state-driven. `ralph.sh` does not infer missing
 - **`scripts/config.sh`** - validates `ralph.config.json` and resolves one provider's complete delegated-step parent and worker defaults.
 - **`scripts/delegation.sh`** - dormant shared delegation schemas, stable ordering, private atomic JSON writes, and fresh invocation preparation; see `docs/delegation-contracts.md`. No production caller or metadata activation exists yet. Node supplies fsync; jq owns State transformations. Provider orchestration remains with the main agent.
 - **`scripts/claude-delegation.sh`** - isolated opt-in Claude adapter and sourced collector; session-local `ralph-worker` Agent definitions pin configurable worker model/effort. Five sanitized hooks correlate current-attempt lifecycle and retain model history. The parent orchestrates; production wiring is not activated. See `docs/claude-delegation.md`.
-- **`scripts/delegation-manifest.sh`** - dormant manifest builder and `pr-review-v1` verifier; consumes collector envelopes plus State attempt/settings, emits the fixed v1 manifest with sorted mismatch codes and evidence level, and writes it privately under `workspaces/<issue>/delegation/`. Not called by the runner; see `docs/delegation-manifest.md`.
+- **`scripts/delegation-manifest.sh`** - dormant manifest builder and `pr-review-v1` verifier; consumes collector envelopes plus State attempt/settings, emits the fixed v1 manifest with sorted mismatch codes and evidence level, and writes it privately under `workspaces/<issue>/delegation/`. Not called by the runner; see `docs/delegation-manifest.md`. It also verifies `qa-v1` from facts supplied by `scripts/delegation-qa.sh`.
+- **`scripts/delegation-qa.sh`** - dormant QA plan support: parses the one documented checklist comment format into canonical `{id,text}` instructions (progress lines excluded), computes canonical checklist/assignment digests in Node, writes the parent's 0600 plan before its first spawn, and refetches the plan's exact comment for `qa-v1`. No replacements until #46; see `docs/qa-delegation.md`.
 - **`scripts/codex-delegation.sh`** - isolated opt-in Codex collector; reads the exec parent from `thread.started`, then a Node client starts a fresh read-only `codex app-server`, paginates direct and descendant threads, reads turns, and prints allowlisted facts that jq normalizes into shared child records. Fails closed on unavailable or inconsistent evidence. Not wired into production. See `docs/codex-delegation.md`.
 - **`scripts/state.sh`** - state access and mutation layer; validates failed/stale steps, selects pending or blocked steps, defers `alwaysRun` cleanup behind normal work while prioritizing it after failure, rearms completed cleanup when normal work is retried, appends dynamic steps, snapshots missing delegated-step defaults without overwriting explicit values, and writes PID files.
 - **`scripts/agent.sh`** - execution adapter for `claude`, `codex`, and `deepseek`; maps optional per-step model and `reasoningEffort` overrides to Claude, Codex, or Pi CLI flags, then wraps retries, logging, working directory handling, and metrics extraction.

@@ -220,10 +220,12 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
 - `implement-slice`: reads the assigned sub-issue, verifies blockers are closed, follows TDD at the PRD's pre-agreed seams, commits, pushes, and closes the sub-issue.
 - `final-checks`: reads the complete branch diff, runs project checks, verifies every slice's acceptance criteria, and writes `final-checks.md` without changing product code.
 - `pr-creation`: pushes the feature branch and idempotently creates or updates a PR with a summary and issue-closing links.
-- `prepare-qa-checklist`: posts or updates one PR comment containing local-only manual QA items.
+- `prepare-qa-checklist`: posts or updates one PR comment containing local-only manual QA items in the stable format from `docs/qa-delegation.md`.
 - `runthrough-qa-checklist`: injects the provider-native delegation contract;
-  the main agent safely batches QA checklist work across its own workers, then
-  validates their evidence and updates the same PR comment without executing a
+  the main agent snapshots an immutable assignment plan before its first spawn,
+  safely batches QA checklist work across its own workers (packets open with
+  `RALPH-TASK`, `RALPH-ASSIGNMENT`, and `RALPH-RUN: 1`), then validates their
+  evidence and updates the same PR comment without executing a
   QA item itself.
 - `multi-axis-pr-review`: injects a provider-specific native delegation contract,
   runs five flat review workers named `matt_standards`, `matt_spec`,
@@ -247,11 +249,13 @@ exec parent's direct children and descendants through a fresh read-only
 `codex app-server` process and normalizes their lifecycle into the same child
 records. The [manifest verifier](docs/delegation-manifest.md) turns either
 envelope into one provider-neutral manifest, checks the `pr-review-v1` policy
-(five exact flat workers, no retries), compares worker settings only with the
-requested worker settings, and writes the private 0600 artifact. Production
+(five exact flat workers, no retries) and the `qa-v1` policy against the
+[immutable QA plan and stable checklist format](docs/qa-delegation.md),
+compares worker settings only with the requested worker settings, and writes
+the private 0600 artifact. Production
 steps remain ungated and no runner completion behavior has changed; the parent
 owns all worker orchestration. Run
-`./tests/run.sh claude_delegation codex_delegation delegation_manifest` for
+`./tests/run.sh claude_delegation codex_delegation delegation_manifest delegation_qa` for
 deterministic coverage; the linked guides document prerequisites and the
 separate opt-in live commands.
 

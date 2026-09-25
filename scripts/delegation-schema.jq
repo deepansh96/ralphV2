@@ -55,8 +55,15 @@ def evidence:
   and (.attemptId | nullable_text) and (.parentId | nullable_text)
   and (.children | type == "array" and all(.[]; child))
   and (.modelHistory | type == "object" and all(.[]; type == "array" and all(.[]; text)));
+# qa-v1 only: the runner's refetch facts. plan is raw and judged by the verifier.
+def qa_facts:
+  exact(["plan","checklist"])
+  and (.checklist | . == null or (exact(["commentId","status","items"]) and (.commentId | text)
+    and ((.status == "ok" and (.items | type == "array" and all(.[]; exact(["id","text"]) and (.id | text) and (.text | text))))
+      or ((.status | IN("unavailable","invalid")) and .items == null))));
 def request:
-  exact(["issue","stepId","attemptId","provider","policy","requested","providerFailed","evidence"])
+  (["issue","stepId","attemptId","provider","policy","requested","providerFailed","evidence"]) as $fields
+  | (if .policy == "qa-v1" then exact($fields + ["qa"]) and (.qa | qa_facts) else exact($fields) end)
   and (.issue | positive) and ([.stepId,.attemptId] | all(.[]; text))
   and (.provider | IN("claude","codex")) and (.policy | policy)
   and (.requested | exact(["parent","worker"]) and all(.[]; settings and all(.[]; text)))

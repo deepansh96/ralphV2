@@ -23,7 +23,9 @@ project instructions. Build only QA items that can run locally:
   an automated command
 
 Each item must have a stable ID and concise setup, action, expected result, and
-isolation note:
+isolation note. Use exactly this format (documented in `docs/qa-delegation.md`);
+Ralph hashes each item's ID and instruction text, so QA execution can update
+progress without changing the instructions:
 
 ```md
 <!-- ralph:qa-checklist -->
@@ -35,6 +37,15 @@ isolation note:
   - Expected: ...
   - Isolation: ...
 ```
+
+- Put `## Local QA Checklist` directly under `<!-- ralph:qa-checklist -->`.
+- Item IDs are `QA-` plus two or more digits, unique within the comment.
+- Each item line is `- [ ] [PENDING] QA-NN: <behavior>`. Optional instruction
+  lines use two-space `  - Setup:`, `  - Action:`, `  - Expected:`, or
+  `  - Isolation:` prefixes; a longer value continues on lines indented by four
+  spaces.
+- No other lines: no notes, `Result` or `Evidence` lines, or summary. QA
+  execution adds those as progress.
 
 Post this as one PR comment. On rerun, find the comment containing
 `<!-- ralph:qa-checklist -->` and edit it instead of adding another comment.

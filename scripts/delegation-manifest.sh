@@ -7,12 +7,30 @@ source "$DELEGATION_MANIFEST_DIR/delegation.sh"
 # rejected input is never echoed. Policy failures are reported inside the
 # manifest as mismatch codes with evidenceLevel UNVERIFIED, not as exit codes.
 delegation_manifest_build() {
-  local request manifest
+  local request digests manifest
   request="$(cat)"
   delegation_validate request <<< "$request" || return 1
-  manifest="$(jq -ce -f "$DELEGATION_MANIFEST_DIR/delegation-manifest.jq" <<< "$request" 2>/dev/null)" || return 1
+  digests="$(delegation_manifest_qa_digests <<< "$request")" || return 1
+  manifest="$(jq -ce --argjson digests "$digests" -f "$DELEGATION_MANIFEST_DIR/delegation-manifest.jq" <<< "$request" 2>/dev/null)" || return 1
   delegation_validate manifest <<< "$manifest" || return 1
   printf '%s\n' "$manifest"
+}
+
+# qa-v1 request on stdin; recomputed canonical digests for its plan (only when
+# schema-valid, else planValid false) and refetched items. null for other policies.
+delegation_manifest_qa_digests() {
+  local request plan valid=false items digests
+  request="$(cat)"
+  if ! jq -e '.policy == "qa-v1"' <<< "$request" >/dev/null; then
+    echo null
+    return 0
+  fi
+  plan="$(jq -c '.qa.plan' <<< "$request")"
+  items="$(jq -c '.qa.checklist.items // null' <<< "$request")"
+  if delegation_validate plan <<< "$plan"; then valid=true; else plan=null; fi
+  digests="$(jq -nc --argjson plan "$plan" --argjson items "$items" '{plan: $plan, items: $items}' \
+    | node "$DELEGATION_MANIFEST_DIR/delegation-qa.cjs" digests 2>/dev/null)" || return 1
+  jq -c --argjson valid "$valid" '. + {planValid: $valid}' <<< "$digests"
 }
 
 # Manifest on stdin; writes WORKSPACE/delegation/<stepId>.manifest.json through

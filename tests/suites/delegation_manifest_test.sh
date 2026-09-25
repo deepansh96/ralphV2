@@ -68,8 +68,8 @@ explicit_request="$(jq -c '.requested.worker.model = "claude-sonnet-5"' <<< "$cl
 [[ "$(jq -c --argjson children "$(with_effective claude-sonnet-5 high)" '.evidence.children = $children' <<< "$explicit_request" | delegation_manifest_build | jq -r '.evidenceLevel')" == VERIFIED ]]
 # An unknown alias is not a family; it must match exactly.
 [[ "$(jq -c --argjson children "$(with_effective claude-sonnet-5 high)" '.requested.worker.model = "sonnet5" | .evidence.children = $children' <<< "$claude_request" | delegation_manifest_build | jq -c '.mismatchCodes')" == '["MODEL_MISMATCH"]' ]]
-# qa-v1 is valid metadata but not implemented here: it fails closed.
-[[ "$(jq -c '.policy = "qa-v1"' <<< "$request" | delegation_manifest_build | jq -c '[.policy,.expected,.evidenceLevel,.mismatchCodes]')" == '["qa-v1",{"taskCount":0,"taskIds":[]},"UNVERIFIED",["POLICY_UNSUPPORTED"]]' ]]
+# qa-v1 requests must carry the runner's plan/refetch facts (delegation_qa_test.sh).
+if jq -c '.policy = "qa-v1"' <<< "$request" | delegation_manifest_build >/dev/null 2>&1; then echo 'FAIL: qa-v1 without qa facts accepted' >&2; exit 1; fi
 # Provider failure writes a safe UNVERIFIED manifest with whatever partial
 # records were bound; without any evidence the parent stays unknown.
 partial_failure="$(jq -c --argjson children "$(jq -c '.[0:2]' <<< "$five")" '.providerFailed = true | .evidence.children = $children' <<< "$request" | delegation_manifest_build)"

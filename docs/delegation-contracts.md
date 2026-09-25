@@ -47,8 +47,9 @@ These are structural validators, not proof of delegation. They do not assemble
 manifests, compare effective settings, recompute digests, bind provider evidence,
 check checklist assignment coverage, select replacement workers, or decide
 completion. Manifest assembly and `pr-review-v1` verification live in
-`scripts/delegation-manifest.sh` (`docs/delegation-manifest.md`); QA policy and
-completion belong to later slices.
+`scripts/delegation-manifest.sh` (`docs/delegation-manifest.md`); QA digests,
+coverage, and `qa-v1` live in `scripts/delegation-qa.sh`
+(`docs/qa-delegation.md`); completion belongs to a later slice.
 Only parsed, sanitized provider fields may be passed to these helpers; a schema
 cannot determine whether an allowed string contains a secret.
 

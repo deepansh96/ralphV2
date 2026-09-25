@@ -22,8 +22,30 @@ Mode: AFK, no HITL
   and verify `git rev-parse HEAD` equals it.
 - Require an empty `git status --porcelain`. Fail before QA if the checkout is
   stale or the worktree contains uncommitted changes.
-- Find the PR comment containing `<!-- ralph:qa-checklist -->`.
+- Find the one PR comment containing `<!-- ralph:qa-checklist -->` and record
+  its numeric comment ID. Fail if there is none or more than one.
 - Turn every checklist item into an ordered todo.
+
+## Assignment Plan
+
+Ralph verifies this step from provider evidence against an immutable plan.
+Choose the task groups first (see Required Delegation). Give each group a
+unique snake_case task ID such as `qa_group_1`. Before the first spawn,
+snapshot the checklist and write the plan from the project root:
+
+```bash
+source ./ralph-v2/scripts/delegation-qa.sh
+delegation_qa_plan_write {{WORKSPACE}}/state.json {{STEP_ID}} {{REPO}} <comment-id> <<'JSON'
+[{"taskId":"qa_group_1","checklistItemIds":["QA-01","QA-02"]},{"taskId":"qa_group_2","checklistItemIds":["QA-03"]}]
+JSON
+```
+
+It refetches the comment, parses the instruction items, requires every item ID
+in exactly one group, and atomically writes
+`{{WORKSPACE}}/delegation/{{STEP_ID}}.plan.json` with mode 0600. It prints the
+plan, including each group's `assignmentDigest`. If it fails, fail this step
+before spawning anything. Never write, edit, or regenerate the plan by hand or
+after the first spawn.
 
 ## Required Delegation
 
@@ -51,6 +73,23 @@ The parent decides the batches and concurrency:
 - Run only one resource-mutating worker at a time. It must record owned resources
   before starting them and clean them when its assigned work is done.
 
+### Task identity
+
+Launch each planned group exactly once, as one direct worker. The
+first three lines of its packet must be exactly its planned values:
+
+```text
+RALPH-TASK: <taskId>
+RALPH-ASSIGNMENT: <assignmentDigest>
+RALPH-RUN: 1
+```
+
+For Codex, set the `spawn_agent` `task_name` to `qa_r1_<assignment-digest-hex>`:
+the 64 hex characters of `assignmentDigest` without the `sha256:` prefix.
+Do not relaunch, replace, split, or merge a group, even when its worker fails
+or returns unusable evidence. Record its items as `[BLOCKED]` with the failure
+instead.
+
 Each worker must return this result for every assigned item:
 
 - checklist item ID and exact item text
@@ -67,9 +106,9 @@ comment in original checklist order.
 Evidence validation is not QA execution. The parent must not rerun a command,
 open a browser, call the application, start a service, or query a database to
 confirm a worker result. It may perform only the orchestration operations in
-Prepare, Progress, cleanup, and the final worktree integrity check. If a worker
-fails or returns an unusable result, the parent may retry or delegate the item
-again, but must not replace the missing work by performing the QA item itself.
+Prepare, Assignment Plan, Progress, cleanup, and the final worktree integrity
+check. If a worker fails or returns an unusable result, the parent
+must not replace the missing work by performing the QA item itself.
 
 ## Local-Only Rules
 
@@ -86,17 +125,22 @@ Use names prefixed with `ralph-{{ISSUE}}-` where the tool supports names.
 
 ## Progress
 
-After each completed item result, the parent edits the same marked PR comment:
+After each completed item result, the parent edits the same marked PR comment.
+Replace only the item's `[ ] [PENDING]` prefix:
 
 - `[x] [PASS]` when observed behavior matches
 - `[x] [FAIL]` when behavior is wrong
 - `[x] [BLOCKED]` when the local environment cannot exercise it
 
-Include the observed result under the item. Do not create progress-comment
-spam.
+Add the observed result under the item's existing lines as `  - Result:` and
+`  - Evidence:` lines; continue a longer value on lines indented by four spaces.
+Never change an item's ID, behavior text, or Setup/Action/Expected/Isolation lines,
+and never add or remove items: Ralph rejects the run if those instructions
+differ from the plan snapshot. Do not create progress-comment spam.
 
-After all items, add a concise summary to the same comment: what passed,
-failed, or was blocked; issues found; and possible fix directions.
+After all items, append `<!-- ralph:qa-summary -->` and then a concise summary to
+the same comment: what passed, failed, or was blocked; issues found; and
+possible fix directions.
 
 Clean resources started by this step before completing, including on failure.
 Verify the worktree is still clean. Product failures and blocked items are

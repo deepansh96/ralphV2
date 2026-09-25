@@ -366,6 +366,15 @@ test_prepare_qa_checklist_prompt_defines_local_comment_contract() {
   assert_contains "$prompt" "[PENDING]"
   assert_contains "$prompt" "edit it instead of adding another comment"
   assert_contains "$prompt" "Save no checklist"
+
+  # One stable instruction format shared with docs/qa-delegation.md.
+  assert_contains "$prompt" "docs/qa-delegation.md"
+  assert_contains "$prompt" "- [ ] [PENDING] QA-01: <behavior>"
+  assert_contains "$prompt" "two or more digits"
+  assert_contains "$prompt" "unique"
+  assert_contains "$prompt" 'directly under `<!-- ralph:qa-checklist -->`'
+  assert_contains "$prompt" "No other lines"
+  assert_contains "$prompt" "Result"
 }
 
 test_runthrough_qa_checklist_prompt_defines_execution_and_progress_contract() {
@@ -415,6 +424,26 @@ test_runthrough_qa_checklist_prompt_defines_execution_and_progress_contract() {
   assert_contains "$prompt" "orchestration operations"
   assert_contains "$prompt" "original checklist order"
   assert_contains "$prompt" "must not replace the missing work by performing"
+
+  # qa-v1 plan timing, packet markers, Codex task naming, progress format.
+  assert_contains "$prompt" "Before the first spawn"
+  assert_contains "$prompt" "delegation_qa_plan_write {{WORKSPACE}}/state.json {{STEP_ID}} {{REPO}} <comment-id>"
+  assert_contains "$prompt" "./ralph-v2/scripts/delegation-qa.sh"
+  assert_contains "$prompt" "{{WORKSPACE}}/delegation/{{STEP_ID}}.plan.json"
+  assert_contains "$prompt" "Never write, edit, or regenerate the plan"
+  assert_contains "$prompt" "RALPH-TASK: <taskId>"
+  assert_contains "$prompt" "RALPH-ASSIGNMENT: <assignmentDigest>"
+  assert_contains "$prompt" "RALPH-RUN: 1"
+  assert_contains "$prompt" "first three lines"
+  assert_contains "$prompt" 'qa_r1_<assignment-digest-hex>'
+  assert_contains "$prompt" '`spawn_agent` `task_name`'
+  assert_contains "$prompt" "exactly once"
+  assert_contains "$prompt" "Do not relaunch"
+  assert_contains "$prompt" "  - Result:"
+  assert_contains "$prompt" "  - Evidence:"
+  assert_contains "$prompt" "<!-- ralph:qa-summary -->"
+  assert_contains "$prompt" "Never change an item's ID, behavior text, or Setup/Action/Expected/Isolation lines"
+  [[ "$prompt" != *"may retry or delegate the item"* ]] || fail "expected the broad QA retry wording to be removed"
 }
 
 test_multi_axis_pr_review_prompt_defines_four_skill_vote_contract() {
