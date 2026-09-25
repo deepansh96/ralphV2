@@ -23,7 +23,7 @@ delegation_write_json() {
   printf '%s\n' "$value" | node "$DELEGATION_DIR/delegation-files.cjs" "$workspace" "$name"
 }
 
-# Dormant until gate activation. Call once per provider invocation, including
+# The gate (delegation-gate.sh) calls this once per provider invocation, including
 # internal CLI retries and manual/HITL resumes, BEFORE rendering any input.
 # PREPARE is a shell callback: PREPARE STATE STEP FRESH_INPUT_DIRECTORY.
 # It renders from current State and creates the invocation's plan/hook/log inputs.

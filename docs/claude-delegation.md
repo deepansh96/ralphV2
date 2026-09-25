@@ -1,10 +1,11 @@
-# Claude collection (opt-in)
+# Claude collection
 
 `scripts/claude-delegation.sh` observes one Claude invocation. It does not change
-State, write a manifest, verify QA/review policies, or activate production gating.
-`scripts/agent.sh` retains its existing flags and retries. Integration belongs to
-#44; that caller must prepare fresh inputs for every internal retry and collect
-partial evidence before cleanup on provider failure.
+State, write a manifest, or verify QA/review policies. The runner's completion
+gate (`docs/delegation-gate.md`) uses prepare/evidence/cleanup for every gated
+Claude step: it prepares fresh inputs for every internal retry and collects
+partial evidence before cleanup on provider failure. Ungated steps keep the
+existing `scripts/agent.sh` flags and retries.
 
 ## Interfaces
 
@@ -20,6 +21,8 @@ Source the helper from the project root:
   not a manifest. Retain this envelope for the future verifier: `modelsUsed`,
   resolved model and explicit requested overrides must not be discarded.
 - `claude_delegation_cleanup INPUTS` removes only that invocation's known files.
+- `claude_delegation_agents WORKER_MODEL WORKER_EFFORT` prints the session-local
+  `--agents` JSON shared by the probe adapter and the gate.
 - `claude_delegation_invoke WORKSPACE ATTEMPT PROMPT PARENT_MODEL PARENT_EFFORT
   WORKER_MODEL WORKER_EFFORT [CLI_OPTIONS...]` is the isolated probe adapter. It
   returns the envelope on success and cleans inputs on success, failure, INT and

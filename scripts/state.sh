@@ -254,3 +254,44 @@ state_snapshot_delegated_step_defaults() {
 
   mv "$tmp_file" "$state_file"
 }
+
+# Gate activation: give one pending step the exact v1 delegation metadata when
+# it has none. Completed, running, blocked, and failed steps and any explicit
+# `delegation` value (even malformed, which later fails closed) stay untouched.
+state_backfill_delegation_metadata() {
+  local state_file="$1"
+  local step_id="$2"
+  local policy="$3"
+  local tmp_file
+
+  case "$policy" in
+    pr-review-v1|qa-v1) ;;
+    *)
+      echo "Error: unknown delegation policy '$policy'" >&2
+      return 1
+      ;;
+  esac
+  if ! jq -e --arg id "$step_id" 'any(.steps[]?; .id == $id)' "$state_file" >/dev/null; then
+    echo "Error: delegated step '$step_id' is missing" >&2
+    return 1
+  fi
+
+  tmp_file="$(mktemp "${state_file}.tmp.XXXXXX")"
+  if ! jq \
+    --arg id "$step_id" \
+    --arg policy "$policy" \
+    '
+      .steps |= map(
+        if .id == $id and .status == "pending" and (has("delegation") | not) then
+          .delegation = {schemaVersion: 1, policy: $policy}
+        else
+          .
+        end
+      )
+    ' "$state_file" > "$tmp_file"; then
+    rm -f "$tmp_file"
+    return 1
+  fi
+
+  mv "$tmp_file" "$state_file"
+}

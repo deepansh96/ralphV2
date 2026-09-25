@@ -23,8 +23,15 @@ claude_delegation_cleanup() {
   node "$CLAUDE_DELEGATION_DIR/claude-delegation-files.cjs" cleanup "$1"
 }
 
-# One isolated CLI invocation, no retries or State transitions. #44 owns the
-# production retry boundary. stdout contains only the safe collector envelope.
+# Session-local `--agents` JSON: one `ralph-worker` with the configured model
+# and effort that cannot delegate further. Never written to persistent settings.
+claude_delegation_agents() {
+  jq -nc --arg model "$1" --arg effort "$2" '{"ralph-worker":{description:"Execute the assigned Ralph task packet and return to the parent.",prompt:"Perform only the assigned task. Never delegate or spawn children.",model:$model,effort:$effort,disallowedTools:["Agent","Workflow"]}}'
+}
+
+# One isolated probe invocation, no retries or State transitions. The runner's
+# gate (scripts/delegation-gate.sh) owns the production retry boundary.
+# stdout contains only the safe collector envelope.
 claude_delegation_invoke() (
   set -euo pipefail
   local workspace="$1" attempt="$2" prompt="$3" model="$4" effort="$5" parent inputs agents status=0
@@ -35,7 +42,7 @@ claude_delegation_invoke() (
   trap 'exit 130' INT
   trap 'exit 143' TERM
   trap 'claude_delegation_cleanup "$inputs"' EXIT
-  agents="$(jq -nc --arg model "$worker_model" --arg effort "$worker_effort" '{"ralph-worker":{description:"Execute the assigned Ralph task packet and return to the parent.",prompt:"Perform only the assigned task. Never delegate or spawn children.",model:$model,effort:$effort,disallowedTools:["Agent","Workflow"]}}')"
+  agents="$(claude_delegation_agents "$worker_model" "$worker_effort")"
   CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 claude -p "$prompt" --agents "$agents" --dangerously-skip-permissions --output-format stream-json --verbose \
     --forward-subagent-text --settings "$inputs/settings.json" --session-id "$parent" \
     --model "$model" --effort "$effort" --no-session-persistence "$@" \

@@ -90,6 +90,39 @@ agent_run_with_retry() {
   done
 }
 
+# One Claude CLI invocation; the stream goes to stdout. EXTRA arguments are
+# appended (the delegation gate adds its session-local worker and hooks).
+agent_claude_command() {
+  local prompt="$1" model="$2" reasoning_effort="$3"
+  local -a claude_args
+  shift 3
+
+  claude_args=(-p "$prompt" --dangerously-skip-permissions --output-format stream-json --verbose)
+  [[ -z "$model" ]] || claude_args+=(--model "$model")
+  [[ -z "$reasoning_effort" ]] || claude_args+=(--effort "$reasoning_effort")
+  claude "${claude_args[@]}" "$@"
+}
+
+# One `codex exec --json` invocation from PROJECT_ROOT; JSON events go to stdout.
+agent_codex_command() {
+  local prompt="$1" project_root="$2" model="$3" reasoning_effort="$4" last_message_file="$5"
+  local -a codex_args
+
+  codex_args=(-a never exec)
+  [[ -z "$model" ]] || codex_args+=(--model "$model")
+  [[ -z "$reasoning_effort" ]] \
+    || codex_args+=(--config "model_reasoning_effort=\"$reasoning_effort\"")
+  codex_args+=(
+    --skip-git-repo-check
+    --sandbox danger-full-access
+    -C "$project_root"
+    --json
+    --output-last-message "$last_message_file"
+    -
+  )
+  printf '%s' "$prompt" | (cd "$project_root" && codex "${codex_args[@]}")
+}
+
 run_claude() {
   local prompt="$1"
   local log_file="$2"
@@ -97,15 +130,11 @@ run_claude() {
   local model="${4:-}"
   local reasoning_effort="${5:-}"
   local start_ms end_ms duration_ms status
-  local -a claude_args
 
   agent_validate_reasoning_effort "claude" "$reasoning_effort" || return 1
-  claude_args=(-p "$prompt" --dangerously-skip-permissions --output-format stream-json --verbose)
-  [[ -z "$model" ]] || claude_args+=(--model "$model")
-  [[ -z "$reasoning_effort" ]] || claude_args+=(--effort "$reasoning_effort")
 
   run_claude_command() {
-    claude "${claude_args[@]}"
+    agent_claude_command "$prompt" "$model" "$reasoning_effort"
   }
 
   start_ms="$(current_time_ms)"
@@ -126,27 +155,14 @@ run_codex() {
   local model="${4:-}"
   local reasoning_effort="${5:-}"
   local last_message_file start_ms end_ms duration_ms status
-  local -a codex_args
 
   agent_validate_reasoning_effort "codex" "$reasoning_effort" || return 1
   if [[ -z "$project_root" ]]; then
     project_root="$(git -C "$SCRIPT_DIR/.." rev-parse --show-toplevel)"
   fi
   last_message_file="$(mktemp)"
-  codex_args=(-a never exec)
-  [[ -z "$model" ]] || codex_args+=(--model "$model")
-  [[ -z "$reasoning_effort" ]] \
-    || codex_args+=(--config "model_reasoning_effort=\"$reasoning_effort\"")
-  codex_args+=(
-    --skip-git-repo-check
-    --sandbox danger-full-access
-    -C "$project_root"
-    --json
-    --output-last-message "$last_message_file"
-    -
-  )
   run_codex_command() {
-    printf '%s' "$prompt" | (cd "$project_root" && codex "${codex_args[@]}")
+    agent_codex_command "$prompt" "$project_root" "$model" "$reasoning_effort" "$last_message_file"
   }
 
   start_ms="$(current_time_ms)"

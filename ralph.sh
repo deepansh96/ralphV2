@@ -19,6 +19,8 @@ source "$SCRIPT_DIR/scripts/prompt.sh"
 source "$SCRIPT_DIR/scripts/metrics.sh"
 # shellcheck source=ralph-v2/scripts/agent.sh
 source "$SCRIPT_DIR/scripts/agent.sh"
+# shellcheck source=ralph-v2/scripts/delegation-gate.sh
+source "$SCRIPT_DIR/scripts/delegation-gate.sh"
 
 usage() {
   cat >&2 <<'USAGE'
@@ -51,6 +53,7 @@ handle_shutdown() {
   if [[ -n "$ACTIVE_METRICS_FILE" ]]; then
     rm -f "$ACTIVE_METRICS_FILE"
   fi
+  delegation_gate_cleanup_inputs
   exit 0
 }
 
@@ -117,7 +120,7 @@ run_pipeline() {
   local workspace="$2"
   local step_limit="${3:-0}"
   local step step_id step_type log_file template_file prompt metrics_json agent_status metrics_file current_status
-  local is_hitl_resume flag_file answers
+  local is_hitl_resume flag_file answers gated
   local steps_run=0
   local project_root
   project_root="$(jq -r '.projectRoot // empty' "$state_file")"
@@ -148,12 +151,27 @@ run_pipeline() {
 
     state_update_step "$state_file" "$step_id" "in_progress" "null" "null" "$$"
 
-    if ! prompt="$(prompt_render "$template_file" "$state_file" "$workspace" "$step" "$SCRIPT_DIR/skills")"; then
-      state_update_step "$state_file" "$step_id" "failed"
-      continue
-    fi
-    if [[ "$is_hitl_resume" == "true" ]]; then
-      prompt="$(prompt_append_hitl_resume "$prompt" "$flag_file" "$answers")"
+    # A gated step renders its prompt per provider invocation, after stamping
+    # a fresh attempt; see scripts/delegation-gate.sh.
+    gated="false"
+    if delegation_gate_active <<<"$step"; then
+      gated="true"
+      DELEGATION_GATE_TEMPLATE="$template_file"
+      DELEGATION_GATE_SKILLS="$SCRIPT_DIR/skills"
+      DELEGATION_GATE_HITL_FLAG=""
+      DELEGATION_GATE_HITL_ANSWERS=""
+      if [[ "$is_hitl_resume" == "true" ]]; then
+        DELEGATION_GATE_HITL_FLAG="$flag_file"
+        DELEGATION_GATE_HITL_ANSWERS="$answers"
+      fi
+    else
+      if ! prompt="$(prompt_render "$template_file" "$state_file" "$workspace" "$step" "$SCRIPT_DIR/skills")"; then
+        state_update_step "$state_file" "$step_id" "failed"
+        continue
+      fi
+      if [[ "$is_hitl_resume" == "true" ]]; then
+        prompt="$(prompt_append_hitl_resume "$prompt" "$flag_file" "$answers")"
+      fi
     fi
 
     metrics_file="$(mktemp "${workspace}/metrics.${step_id}.XXXXXX")"
@@ -163,7 +181,11 @@ run_pipeline() {
     trap handle_shutdown INT TERM HUP EXIT
 
     set +e
-    agent_run_step "$step" "$prompt" "$log_file" "$project_root" > "$metrics_file"
+    if [[ "$gated" == "true" ]]; then
+      delegation_gate_run_step "$state_file" "$step_id" "$log_file" "$project_root" > "$metrics_file"
+    else
+      agent_run_step "$step" "$prompt" "$log_file" "$project_root" > "$metrics_file"
+    fi
     agent_status=$?
     set -e
 

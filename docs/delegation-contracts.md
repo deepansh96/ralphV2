@@ -1,4 +1,4 @@
-# Delegation contracts (inactive)
+# Delegation contracts
 
 Slice #39 supplies shared helpers in `scripts/delegation.sh`. Source that file
 from the project root. Bash, jq 1.6+, and Node.js 20+ are required. Run
@@ -6,10 +6,10 @@ from the project root. Bash, jq 1.6+, and Node.js 20+ are required. Run
 `./tests/run.sh` also includes the delegation suite. No provider credentials are
 needed for these tests.
 
-Production does not call these helpers yet. Preflight still snapshots only the
-existing model/effort fields and does not add or backfill delegation metadata.
-Activation belongs to #44. Ralph remains an observer and eventual gate; the
-provider's main agent owns grouping, spawning, and worker replacements.
+The runner's completion gate (`docs/delegation-gate.md`) calls these helpers for
+every step with delegation metadata, which preflight now writes and backfills.
+Ralph remains an observer and gate; the provider's main agent owns grouping,
+spawning, and worker replacements.
 
 ## Schemas and safe artifacts
 
@@ -49,7 +49,8 @@ check checklist assignment coverage, select replacement workers, or decide
 completion. Manifest assembly and `pr-review-v1` verification live in
 `scripts/delegation-manifest.sh` (`docs/delegation-manifest.md`); QA digests,
 coverage, and `qa-v1` live in `scripts/delegation-qa.sh`
-(`docs/qa-delegation.md`); completion belongs to a later slice.
+(`docs/qa-delegation.md`); completion lives in `scripts/delegation-gate.sh`
+(`docs/delegation-gate.md`).
 Only parsed, sanitized provider fields may be passed to these helpers; a schema
 cannot determine whether an allowed string contains a secret.
 
@@ -64,7 +65,7 @@ provide file fsync. State transformations remain jq operations.
 
 ## Fresh provider invocation boundary
 
-`delegation_prepare_invocation STATE STEP PREPARE_CALLBACK` is the dormant
+`delegation_prepare_invocation STATE STEP PREPARE_CALLBACK` is the
 runner contract for the first provider invocation, every internal CLI retry,
 and each manual retry or HITL resume. It:
 

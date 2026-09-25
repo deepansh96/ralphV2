@@ -1,4 +1,4 @@
-# QA checklist format, plan, replacements, and `qa-v1` verification (not yet wired)
+# QA checklist format, plan, replacements, and `qa-v1` verification
 
 `scripts/delegation-qa.sh` parses the marked QA checklist comment, computes the
 canonical digests, writes the immutable QA assignment plan, and refetches the
@@ -9,9 +9,9 @@ fetch) are required. Run `./tests/run.sh delegation_qa prompt_contracts` for
 the focused deterministic suite; it uses a fake `gh` and needs no credentials.
 `./tests/run.sh` includes it.
 
-Nothing calls the verifier in production yet: runner completion is unchanged
-until #44. The QA parent still chooses the groups, spawns, waits for, and
-replaces its workers. Ralph only snapshots what the parent planned and later
+The runner's completion gate (`docs/delegation-gate.md`) runs this verifier
+after every gated QA invocation. The QA parent still chooses the groups,
+spawns, waits for, and replaces its workers. Ralph only snapshots what the parent planned and later
 checks what the provider reports; it never starts a replacement.
 
 ## Checklist comment format
@@ -128,7 +128,7 @@ again at run 1 and can never supersede an old session's workers.
 
 ## Verification
 
-After the provider run the runner calls
+After each gated provider run the runner's gate calls
 `delegation_qa_verification PLAN_FILE REPO`, which prints the request's `qa`
 field `{plan, checklist}`: the plan file's value (`null` when absent,
 `"invalid"` when unparsable) and the refetch of the plan's exact `commentId`

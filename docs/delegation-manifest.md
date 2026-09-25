@@ -1,4 +1,4 @@
-# Delegation manifest and PR-review verification (not yet wired)
+# Delegation manifest and PR-review verification
 
 `scripts/delegation-manifest.sh` turns bound collector evidence into the v1
 manifest and verifies the `pr-review-v1` policy. Source it from the project
@@ -7,9 +7,9 @@ required. Run `./tests/run.sh delegation_manifest prompt_contracts` for the
 focused deterministic suite; `./tests/run.sh` includes it. No provider
 credentials are needed.
 
-Nothing calls these helpers in production yet. `ralph.sh`, `scripts/agent.sh`,
-and `scripts/state.sh` complete steps exactly as before. #44 connects the
-verifier to the runner. `qa-v1`, including QA replacement runs and
+The runner's completion gate (`docs/delegation-gate.md`) builds, writes, and
+checks this manifest for every gated step; steps without metadata complete
+exactly as before. `qa-v1`, including QA replacement runs and
 `superseded` dispositions, is documented in `docs/qa-delegation.md`. Ralph
 remains an observer and gate: the provider's
 main agent still chooses, names, spawns, waits for, and replaces its workers.

@@ -1,11 +1,12 @@
-# Codex collection (opt-in)
+# Codex collection
 
 `scripts/codex-delegation.sh` reads delegation evidence for one finished
 `codex exec` parent through the supported App Server JSON-RPC surface. It does
-not change State, write a manifest, verify QA/review policies, decide completion,
-or activate production gating. `scripts/agent.sh` keeps its existing flags and
-retries. Integration belongs to #44. Ralph remains an observer: the Codex main
-agent still chooses, names, spawns, waits for, and replaces its own workers.
+not change State, write a manifest, verify QA/review policies, or decide
+completion. The runner's completion gate (`docs/delegation-gate.md`) calls it
+after every gated Codex invocation, using that invocation's own log. Ralph
+remains an observer: the Codex main agent still chooses, names, spawns, waits
+for, and replaces its own workers.
 
 ## Interfaces
 

@@ -25,6 +25,7 @@ Run one or more suites by name:
 - `claude_delegation_test.sh`: opt-in Claude hook sanitization, lifecycle correlation, and the fake foreground Agent CLI seam.
 - `codex_delegation_test.sh`: opt-in Codex App Server collection through a fake JSON-RPC server: exact read-only requests, pagination, lifecycle, nesting, task identity, and fail-closed evidence.
 - `delegation_qa_test.sh`: QA checklist parsing across progress edits, canonical digest vectors, plan writes, exact-comment refetch through a fake `gh`, QA replacement and supersession chains, and every `qa-v1` mismatch code.
+- `delegation_gate_test.sh`: end-to-end runner gate through `ralph.sh` with fake Claude hooks, a fake Codex exec/App Server, and fake `gh`: passing PR-review and QA runs for both providers, UNVERIFIED and PROVIDER_FAILED manifests, retry attempt isolation, HITL deferral, fail-closed configuration and artifact errors, interruption cleanup, and unchanged legacy steps.
 - `delegation_manifest_test.sh`: provider-neutral manifest assembly, the `pr-review-v1` verifier and its exact mismatch codes, model alias rules, evidence levels, provider-failure manifests, and private atomic manifest writes.
 - `pipeline_test.sh`: run-loop behavior, HITL resume, failed-step handling, and simulated workflow steps.
 - `background_poll_test.sh`: background wrapper and polling behavior.

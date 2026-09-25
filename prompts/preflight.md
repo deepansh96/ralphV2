@@ -180,6 +180,7 @@ Append these steps after all implementation steps, in this exact order:
   "agent": "codex",
   "reviewers": [],
   "hitl": false,
+  "delegation": {"schemaVersion": 1, "policy": "qa-v1"},
   "metrics": null,
   "notes": ""
 }
@@ -194,6 +195,7 @@ Append these steps after all implementation steps, in this exact order:
   "agent": "codex",
   "reviewers": [],
   "hitl": false,
+  "delegation": {"schemaVersion": 1, "policy": "pr-review-v1"},
   "metrics": null,
   "notes": ""
 }
@@ -223,24 +225,36 @@ execution settings; later edits to `ralph.config.json` must not rewrite them.
 
 Use `state_add_steps "{{WORKSPACE}}/state.json" '<json-array>'` to extend the state file. `state_add_steps` prevents duplicate step IDs and writes atomically.
 
-## Reserved Delegation Contract (Inactive)
+## Delegation Gate Metadata
 
-The shared v1 contract reserves these step fields for the future gate:
+The runner gates `runthrough-qa-checklist` with policy `qa-v1` and
+`multi-axis-pr-review` with policy `pr-review-v1`. Newly appended steps carry
+the exact metadata shown in their shapes above:
 
 ```json
-{
-  "delegation": {"schemaVersion": 1, "policy": "pr-review-v1"},
-  "delegationAttempt": {"id": "<runner-owned opaque unique id>", "startedAt": 1787590000}
-}
+{"delegation": {"schemaVersion": 1, "policy": "pr-review-v1"}}
 ```
 
-Only `pr-review-v1` and `qa-v1` are valid v1 policies. Attempts are runner-owned,
-renewed before each provider invocation, including internal retries and resumes.
-Do not write or backfill `delegation` or `delegationAttempt` in this preflight.
-Activation belongs to #44, after collectors and policy verification exist.
-Keep the current model/effort snapshot behavior unchanged; do not call the
-invocation helper here. Ralph observes delegation; the provider's main agent
-continues to own worker orchestration.
+After the model/effort snapshot, fill missing metadata on every preflight run:
+
+```bash
+source ./ralph-v2/scripts/state.sh
+state_backfill_delegation_metadata \
+  "{{WORKSPACE}}/state.json" \
+  runthrough-qa-checklist \
+  qa-v1
+state_backfill_delegation_metadata \
+  "{{WORKSPACE}}/state.json" \
+  multi-axis-pr-review \
+  pr-review-v1
+```
+
+The helper writes only on existing pending steps that have no `delegation`
+key. It never changes an explicit value and never touches completed, running,
+blocked, or failed steps; completed steps are never rechecked.
+Never write or edit `delegationAttempt`: the runner stamps a fresh attempt
+before every provider invocation. Ralph only observes and gates delegation;
+the provider's main agent continues to own worker orchestration.
 
 ## Idempotency
 
@@ -253,6 +267,7 @@ Preflight must be safe to re-run.
 - Preserve existing completed, in-progress, blocked, failed, and pending statuses for steps already present.
 - Backfill only missing delegated-step model and reasoning fields; preserve
   existing snapshots and explicit overrides.
+- Backfill delegation metadata only on pending delegated steps that lack it.
 
 New workspaces receive `cleanup-local-resources` and `local-resources.json`
 during init. The compatibility check above adds only artifacts missing from an
@@ -277,6 +292,8 @@ Confirm the status output shows the fixed pipeline plus all dynamic steps:
   non-empty `model`, `reasoningEffort`, `subagentModel`, and
   `subagentReasoningEffort` values copied from Ralph config unless already
   overridden in state
+- pending `runthrough-qa-checklist` and `multi-axis-pr-review` steps with
+  `delegation` metadata for `qa-v1` and `pr-review-v1`, unless already set
 - one fixed `cleanup-local-resources` step with `agent` set to `codex` and
   `"alwaysRun": true`; Ralph's scheduler defers it until all normal work ends
 

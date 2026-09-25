@@ -14,6 +14,7 @@ suites=(
   codex_delegation_test.sh
   delegation_manifest_test.sh
   delegation_qa_test.sh
+  delegation_gate_test.sh
   pipeline_test.sh
   background_poll_test.sh
   council_test.sh
