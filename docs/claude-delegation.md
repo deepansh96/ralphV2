@@ -98,4 +98,5 @@ or unsupported evidence fails the command; it is not a compatibility pass.
 On 2026-09-08 the independently rerun probe passed on Claude Code 2.1.263: two
 direct workers completed using `claude-sonnet-5`/high, with the review marker and
 QA digest separately bound. Temporary collector inputs were removed. This proves
-collection only; #47 owns the later full gated QA smoke test.
+collection only. The full gated QA path has its own opt-in smoke test,
+`tests/probes/claude-gate-smoke.sh`; see `docs/delegation-gate.md`.

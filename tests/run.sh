@@ -12,6 +12,7 @@ suites=(
   state_test.sh
   delegation_test.sh
   claude_delegation_test.sh
+  claude_gate_smoke_test.sh
   codex_delegation_test.sh
   delegation_manifest_test.sh
   delegation_qa_test.sh

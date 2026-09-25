@@ -13,8 +13,8 @@ binaries. `./tests/run.sh` includes it. Prerequisites are Bash, jq 1.6+, and
 Node.js 20+. The deterministic suite needs no provider credentials. The early
 collection probes passed on Claude Code 2.1.263 and Codex CLI 0.153.4 (see the
 collector guides). Fake fixtures are not compatibility proof: the full gated
-path is compatibility-verified only by the real smoke tests in #47 (Claude) and
-#48 (Codex).
+path is compatibility-verified only by the real smoke tests. The Claude smoke
+test is [below](#live-claude-smoke-test); the Codex one is #48.
 
 ## Activation
 
@@ -139,6 +139,81 @@ credentials.
 
 Steps without a `delegation` key, including every legacy step, keep their
 existing rows and log snippet unchanged.
+
+## Live Claude smoke test
+
+`tests/probes/claude-gate-smoke.sh` runs the complete gated Claude path once
+against real Claude. It uses `ralph.sh --issue N` and the normal Claude
+adapter. `./tests/run.sh` never runs it. It is a compatibility check of the gate,
+not a new policy: it uses `qa-v1` unchanged, with one checklist item and one
+assignment. As in production, the Claude parent owns orchestration: it writes
+the plan, launches and awaits its one worker, and edits the checklist comment.
+Ralph only stamps the attempt, observes, and gates.
+
+Prerequisites:
+
+- Bash, jq, Node.js 20+, git, and Claude Code with foreground Agent
+  definitions and hooks.
+- `CLAUDE_CONFIG_DIR` must point to an authenticated profile that can use the
+  requested models. The documented profile is `~/.claude-t4d-api`
+  (`api_key_helper`).
+- An empty scratch directory with an absolute path. Register it, workspace
+  `workspaces/9947`, and the process in the issue's local-resource ledger
+  first.
+
+```bash
+CLAUDE_CONFIG_DIR="$HOME/.claude-t4d-api" RALPH_CLAUDE_GATE_SMOKE=1 \
+  tests/probes/claude-gate-smoke.sh /absolute/registered/empty-scratch-directory
+```
+
+The test creates a disposable git project with a local `origin` and a one-line
+PR change. It links `ralph-v2` to this checkout and puts a local `gh` stub
+(`tests/probes/claude-gate-smoke-gh.cjs`) first on `PATH`. The stub serves one
+PR, its issue, and one marked `QA-01` checklist comment. It supports comment
+edits and bumps `updated_at` on each edit. Nothing goes to GitHub. It then
+writes a State with a completed preflight and one pending `claude`
+`runthrough-qa-checklist` step carrying `qa-v1` metadata. It runs the real QA
+prompt from the project root.
+Optional `RALPH_CLAUDE_SMOKE_MODEL` (parent, default `opus`, effort `medium`),
+`RALPH_CLAUDE_SMOKE_WORKER` (default `claude-sonnet-5`, effort `high`), and
+`RALPH_CLAUDE_SMOKE_ISSUE` (default `9947`) change the run.
+
+It passes only when all of these hold:
+
+- `ralph.sh` exits 0, the step is `completed`, and the 0600 manifest and plan
+  both carry State's current `delegationAttempt.id`.
+- The manifest is `qa-v1` from `hooks` with no mismatch codes and
+  `observed` 1/1/1. It has exactly one child: a completed, non-nested, run-1
+  direct worker of the manifest parent, bound to the plan's task ID and
+  assignment digest.
+- A `VERIFIED` result must carry provider-reported worker effort and model,
+  and an explicit requested ID must match exactly. An `OBSERVED` result must
+  have a missing effective field; the output names it.
+- The comment's `updated_at` changed and `QA-01` shows a `[x]` progress tag,
+  yet the gate passed.
+- The manifest has only the contract keys. It and the `ralph.sh status`
+  output contain no fixture token, checklist text, packet markers, prompt
+  heading, or scratch/home/checkout path. Status shows
+  `Delegation: <level> 1/1` and no opaque IDs.
+- No `ralph-delegation-*`, `ralph-37-claude-*`, or `events.jsonl` input
+  remains. The project has no `.claude` settings or agents. The profile's
+  and `~/.claude`'s `settings.json`, `settings.local.json`, and `agents/`,
+  and this checkout's `.claude/`, are byte-identical before and after.
+
+Exit 0 is PASS and 1 is FAIL. Exit 2 is a SKIP, never a pass: the opt-in or
+scratch directory is missing, a tool is missing, `CLAUDE_CONFIG_DIR` is unset,
+the profile is not logged in (`claude auth status`), or the workspace already
+exists. On failure the test prints only the gate's fixed `Delegation gate:`
+line. It removes the workspace and scratch contents on every exit. The log
+stays inside the removed workspace. `./tests/run.sh claude_gate_smoke` checks
+this harness with a fake Claude parent: skips, VERIFIED and OBSERVED passes, no
+worker, no progress edit, and a user-settings change.
+
+On 2026-09-25 the smoke test passed on Claude Code 2.1.282 with the
+`claude-t4d-api` profile, an `opus`/medium parent, and a `claude-sonnet-5`/high
+worker. The step completed at `VERIFIED 1/1`: the provider reported the worker
+model and effort, and the progress edit did not fail the gate. Temporary inputs
+were removed and user settings were unchanged.
 
 ## Related guides
 
