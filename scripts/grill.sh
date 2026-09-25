@@ -809,9 +809,27 @@ grill_exchange() {
   printf '%s\n' "$message"
 }
 
+# Prints the target repository's HEAD, porcelain status, and content hashes
+# of tracked changes and untracked files, excluding Ralph session storage.
+grill_repo_snapshot() {
+  local repo_root="$1"
+  local ralph_rel
+  local -a pathspec
+
+  ralph_rel="$(grill_ralph_rel "$repo_root")"
+  pathspec=(. ":(exclude)${ralph_rel}grilling-sessions" ":(exclude)${ralph_rel}archive")
+  git -C "$repo_root" rev-parse HEAD
+  git -C "$repo_root" status --porcelain --untracked-files=all -- "${pathspec[@]}"
+  git -C "$repo_root" diff --no-ext-diff --binary HEAD -- "${pathspec[@]}" | grill_sha256 -
+  (cd "$repo_root" && git ls-files -z --others --exclude-standard -- "${pathspec[@]}" \
+    | xargs -0 -r git hash-object --)
+}
+
 # Sends one prompt to a role's stored native session and prints the reply. A
 # native session that cannot be found ends the record as context_lost, keeping
 # its logs; no replacement session is ever started. Other failures fail it.
+# The Answering Agent is read-only: any repository change or HEAD move across
+# its exchange fails the record as policy_violation.
 grill_send() {
   local record_file="$1"
   local role="$2"
@@ -819,12 +837,20 @@ grill_send() {
   local prompt="$4"
   local schema_file="$5"
   local log_rel="$6"
-  local session_dir config native raw status=0
+  local session_dir config native raw status=0 repo_root before=""
 
   session_dir="$(dirname "$record_file")"
   config="$(jq -c --arg role "$role" '.agents[$role] + {repoRoot: .repo.root}' "$record_file")"
   native="$(jq -r --arg role "$role" '.agents[$role].nativeSessionId' "$record_file")"
+  repo_root="$(jq -r '.repo.root' "$record_file")"
+  [[ "$role" != "answering" ]] || before="$(grill_repo_snapshot "$repo_root")" || return 1
   raw="$(adapter_send "$role" "$config" "$native" "$prompt" "$schema_file" "$session_dir/$log_rel")" || status=$?
+  if [[ "$role" == "answering" && "$(grill_repo_snapshot "$repo_root")" != "$before" ]]; then
+    grill_record_update "$record_file" '.status = "failed" | .failureReason = "policy_violation" | .failureDetails = $details' \
+      --arg details "the answering agent changed the repository or HEAD during $exchange_id; see $session_dir/$log_rel" || true
+    grill_die "policy_violation: the answering agent changed the repository or HEAD in $repo_root during $exchange_id; the session keeps its logs in $session_dir"
+    return 1
+  fi
   case "$status" in
     0) printf '%s\n' "$raw" ;;
     "$GRILL_ADAPTER_CONTEXT_LOST")

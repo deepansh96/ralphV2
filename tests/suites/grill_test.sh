@@ -1345,6 +1345,95 @@ test_resume_on_a_terminal_record_fails() {
   teardown_grill_repo
 }
 
+# Runs start with an Answering-side effect at the given exchange and asserts
+# the record fails as policy_violation with a non-zero exit, keeping its logs.
+assert_answering_mutation_is_policy_violation() {
+  local exchange_id="$1"
+  local effect="$2"
+  local output status session_dir
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+  exchange_effect "$exchange_id" "$effect"
+
+  set +e
+  output="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -ne 0 ]] || fail "expected an Answering-side mutation at $exchange_id to exit non-zero"
+  assert_contains "$output" "policy_violation"
+  session_dir="$(only_session_dir)"
+  [[ "$(jq -r '.status' "$session_dir/session.json")" == "failed" ]] || fail "expected a failed record"
+  [[ "$(jq -r '.failureReason' "$session_dir/session.json")" == "policy_violation" ]] \
+    || fail "expected failureReason policy_violation, got: $(jq -r '.failureReason' "$session_dir/session.json")"
+  [[ -f "$session_dir/logs/$exchange_id-answering.jsonl" ]] || fail "expected the exchange log kept"
+  [[ ! -f "$session_dir/confirmation.md" ]] || fail "expected no confirmation gate after a policy violation"
+  [[ ! -e "$session_dir/lock" ]] || fail "expected the lock released"
+
+  teardown_grill_repo
+}
+
+test_answering_agent_creating_a_file_fails_as_policy_violation() {
+  assert_answering_mutation_is_policy_violation ex-0004 'printf "leak\n" > leak.txt'
+}
+
+test_answering_agent_modifying_a_file_in_summary_review_fails_as_policy_violation() {
+  assert_answering_mutation_is_policy_violation ex-0009 'printf "edited\n" >> README.md'
+}
+
+test_answering_agent_commit_fails_as_policy_violation() {
+  assert_answering_mutation_is_policy_violation ex-0006 'git commit -q --allow-empty -m "Answering commit"'
+}
+
+test_answering_agent_mutation_during_human_input_fails_as_policy_violation() {
+  local session_id session_dir output status
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(start_needs_human_session)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  printf 'Use Postgres.\n' >> "$session_dir/human-input-ex-0004.md"
+  exchange_effect ex-0005 'printf "leak\n" > leak.txt'
+  exchange_fixture ex-0005 '{"exchangeId":"ex-0005","answers":[
+      {"questionId":"storage-backend","choiceId":"postgres","rationale":"The human says so.","evidence":["human-input-ex-0004.md"]},
+      {"questionId":"export-format","choiceId":"csv","rationale":"Spreadsheets.","evidence":["README.md"]}]}'
+
+  set +e
+  output="$(grill resume --id "$session_id" 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -ne 0 ]] || fail "expected resume to exit non-zero on a policy violation"
+  assert_contains "$output" "policy_violation"
+  [[ "$(jq -r '.status' "$session_dir/session.json")" == "failed" ]] || fail "expected a failed record"
+  [[ "$(jq -r '.failureReason' "$session_dir/session.json")" == "policy_violation" ]] || fail "expected policy_violation"
+
+  teardown_grill_repo
+}
+
+test_grilling_agent_doc_edits_are_not_a_policy_violation() {
+  local session_id record
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+  exchange_effect ex-0005 'mkdir -p docs/adr && printf "# Use Postgres\n" > docs/adr/0001-use-postgres.md
+printf "\n**Sync**: manual.\n" >> CONTEXT.md'
+
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude | tail -n 1)"
+
+  record="$(<"$GRILL_SESSIONS/$session_id/session.json")"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] \
+    || fail "expected Grilling Agent doc edits to reach the gate, got: $(jq -c '{status, failureReason}' <<<"$record")"
+  [[ "$(jq -r '.failureReason // "none"' <<<"$record")" == "none" ]] || fail "expected no failure reason"
+
+  teardown_grill_repo
+}
+
 run_test test_start_rejects_invalid_inputs
 run_test test_start_creates_owner_only_record_with_frozen_config
 run_test test_start_opens_two_distinct_native_claude_sessions
@@ -1386,5 +1475,10 @@ run_test test_resume_after_a_kill_resends_an_exchange_the_session_never_received
 run_test test_transient_failure_is_retried_within_the_same_exchange_and_session
 run_test test_session_not_found_on_resume_is_context_lost
 run_test test_resume_on_a_terminal_record_fails
+run_test test_answering_agent_creating_a_file_fails_as_policy_violation
+run_test test_answering_agent_modifying_a_file_in_summary_review_fails_as_policy_violation
+run_test test_answering_agent_commit_fails_as_policy_violation
+run_test test_answering_agent_mutation_during_human_input_fails_as_policy_violation
+run_test test_grilling_agent_doc_edits_are_not_a_policy_violation
 
 echo "grill_test.sh passed"
