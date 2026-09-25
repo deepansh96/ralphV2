@@ -92,6 +92,20 @@ grill_record_lock() {
   printf '%s\n' "$$" | grill_record_write_file "$lock_dir/pid"
 }
 
+# Moves a session directory to <ralph-dir>/archive/grilling/<YYYY-MM-DD>-<id>/
+# and prints the new location.
+grill_record_archive() {
+  local session_dir="$1"
+  local ralph_dir archive_dir target
+
+  ralph_dir="$(cd "$session_dir/../.." && pwd -P)"
+  archive_dir="$ralph_dir/archive/grilling"
+  target="$archive_dir/$(date +%Y-%m-%d)-$(basename "$session_dir")"
+  (umask 077 && mkdir -p "$archive_dir") || return 1
+  mv "$session_dir" "$target" || return 1
+  printf '%s\n' "$target"
+}
+
 # Releases the session lock if this process owns it.
 grill_record_unlock() {
   local lock_dir="$1/lock"

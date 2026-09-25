@@ -410,6 +410,7 @@ grill_resume() {
   case "$status" in
     grilling) grill_resume_grilling "$record_file" ;;
     blocked) grill_resume_blocked "$record_file" ;;
+    applying) grill_apply "$record_file" ;;
     completed|rejected|context_lost|failed)
       grill_die "session $session_id is $status and cannot be resumed; start a new session with: ralph.sh grill start"
       return 1
@@ -488,13 +489,18 @@ grill_resume_blocked() {
     decision="$(grill_confirmation_decision "$input_file")"
     case "$decision" in
       correct) ;;
-      "")
-        echo "No decision yet: write approve, reject or correct under ## Decision in $input_file, then run: ralph.sh grill resume --id $session_id"
-        return 0
+      approve)
+        grill_record_update "$record_file" '.status = "applying" | .blockReason = null' || return 1
+        grill_apply "$record_file"
+        return
+        ;;
+      reject)
+        grill_reject "$record_file"
+        return
         ;;
       *)
-        grill_die "the '$decision' decision is not supported yet"
-        return 1
+        echo "No decision yet: write approve, reject or correct under ## Decision in $input_file, then run: ralph.sh grill resume --id $session_id"
+        return 0
         ;;
     esac
   fi
@@ -1126,6 +1132,129 @@ grill_write_confirmation() {
     printf 'Write one of `approve`, `reject`, or `correct` on the line below. For `correct`, write the correction under `## Answers`.\n\n'
     printf '## Answers\n\n'
   } | grill_record_write_file "$session_dir/confirmation.md"
+}
+
+# The domain-doc paths an approval commits and a rejection discards.
+GRILL_DOC_PATHS=(CONTEXT.md docs/adr)
+
+# Archives a terminal session and prints its new location. The lock moves with
+# the directory and is released there.
+grill_archive_session() {
+  local archived
+
+  archived="$(grill_record_archive "$(dirname "$1")")" || return 1
+  grill_record_unlock "$archived"
+  printf '%s\n' "$archived"
+}
+
+grill_apply_failed() {
+  grill_die "$2; the session stays applying: fix the cause, then run: ralph.sh grill resume --id $(jq -r '.id' "$1")"
+}
+
+# Runs the approval actions in order: commit only the CONTEXT.md and
+# docs/adr/ changes, push the branch, then edit (--issue) or create
+# (--requirement-file) the issue. Each result is recorded as soon as its action
+# succeeds, and actions with a recorded result are skipped, so resume in
+# applying retries only the unfinished ones. No Agent is contacted.
+grill_apply() {
+  local record_file="$1"
+  local session_dir repo_root remote branch summary title path sha output url number archived
+  local -a paths=()
+
+  session_dir="$(dirname "$record_file")"
+  repo_root="$(jq -r '.repo.root' "$record_file")"
+  remote="$(jq -r '.repo.remote' "$record_file")"
+  branch="$(jq -r '.repo.branch' "$record_file")"
+  summary="$(grill_last_message "$record_file" summary_final)"
+  title="$(jq -r '.issueTitle' <<<"$summary")"
+
+  if [[ "$(jq -c '.apply.commit' "$record_file")" == "null" ]]; then
+    while IFS= read -r -d '' path; do
+      paths+=("$path")
+    done < <(git -C "$repo_root" ls-files -z --modified --deleted --others --exclude-standard -- "${GRILL_DOC_PATHS[@]}"
+      git -C "$repo_root" diff -z --cached --name-only -- "${GRILL_DOC_PATHS[@]}")
+    if [[ ${#paths[@]} -eq 0 ]]; then
+      grill_record_update "$record_file" '.apply.commit = {skipped: true, reason: "no CONTEXT.md or docs/adr/ changes"}' \
+        || return 1
+    else
+      # An explicit pathspec commits only these paths, whatever else is staged.
+      if ! git -C "$repo_root" add -A -- "${paths[@]}" \
+        || ! git -C "$repo_root" commit -q -m "Record grilling decisions: $title" -- "${paths[@]}"; then
+        grill_apply_failed "$record_file" "could not commit the CONTEXT.md and docs/adr/ changes in $repo_root"
+        return 1
+      fi
+      sha="$(git -C "$repo_root" rev-parse HEAD)"
+      grill_record_update "$record_file" '.apply.commit = {sha: $sha, paths: ($paths | unique)}' \
+        --arg sha "$sha" --argjson paths "$(jq -n -c '$ARGS.positional' --args "${paths[@]}")" || return 1
+    fi
+  fi
+
+  if [[ "$(jq -c '.apply.push' "$record_file")" == "null" ]]; then
+    if ! git -C "$repo_root" push -q -u "$remote" "$branch"; then
+      grill_apply_failed "$record_file" "could not push $branch to $remote"
+      return 1
+    fi
+    grill_record_update "$record_file" '.apply.push = {remote: $remote, branch: $branch, head: $head}' \
+      --arg remote "$remote" --arg branch "$branch" --arg head "$(git -C "$repo_root" rev-parse "$branch")" || return 1
+  fi
+
+  if [[ "$(jq -c '.apply.issue' "$record_file")" == "null" ]]; then
+    jq -r '.issueBody' <<<"$summary" | grill_record_write_file "$session_dir/issue-body.md" || return 1
+    if [[ "$(jq -r '.input.kind' "$record_file")" == "issue" ]]; then
+      number="$(jq -r '.input.issue' "$record_file")"
+      if ! output="$(cd "$repo_root" && gh issue edit "$number" --title "$title" --body-file "$session_dir/issue-body.md")"; then
+        grill_apply_failed "$record_file" "could not edit issue #$number with gh"
+        return 1
+      fi
+      url="$(tail -n 1 <<<"$output")"
+      grill_record_update "$record_file" '.apply.issue = {action: "edit", number: $number, url: $url}' \
+        --argjson number "$number" --arg url "$url" || return 1
+    else
+      if ! output="$(cd "$repo_root" && gh issue create --title "$title" --body-file "$session_dir/issue-body.md")"; then
+        grill_apply_failed "$record_file" "could not create the issue with gh"
+        return 1
+      fi
+      # Recorded at once, so a retry never creates a duplicate issue.
+      url="$(tail -n 1 <<<"$output")"
+      grill_record_update "$record_file" \
+        '.apply.issue = {action: "create", number: ($url | split("/") | last | tonumber? // null), url: $url}' \
+        --arg url "$url" || return 1
+    fi
+  fi
+
+  grill_record_update "$record_file" '.status = "completed"' || return 1
+  archived="$(grill_archive_session "$record_file")" || return 1
+  printf 'Approved Automated Grilling Session %s.\n' "$(jq -r '.id' "$archived/session.json")"
+  printf 'Issue: %s\n' "$(jq -r '.apply.issue.url' "$archived/session.json")"
+  printf 'Branch: %s\n' "$branch"
+  printf "Next: set Ralph's baseBranch to %s before running the pipeline on this issue.\n" "$branch"
+  printf 'Archived: %s\n' "$archived"
+}
+
+# Discards only the session's CONTEXT.md and docs/adr/ changes: tracked files
+# are restored from HEAD and untracked ones removed. Changes elsewhere, which
+# the gate listed, are left alone. No Agent is contacted.
+grill_reject() {
+  local record_file="$1"
+  local repo_root session_id path archived
+  local -a tracked=()
+
+  repo_root="$(jq -r '.repo.root' "$record_file")"
+  session_id="$(jq -r '.id' "$record_file")"
+  while IFS= read -r -d '' path; do
+    tracked+=("$path")
+  done < <(git -C "$repo_root" ls-tree -r -z --name-only HEAD -- "${GRILL_DOC_PATHS[@]}")
+  if ! git -C "$repo_root" reset -q -- "${GRILL_DOC_PATHS[@]}" \
+    || { [[ ${#tracked[@]} -gt 0 ]] && ! git -C "$repo_root" checkout -q HEAD -- "${tracked[@]}"; } \
+    || ! git -C "$repo_root" clean -f -d -q -- "${GRILL_DOC_PATHS[@]}"; then
+    grill_die "could not discard the CONTEXT.md and docs/adr/ changes in $repo_root; the session stays at the gate"
+    return 1
+  fi
+
+  grill_record_update "$record_file" '.status = "rejected" | .blockReason = null' || return 1
+  archived="$(grill_archive_session "$record_file")" || return 1
+  printf 'Session %s rejected: CONTEXT.md and docs/adr/ changes discarded, other changes left in place.\n' "$session_id"
+  printf 'Archived: %s\n' "$archived"
 }
 
 # The relay loop: each step follows from the last completed exchange, so

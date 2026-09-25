@@ -996,6 +996,209 @@ test_gate_text_without_a_correct_decision_contacts_no_agent() {
   teardown_grill_repo
 }
 
+test_unrecognized_gate_decision_prints_what_to_write_without_agent_calls() {
+  local session_id session_dir output status
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  write_confirmation_decision "$session_dir/confirmation.md" maybe
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+
+  set +e
+  output="$(grill resume --id "$session_id" 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 0 ]] || fail "expected an unrecognized decision to exit 0, got $status: $output"
+  assert_contains "$output" "approve, reject or correct under ## Decision"
+  [[ "$(claude_call_count)" == "0" ]] || fail "expected no Agent calls for an unrecognized decision"
+  [[ "$(jq -r '.blockReason' "$session_dir/session.json")" == "awaiting_confirmation" ]] || fail "expected the gate to stay"
+
+  teardown_grill_repo
+}
+
+# Scripts ex-0005 to add an ADR and a file outside CONTEXT.md and docs/adr/
+# on top of queue_two_round_run's CONTEXT.md edit.
+queue_run_with_adr_and_out_of_scope_file() {
+  queue_two_round_run
+  exchange_effect ex-0005 'mkdir -p docs/adr src
+printf "# Use Postgres\n" > docs/adr/0001-use-postgres.md
+printf "stray\n" > src/app.txt'
+}
+
+# Prints the archived session directory for a session ID, or nothing.
+archived_session_dir() {
+  find "$GRILL_REPO/ralph-v2/archive/grilling" -mindepth 1 -maxdepth 1 -type d -name "*-$1" 2>/dev/null | head -n 1
+}
+
+assert_archived() {
+  local session_id="$1"
+  local status="$2"
+  local archived
+
+  archived="$(archived_session_dir "$session_id")"
+  [[ -n "$archived" ]] || fail "expected session $session_id under archive/grilling/"
+  [[ "$(basename "$archived")" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-$session_id$ ]] \
+    || fail "expected archive/grilling/<YYYY-MM-DD>-$session_id, got $archived"
+  [[ ! -e "$GRILL_SESSIONS/$session_id" ]] || fail "expected the session moved out of grilling-sessions/"
+  [[ "$(jq -r '.status' "$archived/session.json")" == "$status" ]] || fail "expected archived status $status"
+  [[ ! -e "$archived/lock" ]] || fail "expected the archived session unlocked"
+}
+
+# Prints the gh write calls (issue edit/create) the fake gh recorded.
+gh_writes() {
+  jq -c 'select(.[0] == "issue" and (.[1] == "edit" or .[1] == "create"))' "$FAKE_GH_LOG"
+}
+
+test_approve_on_an_issue_session_commits_docs_pushes_and_edits_the_issue() {
+  local session_id output record
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_run_with_adr_and_out_of_scope_file
+  session_id="$(grill start --issue 51 --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1)"
+  write_confirmation_decision "$GRILL_SESSIONS/$session_id/confirmation.md" approve
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+  : > "$FAKE_GH_LOG"
+
+  output="$(grill resume --id "$session_id" 2>/dev/null)"
+
+  [[ "$(git -C "$GRILL_REPO" show --name-only --format= HEAD)" == $'CONTEXT.md\ndocs/adr/0001-use-postgres.md' ]] \
+    || fail "expected a commit of only CONTEXT.md and the ADR, got: $(git -C "$GRILL_REPO" show --name-only --format= HEAD)"
+  assert_contains "$(git -C "$GRILL_REPO" status --porcelain --untracked-files=all)" "?? src/app.txt"
+  [[ "$(git -C "$GRILL_TMP/remote.git" rev-parse refs/heads/feature-work)" == "$(git -C "$GRILL_REPO" rev-parse HEAD)" ]] \
+    || fail "expected feature-work pushed to the bare remote"
+  [[ "$(git -C "$GRILL_REPO" rev-parse --abbrev-ref "feature-work@{upstream}")" == "origin/feature-work" ]] \
+    || fail "expected the branch to track origin/feature-work"
+  [[ "$(gh_writes | jq -c '.[0:5] + [.[5]]')" \
+    == '["issue","edit","51","--title","Export reports offline with Postgres storage","--body-file"]' ]] \
+    || fail "expected gh issue edit 51 with the fixture title, got: $(gh_writes)"
+  [[ "$(<"$FAKE_GH_LOG.body")" == "Readers export CSV reports stored in Postgres." ]] || fail "expected the fixture issue body"
+  [[ "$(claude_call_count)" == "0" ]] || fail "expected no Agent calls during approve"
+
+  assert_archived "$session_id" completed
+  record="$(<"$(archived_session_dir "$session_id")/session.json")"
+  [[ "$(jq -r '.apply.commit.sha' <<<"$record")" == "$(git -C "$GRILL_REPO" rev-parse HEAD)" ]] || fail "expected apply.commit"
+  [[ "$(jq -r '.apply.issue.url' <<<"$record")" == "https://github.com/acme/target/issues/51" ]] || fail "expected apply.issue"
+  assert_contains "$output" "https://github.com/acme/target/issues/51"
+  assert_contains "$output" "Branch: feature-work"
+  assert_contains "$output" "baseBranch"
+
+  teardown_grill_repo
+}
+
+test_approve_on_a_requirement_file_session_creates_the_issue() {
+  local session_id record
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1)"
+  write_confirmation_decision "$GRILL_SESSIONS/$session_id/confirmation.md" approve
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+  : > "$FAKE_GH_LOG"
+
+  FAKE_GH_CREATED_ISSUE=88 grill resume --id "$session_id" >/dev/null 2>&1
+
+  [[ "$(gh_writes | jq -c '.[0:4] + [.[4]]')" \
+    == '["issue","create","--title","Export reports offline with Postgres storage","--body-file"]' ]] \
+    || fail "expected gh issue create with the fixture title, got: $(gh_writes)"
+  [[ "$(<"$FAKE_GH_LOG.body")" == "Readers export CSV reports stored in Postgres." ]] || fail "expected the fixture issue body"
+  assert_archived "$session_id" completed
+  record="$(<"$(archived_session_dir "$session_id")/session.json")"
+  [[ "$(jq -c '.apply.issue | {number, url}' <<<"$record")" \
+    == '{"number":88,"url":"https://github.com/acme/target/issues/88"}' ]] || fail "expected the created issue recorded"
+  [[ "$(claude_call_count)" == "0" ]] || fail "expected no Agent calls during approve"
+
+  teardown_grill_repo
+}
+
+test_failed_push_leaves_applying_and_resume_retries_only_push_and_issue() {
+  local session_id session_dir output status record commits
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  write_confirmation_decision "$session_dir/confirmation.md" approve
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+  : > "$FAKE_GH_LOG"
+  touch "$GRILL_TMP/push-fails-once"
+  cat > "$GRILL_TMP/remote.git/hooks/pre-receive" <<HOOK
+#!/usr/bin/env bash
+if [[ -f "$GRILL_TMP/push-fails-once" ]]; then
+  rm -f "$GRILL_TMP/push-fails-once"
+  echo "remote rejected (scripted failure)" >&2
+  exit 1
+fi
+HOOK
+  chmod +x "$GRILL_TMP/remote.git/hooks/pre-receive"
+
+  set +e
+  output="$(grill resume --id "$session_id" 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -ne 0 ]] || fail "expected a failed push to exit non-zero"
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -r '.status' <<<"$record")" == "applying" ]] || fail "expected applying after a failed push, got $(jq -r '.status' <<<"$record")"
+  [[ "$(jq -r '.apply.commit.sha' <<<"$record")" == "$(git -C "$GRILL_REPO" rev-parse HEAD)" ]] || fail "expected apply.commit recorded"
+  [[ "$(jq -c '[.apply.push, .apply.issue]' <<<"$record")" == "[null,null]" ]] || fail "expected push and issue unrecorded"
+  [[ -z "$(gh_writes)" ]] || fail "expected no issue write after a failed push"
+  commits="$(git -C "$GRILL_REPO" rev-list --count HEAD)"
+
+  grill resume --id "$session_id" >/dev/null 2>&1
+
+  [[ "$(git -C "$GRILL_REPO" rev-list --count HEAD)" == "$commits" ]] || fail "expected no new commit on retry"
+  [[ "$(git -C "$GRILL_TMP/remote.git" rev-parse refs/heads/feature-work)" == "$(git -C "$GRILL_REPO" rev-parse HEAD)" ]] \
+    || fail "expected the retry to push"
+  [[ "$(gh_writes | wc -l | tr -d ' ')" == "1" ]] || fail "expected exactly one gh issue create, got: $(gh_writes)"
+  [[ "$(claude_call_count)" == "0" ]] || fail "expected no Agent calls while applying"
+  assert_archived "$session_id" completed
+
+  teardown_grill_repo
+}
+
+test_reject_restores_docs_and_leaves_out_of_scope_changes() {
+  local session_id output
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  printf '# Context\n\nOriginal glossary.\n' > "$GRILL_REPO/CONTEXT.md"
+  git -C "$GRILL_REPO" add CONTEXT.md
+  git -C "$GRILL_REPO" commit -q -m "Add CONTEXT.md"
+  queue_two_round_run
+  exchange_effect ex-0005 'mkdir -p docs/adr
+printf "# Use Postgres\n" > docs/adr/0001-use-postgres.md
+printf "# Target project\n\nEdited outside scope.\n" > README.md'
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1)"
+  assert_contains "$(<"$GRILL_REPO/CONTEXT.md")" "Offline Export"
+  write_confirmation_decision "$GRILL_SESSIONS/$session_id/confirmation.md" reject
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+  : > "$FAKE_GH_LOG"
+
+  output="$(grill resume --id "$session_id" 2>/dev/null)"
+
+  [[ "$(<"$GRILL_REPO/CONTEXT.md")" == $'# Context\n\nOriginal glossary.' ]] || fail "expected CONTEXT.md restored"
+  [[ ! -e "$GRILL_REPO/docs/adr/0001-use-postgres.md" ]] || fail "expected the new ADR removed"
+  [[ "$(<"$GRILL_REPO/README.md")" == $'# Target project\n\nEdited outside scope.' ]] || fail "expected README.md untouched"
+  [[ "$(git -C "$GRILL_REPO" status --porcelain --untracked-files=all -- . ':(exclude)ralph-v2')" == " M README.md" ]] \
+    || fail "expected only the out-of-scope change left, got: $(git -C "$GRILL_REPO" status --porcelain)"
+  [[ -z "$(gh_writes)" ]] || fail "expected no gh writes on reject"
+  [[ "$(claude_call_count)" == "0" ]] || fail "expected no Agent calls during reject"
+  assert_archived "$session_id" rejected
+  assert_contains "$output" "rejected"
+
+  teardown_grill_repo
+}
+
 test_status_logs_and_cleanup_require_a_known_id() {
   local subcommand
 
@@ -1463,6 +1666,11 @@ run_test test_resume_routes_human_input_to_answering_then_grilling
 run_test test_identical_frontier_without_reopens_blocks_as_no_progress
 run_test test_correct_at_the_gate_routes_answering_then_grilling_back_to_the_gate
 run_test test_gate_text_without_a_correct_decision_contacts_no_agent
+run_test test_unrecognized_gate_decision_prints_what_to_write_without_agent_calls
+run_test test_approve_on_an_issue_session_commits_docs_pushes_and_edits_the_issue
+run_test test_approve_on_a_requirement_file_session_creates_the_issue
+run_test test_failed_push_leaves_applying_and_resume_retries_only_push_and_issue
+run_test test_reject_restores_docs_and_leaves_out_of_scope_changes
 run_test test_status_logs_and_cleanup_require_a_known_id
 run_test test_status_shows_state_agents_and_next_action_without_raw_content
 run_test test_logs_summarize_activity_per_role_and_exchange

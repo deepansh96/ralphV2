@@ -1422,6 +1422,27 @@ if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
   printf '%s\n' "${FAKE_GH_ISSUE_JSON:?FAKE_GH_ISSUE_JSON is required}"
   exit 0
 fi
+# FAKE_GH_FAIL_ONCE names a marker file: while it exists, the first write
+# (issue edit or create) removes it and fails.
+if [[ -n "${FAKE_GH_FAIL_ONCE:-}" && -f "$FAKE_GH_FAIL_ONCE" ]]; then
+  rm -f "$FAKE_GH_FAIL_ONCE"
+  echo "fake gh: HTTP 502 (scripted failure)" >&2
+  exit 1
+fi
+if [[ "${1:-}" == "issue" && ( "${2:-}" == "edit" || "${2:-}" == "create" ) ]]; then
+  # The --body-file content is copied beside the log, since the coordinator
+  # may move its session directory afterwards.
+  args=("$@")
+  for ((i = 0; i < ${#args[@]} - 1; i++)); do
+    [[ "${args[i]}" != "--body-file" ]] || cat "${args[i + 1]}" > "$FAKE_GH_LOG.body"
+  done
+  if [[ "$2" == "edit" ]]; then
+    printf 'https://github.com/acme/target/issues/%s\n' "$3"
+  else
+    printf 'https://github.com/acme/target/issues/%s\n' "${FAKE_GH_CREATED_ISSUE:-77}"
+  fi
+  exit 0
+fi
 echo "fake gh: unsupported command: $*" >&2
 exit 1
 FAKE_GH
