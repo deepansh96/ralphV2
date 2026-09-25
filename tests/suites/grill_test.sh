@@ -695,6 +695,144 @@ test_resume_rejects_configuration_flags() {
   teardown_grill_repo
 }
 
+# Writes a hand-built Grilling Session Record with the given status into a
+# session directory, with a provider log beside it.
+write_fixture_session() {
+  local session_dir="$1"
+  local session_id="$2"
+  local status="$3"
+
+  mkdir -p "$session_dir/logs"
+  jq -n --arg id "$session_id" --arg status "$status" '{
+    id: $id, status: $status, blockReason: null, round: 2,
+    agents: {grilling: {provider: "claude", model: "opus", reasoningEffort: "medium", nativeSessionId: "g"},
+             answering: {provider: "claude", model: "sonnet", reasoningEffort: "high", nativeSessionId: "a"}},
+    decisions: {}, exchanges: []}' > "$session_dir/session.json"
+  printf '%s\n' "$REQUIREMENT_TEXT" > "$session_dir/requirement.md"
+  printf '{"type":"result","result":"done"}\n' > "$session_dir/logs/ex-0001-grilling.jsonl"
+}
+
+expect_grill_failure() {
+  local expected="$1"
+  shift
+  local output status
+
+  set +e
+  output="$(grill "$@" 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -ne 0 ]] || fail "expected grill $* to fail"
+  assert_contains "$output" "$expected"
+}
+
+test_status_logs_and_cleanup_require_a_known_id() {
+  local subcommand
+
+  setup_grill_repo
+
+  for subcommand in status logs cleanup; do
+    expect_grill_failure "Usage:" "$subcommand"
+    expect_grill_failure "no Grilling Session Record for 20260101-000000-abcd" "$subcommand" --id 20260101-000000-abcd
+  done
+
+  teardown_grill_repo
+}
+
+test_status_shows_state_agents_and_next_action_without_raw_content() {
+  local session_id session_dir output log line
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" --grilling-agent claude --answering-agent claude \
+    --answering-model sonnet --answering-effort high 2>/dev/null | tail -n 1)"
+  session_dir="$(cd "$GRILL_SESSIONS/$session_id" && pwd -P)"
+
+  output="$(grill status --id "$session_id")"
+  assert_contains "$output" "State: blocked"
+  assert_contains "$output" "Block reason: awaiting_confirmation"
+  assert_contains "$output" "Round: 1"
+  assert_contains "$output" "Grilling Agent: claude (model opus, effort medium)"
+  assert_contains "$output" "Answering Agent: claude (model sonnet, effort high)"
+  assert_contains "$output" "Next action: edit $session_dir/confirmation.md, then run: ralph.sh grill resume --id $session_id"
+
+  for log in "$session_dir"/logs/*.jsonl; do
+    while IFS= read -r line; do
+      [[ -z "$line" || "$output" != *"$line"* ]] || fail "expected status to exclude raw log line: $line"
+    done < "$log"
+  done
+  [[ "$output" != *"Users need to export reports offline."* ]] || fail "expected status to exclude the requirement"
+  [[ "$output" != *"Offline Export"* ]] || fail "expected status to exclude the requirement title"
+
+  jq '.status = "blocked" | .blockReason = "needs_human"' "$session_dir/session.json" > "$GRILL_TMP/needs-human.json"
+  cp "$GRILL_TMP/needs-human.json" "$session_dir/session.json"
+  output="$(grill status --id "$session_id")"
+  assert_contains "$output" "Block reason: needs_human"
+  assert_contains "$output" "Next action: write your input under ## Answers in the human-input file in $session_dir, then run: ralph.sh grill resume --id $session_id"
+
+  teardown_grill_repo
+}
+
+test_logs_summarize_activity_per_role_and_exchange() {
+  local session_id session_dir output
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" --grilling-agent claude --answering-agent claude \
+    2>/dev/null | tail -n 1)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  cat > "$session_dir/logs/ex-0003-grilling.jsonl" <<'LOG'
+{"type":"assistant","message":{"content":[{"type":"text","text":"Reading CONTEXT.md before the first Frontier."},{"type":"tool_use","name":"Read","input":{"file_path":"CONTEXT.md"}}]}}
+LOG
+  cat > "$session_dir/logs/ex-0005-answering.jsonl" <<'LOG'
+{"type":"assistant","message":{"content":[{"type":"text","text":"Checked the draft against the decisions."}]}}
+LOG
+
+  output="$(grill logs --id "$session_id")"
+  assert_contains "$output" "ex-0003 frontier (grilling Agent, claude)"
+  assert_contains "$output" "[text] Reading CONTEXT.md before the first Frontier."
+  assert_contains "$output" "[tool] Read: file_path=CONTEXT.md"
+  assert_contains "$output" "ex-0005 summary_review (answering Agent, claude)"
+  assert_contains "$output" "[text] Checked the draft against the decisions."
+  [[ "$output" != *'"type":"assistant"'* ]] || fail "expected logs to exclude raw provider events"
+
+  teardown_grill_repo
+}
+
+test_cleanup_deletes_terminal_sessions_and_refuses_active_ones() {
+  local archive_dir status session_id n=0
+
+  setup_grill_repo
+  archive_dir="$GRILL_REPO/ralph-v2/archive/grilling"
+
+  write_fixture_session "$GRILL_SESSIONS/20260924-100000-0001" 20260924-100000-0001 failed
+  write_fixture_session "$GRILL_SESSIONS/20260924-100000-0002" 20260924-100000-0002 context_lost
+  write_fixture_session "$archive_dir/2026-09-24-20260924-100000-0003" 20260924-100000-0003 completed
+  write_fixture_session "$archive_dir/2026-09-24-20260924-100000-0004" 20260924-100000-0004 rejected
+
+  grill cleanup --id 20260924-100000-0001 >/dev/null
+  [[ ! -e "$GRILL_SESSIONS/20260924-100000-0001" ]] || fail "expected failed session deleted"
+  grill cleanup --id 20260924-100000-0002 >/dev/null
+  [[ ! -e "$GRILL_SESSIONS/20260924-100000-0002" ]] || fail "expected context_lost session deleted"
+  grill cleanup --id 20260924-100000-0003 >/dev/null
+  [[ ! -e "$archive_dir/2026-09-24-20260924-100000-0003" ]] || fail "expected archived completed session deleted"
+  grill cleanup --id 20260924-100000-0004 >/dev/null
+  [[ ! -e "$archive_dir/2026-09-24-20260924-100000-0004" ]] || fail "expected archived rejected session deleted"
+
+  for status in starting grilling blocked applying; do
+    n=$((n + 1))
+    session_id="20260924-110000-000$n"
+    write_fixture_session "$GRILL_SESSIONS/$session_id" "$session_id" "$status"
+    expect_grill_failure "session $session_id is $status" cleanup --id "$session_id"
+    [[ -f "$GRILL_SESSIONS/$session_id/session.json" ]] || fail "expected $status session record intact"
+    [[ -f "$GRILL_SESSIONS/$session_id/logs/ex-0001-grilling.jsonl" ]] || fail "expected $status session logs intact"
+  done
+
+  teardown_grill_repo
+}
+
 test_grilling_sessions_are_gitignored() {
   grep -qx 'grilling-sessions/' "$ROOT_DIR/.gitignore" || fail "expected grilling-sessions/ in .gitignore"
 }
@@ -721,5 +859,9 @@ run_test test_confirmation_without_drift_has_no_flags
 run_test test_provider_logs_are_owner_only_per_exchange_and_role
 run_test test_resume_continues_a_grilling_session_to_the_gate
 run_test test_resume_rejects_configuration_flags
+run_test test_status_logs_and_cleanup_require_a_known_id
+run_test test_status_shows_state_agents_and_next_action_without_raw_content
+run_test test_logs_summarize_activity_per_role_and_exchange
+run_test test_cleanup_deletes_terminal_sessions_and_refuses_active_ones
 
 echo "grill_test.sh passed"

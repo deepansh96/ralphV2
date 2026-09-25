@@ -18,6 +18,9 @@ Usage:
                        [--grilling-model M] [--grilling-effort E]
                        [--answering-model M] [--answering-effort E]
   ralph.sh grill resume --id SESSION_ID
+  ralph.sh grill status --id SESSION_ID
+  ralph.sh grill logs --id SESSION_ID
+  ralph.sh grill cleanup --id SESSION_ID
 USAGE
 }
 
@@ -37,6 +40,10 @@ grill_main() {
     resume)
       shift
       grill_resume "$@"
+      ;;
+    status|logs|cleanup)
+      shift
+      "grill_$subcommand" "$@"
       ;;
     -h|--help|"")
       grill_usage
@@ -392,6 +399,105 @@ grill_resume() {
     || { grill_die "session $session_id has an in-flight exchange ($in_flight); it cannot be resumed yet"; return 1; }
 
   grill_run "$record_file"
+}
+
+# Parses `--id SESSION_ID` and prints the session directory, in place under
+# grilling-sessions/<id>/ or archived under archive/grilling/<date>-<id>/.
+grill_find_session_dir() {
+  local session_id="" ralph_dir session_dir
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --id)
+        [[ $# -ge 2 && -n "$2" ]] || { grill_usage; grill_die "--id requires a value"; return 1; }
+        session_id="$2"
+        shift 2
+        ;;
+      *)
+        grill_usage
+        grill_die "unknown argument: $1"
+        return 1
+        ;;
+    esac
+  done
+
+  [[ -n "$session_id" ]] || { grill_usage; grill_die "--id <session-id> is required"; return 1; }
+  [[ "$session_id" =~ ^[0-9]{8}-[0-9]{6}-[0-9a-f]{4}$ ]] || { grill_die "invalid session ID: $session_id"; return 1; }
+  ralph_dir="$(cd "$SCRIPT_DIR" && pwd -P)"
+  for session_dir in "$ralph_dir/grilling-sessions/$session_id" \
+    "$ralph_dir"/archive/grilling/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-"$session_id"; do
+    if [[ -f "$session_dir/session.json" ]]; then
+      printf '%s\n' "$session_dir"
+      return 0
+    fi
+  done
+  grill_die "no Grilling Session Record for $session_id in $ralph_dir/grilling-sessions or $ralph_dir/archive/grilling"
+}
+
+# Prints a paste-safe summary: never raw logs or the requirement text.
+grill_status() {
+  local session_dir record_file session_id status block_reason next role
+
+  session_dir="$(grill_find_session_dir "$@")" || return 1
+  record_file="$session_dir/session.json"
+  session_id="$(jq -r '.id' "$record_file")"
+  status="$(jq -r '.status' "$record_file")"
+  block_reason="$(jq -r '.blockReason // "none"' "$record_file")"
+
+  case "$status:$block_reason" in
+    starting:*) next="wait for grill start to finish" ;;
+    grilling:*) next="run: ralph.sh grill resume --id $session_id" ;;
+    blocked:awaiting_confirmation)
+      next="edit $session_dir/confirmation.md, then run: ralph.sh grill resume --id $session_id" ;;
+    blocked:*)
+      next="write your input under ## Answers in the human-input file in $session_dir, then run: ralph.sh grill resume --id $session_id" ;;
+    applying:*) next="run: ralph.sh grill resume --id $session_id to finish applying" ;;
+    *) next="none; delete it with: ralph.sh grill cleanup --id $session_id" ;;
+  esac
+
+  printf 'Session: %s\n' "$session_id"
+  printf 'Location: %s\n' "$session_dir"
+  printf 'State: %s\n' "$status"
+  printf 'Block reason: %s\n' "$block_reason"
+  printf 'Round: %s\n' "$(jq -r '.round' "$record_file")"
+  for role in grilling answering; do
+    printf '%s Agent: %s\n' "$(tr '[:lower:]' '[:upper:]' <<<"${role:0:1}")${role:1}" \
+      "$(jq -r --arg role "$role" '.agents[$role] | "\(.provider) (model \(.model), effort \(.reasoningEffort))"' "$record_file")"
+  done
+  printf 'Next action: %s\n' "$next"
+}
+
+# Prints summarized provider activity per exchange through the log parser.
+grill_logs() {
+  local session_dir record_file id kind role log_path provider
+
+  session_dir="$(grill_find_session_dir "$@")" || return 1
+  record_file="$session_dir/session.json"
+
+  while IFS=$'\t' read -r id kind role log_path; do
+    provider="$(jq -r --arg role "$role" '.agents[$role].provider' "$record_file")"
+    printf '== %s %s (%s Agent, %s)\n' "$id" "$kind" "$role" "$provider"
+    parse_log "$session_dir/$log_path" "$provider" 10 | sed 's/^/  /'
+  done < <(jq -r '.exchanges[] | [.id, .kind, .role, .logPath] | @tsv' "$record_file")
+}
+
+# Deletes a terminal session wherever it lives; refuses active ones.
+grill_cleanup() {
+  local session_dir session_id status
+
+  session_dir="$(grill_find_session_dir "$@")" || return 1
+  session_id="$(jq -r '.id' "$session_dir/session.json")"
+  status="$(jq -r '.status' "$session_dir/session.json")"
+  case "$status" in
+    completed|rejected|context_lost|failed) ;;
+    *)
+      grill_die "session $session_id is $status; cleanup deletes only completed, rejected, context_lost or failed sessions"
+      return 1
+      ;;
+  esac
+
+  rm -rf "${session_dir:?}"
+  printf 'Deleted session %s (%s)\n' "$session_id" "$status"
 }
 
 # jq definitions shared by the message validators. The coordinator validates
