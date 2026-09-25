@@ -75,20 +75,33 @@ The parent decides the batches and concurrency:
 
 ### Task identity
 
-Launch each planned group exactly once, as one direct worker. The
-first three lines of its packet must be exactly its planned values:
+Launch each planned group as one direct worker. The first three lines of its
+packet must be exactly its planned values and run number:
 
 ```text
 RALPH-TASK: <taskId>
 RALPH-ASSIGNMENT: <assignmentDigest>
-RALPH-RUN: 1
+RALPH-RUN: <run>
 ```
 
-For Codex, set the `spawn_agent` `task_name` to `qa_r1_<assignment-digest-hex>`:
-the 64 hex characters of `assignmentDigest` without the `sha256:` prefix.
-Do not relaunch, replace, split, or merge a group, even when its worker fails
-or returns unusable evidence. Record its items as `[BLOCKED]` with the failure
-instead.
+For Codex, set the `spawn_agent` `task_name` to `qa_r<run>_<assignment-digest-hex>`:
+the run number, then the 64 hex characters of `assignmentDigest` without the
+`sha256:` prefix. The first run of every group is 1.
+
+You decide whether to replace a worker; Ralph never starts a replacement.
+You may replace a group's worker only when its run
+failed, stopped, or never finished. End that run first (stop it if it hangs),
+then launch one replacement with the next run number (2, then 3, and so on,
+with no gaps) and the unchanged taskId and assignmentDigest. Ralph selects the
+highest run, which must complete; lower runs become `superseded`. Never split
+or merge a group or change its items, and
+never run two workers for the same group at once. Each run, superseded or not,
+must be a direct worker with the requested model and effort.
+A completed run cannot be replaced, even when its returned evidence is
+unusable: unusable evidence fails this step. If you stop replacing a failed
+group, record its items as `[BLOCKED]` with the failure. Replacements belong to
+this provider session only: if Ralph restarts the step, write the fresh plan
+and start again at run 1.
 
 Each worker must return this result for every assigned item:
 

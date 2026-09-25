@@ -251,6 +251,7 @@ records. The [manifest verifier](docs/delegation-manifest.md) turns either
 envelope into one provider-neutral manifest, checks the `pr-review-v1` policy
 (five exact flat workers, no retries) and the `qa-v1` policy against the
 [immutable QA plan and stable checklist format](docs/qa-delegation.md),
+including parent-owned QA replacement runs,
 compares worker settings only with the requested worker settings, and writes
 the private 0600 artifact. Production
 steps remain ungated and no runner completion behavior has changed; the parent

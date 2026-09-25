@@ -26,6 +26,16 @@ def model_ok($requested; $reported):
 ($r.evidence.children // []) as $children |
 [$children[] | select(.nested | not)] as $direct |
 $r.evidence.parentId as $parent |
+# qa-v1 replacement chains: direct children of this parent session that prove
+# one plan assignment (digest and task ID), grouped by assignment. A lower run
+# that neither completed nor reported completion is superseded by the highest.
+(if $plan == null then [] else
+   [$direct[] | select(.parentId == $parent) | . as $c
+     | select(any($plan.assignments[]; .assignmentDigest == $c.assignmentDigest and .taskId == $c.taskId))]
+   | group_by(.assignmentDigest) end) as $chains |
+[$chains[] | (map(.run) | max) as $top
+  | .[] | select(.run < $top and (.completed | not) and .outcome != "completed")] as $superseded |
+[$direct[] | . as $c | select(any($superseded[]; . == $c) | not)] as $selected |
 $r.requested.worker as $worker |
 [
   (if $r.providerFailed then "PROVIDER_FAILED" else empty end),
@@ -57,7 +67,7 @@ $r.requested.worker as $worker |
    else empty end),
   ($children[] | select(.nested) | "NESTED_WORKER"),
   ($direct[] | select(.parentId != $parent) | "PARENT_MISMATCH"),
-  ($direct[] |
+  ($selected[] |
     if .outcome == "failed" then "CHILD_FAILED"
     elif .outcome == "stopped" then "CHILD_STOPPED"
     elif .completed then empty
@@ -66,18 +76,25 @@ $r.requested.worker as $worker |
   ($direct[] | select(.effective.model != null and (model_ok($worker.model; .effective.model) | not)) | "MODEL_MISMATCH"),
   ($direct[] | . as $c | select(any(($r.evidence.modelHistory[$c.childId] // [])[]; model_ok($worker.model; .) | not)) | "MODEL_MISMATCH"),
   ($direct[] | select(.effective.reasoningEffort != null and .effective.reasoningEffort != $worker.reasoningEffort) | "EFFORT_MISMATCH"),
-  # Task identity is judged only under a supported policy with bound evidence:
-  # each expected (taskId, run 1) pair appears exactly once.
-  # qa-v1 identity: every direct child proves one immutable plan assignment
-  # (digest and task ID). This slice allows exactly one run-1 worker per
-  # assignment; replacement runs and supersession arrive in #46.
+  # Task identity is judged only under a supported policy with bound evidence.
+  # qa-v1: every direct child proves one immutable plan assignment (digest and
+  # task ID). Each assignment's chain has runs exactly 1..N, each once; only
+  # failed, stopped, or incomplete runs may be replaced (a completed lower run
+  # is a duplicate execution). Nesting, parentage, and settings are still judged
+  # on every run, so supersession hides none of them.
   (if $plan != null and $r.evidence != null then
      ($plan.assignments[] | . as $a
-       | [$direct[] | select(.assignmentDigest == $a.assignmentDigest and .taskId == $a.taskId and .run == 1)] | length
-       | if . == 0 then "TASK_MISSING" elif . > 1 then "TASK_DUPLICATED" else empty end),
+       | [$chains[] | select(.[0].assignmentDigest == $a.assignmentDigest)[]] as $runs
+       | [$runs[].run] as $numbers
+       | if $runs == [] then "TASK_MISSING"
+         else
+           (if ($numbers | length) != ($numbers | unique | length)
+               or any($runs[]; .run < ($numbers | max) and (.completed or .outcome == "completed"))
+            then "TASK_DUPLICATED" else empty end),
+           (if ($numbers | unique) != [range(1; ($numbers | max) + 1)] then "TASK_UNEXPECTED" else empty end)
+         end),
      ($direct[] | . as $c | [$plan.assignments[] | select(.assignmentDigest == $c.assignmentDigest)] as $m
-       | if ($m | length) != 1 or $m[0].taskId != $c.taskId then "ASSIGNMENT_DIGEST_MISMATCH"
-         elif $c.run != 1 then "TASK_UNEXPECTED" else empty end)
+       | if ($m | length) != 1 or $m[0].taskId != $c.taskId then "ASSIGNMENT_DIGEST_MISMATCH" else empty end)
    else empty end),
   (if $r.policy == "pr-review-v1" and $r.evidence != null then
      ($tasks[] | . as $task | [$direct[] | select(.taskId == $task and .run == 1)] | length
@@ -97,13 +114,14 @@ $r.requested.worker as $worker |
   requested: {parent: {model: $r.requested.parent.model, reasoningEffort: $r.requested.parent.reasoningEffort},
               worker: {model: $worker.model, reasoningEffort: $worker.reasoningEffort}},
   expected: {taskCount: ($tasks | length), taskIds: ($tasks | sort)},
-  observed: {startedCount: ([$direct[] | select(.started)] | length),
-             completedCount: ([$direct[] | select(.completed)] | length),
-             selectedCount: ($direct | length)},
-  children: ($children | sort_by(.taskId, .run, .childId) | map({
+  # Counts describe the selected logical assignments, not superseded runs.
+  observed: {startedCount: ([$selected[] | select(.started)] | length),
+             completedCount: ([$selected[] | select(.completed)] | length),
+             selectedCount: ($selected | length)},
+  children: ($children | sort_by(.taskId, .run, .childId) | map(. as $c | {
     childId, parentId, taskId, run, assignmentDigest, started, completed, outcome,
     effective: {model: .effective.model, reasoningEffort: .effective.reasoningEffort},
-    nested, disposition: "selected"})),
+    nested, disposition: (if any($superseded[]; . == $c) then "superseded" else "selected" end)})),
   evidenceLevel: (if ($codes | length) > 0 then "UNVERIFIED"
     elif all($direct[]; .effective.model != null and .effective.reasoningEffort != null) then "VERIFIED"
     else "OBSERVED" end),

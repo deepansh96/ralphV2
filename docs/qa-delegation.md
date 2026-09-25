@@ -1,4 +1,4 @@
-# QA checklist format, plan, and `qa-v1` verification (not yet wired)
+# QA checklist format, plan, replacements, and `qa-v1` verification (not yet wired)
 
 `scripts/delegation-qa.sh` parses the marked QA checklist comment, computes the
 canonical digests, writes the immutable QA assignment plan, and refetches the
@@ -10,11 +10,9 @@ the focused deterministic suite; it uses a fake `gh` and needs no credentials.
 `./tests/run.sh` includes it.
 
 Nothing calls the verifier in production yet: runner completion is unchanged
-until #44. The QA parent still chooses the groups, spawns, and waits for its
-workers. Ralph only snapshots what the parent planned and later checks what the
-provider reports. This slice accepts one successful direct run-1 worker per
-assignment; replacement runs and `superseded` dispositions arrive in #46 before
-activation.
+until #44. The QA parent still chooses the groups, spawns, waits for, and
+replaces its workers. Ralph only snapshots what the parent planned and later
+checks what the provider reports; it never starts a replacement.
 
 ## Checklist comment format
 
@@ -87,12 +85,46 @@ Each worker packet begins with:
 ```text
 RALPH-TASK: <taskId>
 RALPH-ASSIGNMENT: <assignmentDigest>
-RALPH-RUN: 1
+RALPH-RUN: <run>
 ```
 
-Codex workers use `spawn_agent.task_name` `qa_r1_<assignment-digest-hex>`. The
-Codex collector maps that digest back to the plan's task ID; Claude hooks parse
-the three packet lines.
+Codex workers use `spawn_agent.task_name` `qa_r<run>_<assignment-digest-hex>`.
+The Codex collector maps that digest back to the plan's task ID; Claude hooks
+parse the three packet lines.
+
+## Replacement runs
+
+The parent alone decides whether to replace a worker. Every group starts at run
+1. When a run failed, stopped, or never finished, the parent may end it and
+launch run 2 (then 3, and so on) with the same task ID and assignment digest.
+The checklist snapshot, task ID, item set, and digest never change.
+
+Per assignment, the verifier groups direct workers of the current parent that
+prove the plan's digest and task ID:
+
+- Runs must be exactly `1..N`, each once. The highest run is `selected` and
+  must complete; its lifecycle codes apply as usual.
+- A lower run that did not complete is `superseded` and does not fail by itself.
+- A completed run cannot be replaced in v1, even when its returned evidence is
+  unusable: that result fails the step instead. A completed lower run fails
+  with `TASK_DUPLICATED`.
+- Nesting, parentage, and model/effort checks apply to every run, superseded or
+  not, so supersession never hides them.
+- A worker with a missing or foreign digest, another task ID, or another parent
+  joins no chain; it never fills a gap or supersedes anything.
+
+Replacements stay inside one provider invocation. An internal CLI retry, manual
+retry, or HITL restart is a new attempt with a fresh plan, so its workers start
+again at run 1 and can never supersede an old session's workers.
+
+| Chain | Result |
+| --- | --- |
+| run 1 failed, stopped, or incomplete; run 2 completed | pass; run 1 `superseded` |
+| run 1 completed; any run 2 | `TASK_DUPLICATED` |
+| two workers with the same run | `TASK_DUPLICATED` |
+| runs 1 and 3, or only run 2 | `TASK_UNEXPECTED` |
+| replacement with another digest or task | `ASSIGNMENT_DIGEST_MISMATCH`, and the lower run stays selected |
+| superseded run nested, reparented, or on the wrong model/effort | `NESTED_WORKER`, `PARENT_MISMATCH`, `MODEL_MISMATCH`, or `EFFORT_MISMATCH` |
 
 ## Verification
 
@@ -114,9 +146,12 @@ never compared.
 | `CHECKLIST_UNAVAILABLE` | The comment is deleted, unreadable, or not the planned ID. |
 | `CHECKLIST_INVALID` | The refetched comment is malformed, unmarked, or has duplicate IDs. |
 | `CHECKLIST_CHANGED` | Instruction digest or ID set differs from the snapshot. |
-| `TASK_MISSING` / `TASK_DUPLICATED` | An assignment has no / more than one direct run-1 worker. |
-| `TASK_UNEXPECTED` | A run other than 1. Replacements are rejected until #46. |
+| `TASK_MISSING` | An assignment has no bound direct worker. |
+| `TASK_DUPLICATED` | Two workers share a run, or a completed lower run was replaced. |
+| `TASK_UNEXPECTED` | An assignment's runs are not exactly `1..N` (a gap, or no run 1). |
 
 Lifecycle, nesting, parent, attempt, and model/effort codes apply exactly as in
-`docs/delegation-manifest.md`. `expected` lists the plan's task IDs; `observed`
-counts direct children; every child is `selected`.
+`docs/delegation-manifest.md`; child lifecycle codes (`CHILD_*`) judge only
+selected children. `expected` lists the plan's task IDs. `observed` counts the
+selected direct children, so after valid replacements each logical assignment
+counts once. Superseded children stay in `children` with their evidence.

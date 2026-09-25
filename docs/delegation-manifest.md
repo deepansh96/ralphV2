@@ -9,8 +9,9 @@ credentials are needed.
 
 Nothing calls these helpers in production yet. `ralph.sh`, `scripts/agent.sh`,
 and `scripts/state.sh` complete steps exactly as before. #44 connects the
-verifier to the runner. `qa-v1` (#43) is documented in `docs/qa-delegation.md`;
-QA replacement runs arrive in #46. Ralph remains an observer and gate: the provider's
+verifier to the runner. `qa-v1`, including QA replacement runs and
+`superseded` dispositions, is documented in `docs/qa-delegation.md`. Ralph
+remains an observer and gate: the provider's
 main agent still chooses, names, spawns, waits for, and replaces its workers.
 Ralph never launches, groups, schedules, or retries them.
 

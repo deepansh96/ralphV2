@@ -192,16 +192,62 @@ rm "$tmp/comments/123.json"
 printf '{"id":123' > "$tmp/comments/123.json"
 [[ "$(codes "$two" "$(delegation_qa_verification "$plan_file" deepansh96/ralphV2)")" == '["CHECKLIST_UNAVAILABLE"]' ]] || fail 'unreadable comment'
 comment 123 "$after" 2026-08-25T12:30:00Z
-# Children must prove the immutable assignment digest; this slice accepts one
-# successful direct run-1 worker per assignment and no replacements (#46).
+# Children must prove the immutable assignment digest. Without replacements,
+# each assignment needs one successful direct run-1 worker.
 [[ "$(summary "$(jq -c '.[0:1]' <<< "$two")" "$qa")" == '["UNVERIFIED",["TASK_MISSING"],2,1,1,1]' ]] || fail 'missing worker'
 [[ "$(codes "$(jq -c --arg d "$bad_digest" '.[1].assignmentDigest = $d' <<< "$two")" "$qa")" == '["ASSIGNMENT_DIGEST_MISMATCH","TASK_MISSING"]' ]] || fail 'unknown digest'
 [[ "$(codes "$(jq -c '.[1].assignmentDigest = null' <<< "$two")" "$qa")" == '["ASSIGNMENT_DIGEST_MISMATCH","TASK_MISSING"]' ]] || fail 'null digest'
 [[ "$(codes "$(jq -c --arg d "$g1" '.[1].assignmentDigest = $d' <<< "$two")" "$qa")" == '["ASSIGNMENT_DIGEST_MISMATCH","TASK_MISSING"]' ]] || fail 'digest of another task'
 [[ "$(summary "$(jq -c '. + [.[1] | .childId = "c-2b"]' <<< "$two")" "$qa")" == '["UNVERIFIED",["TASK_DUPLICATED"],2,3,3,3]' ]] || fail 'duplicate run'
-replaced="$(jq -c '.[1] += {completed:false,outcome:"failed"} | . + [.[1] | .childId = "c-2r" | .run = 2 | .completed = true | .outcome = "completed"]' <<< "$two")"
-[[ "$(summary "$replaced" "$qa")" == '["UNVERIFIED",["CHILD_FAILED","TASK_UNEXPECTED"],2,3,2,3]' ]] || fail 'replacement rejected until #46'
-[[ "$(qa_request "$replaced" "$qa" | delegation_manifest_build | jq -c '[.children[].disposition] | unique')" == '["selected"]' ]] || fail 'no supersession yet'
+
+# Replacement runs (#37 "QA plan and policy"). The parent may replace a failed,
+# stopped, or incomplete run with the next run of the same unchanged
+# assignment. The highest run is selected and must complete; lower runs are
+# superseded. Counts describe the selected logical assignments.
+qrun() { jq -nc --arg id "$1" --arg digest "$2" --argjson run "$3" --arg outcome "$4" '{childId:$id,parentId:"parent-1",taskId:"qa_group_2",run:$run,assignmentDigest:$digest,
+  started:($outcome != "unstarted"),completed:($outcome == "completed"),outcome:(if $outcome == "unstarted" then "incomplete" else $outcome end),
+  effective:{model:null,reasoningEffort:null},nested:false}'; }
+g2_runs() { jq -c '.[0:1]' <<< "$two" | jq -c --argjson runs "$(for spec in "$@"; do qrun ${spec//\// }; done | jq -sc .)" '. + $runs'; }
+dispositions() { qa_request "$1" "$qa" | delegation_manifest_build | jq -c '[.children[] | [.childId,.run,.disposition]]'; }
+for lower in failed stopped incomplete unstarted; do
+  replaced="$(g2_runs "c-2/$g2/1/$lower" "c-2r/$g2/2/completed")"
+  [[ "$(summary "$replaced" "$qa")" == '["OBSERVED",[],2,2,2,2]' ]] || fail "replacement after $lower run"
+  [[ "$(dispositions "$replaced")" == '[["c-1",1,"selected"],["c-2",1,"superseded"],["c-2r",2,"selected"]]' ]] || fail "dispositions after $lower run"
+done
+chain="$(g2_runs "c-2a/$g2/1/failed" "c-2b/$g2/2/stopped" "c-2c/$g2/3/incomplete" "c-2d/$g2/4/completed")"
+[[ "$(summary "$chain" "$qa")" == '["OBSERVED",[],2,2,2,2]' ]] || fail 'sequential replacements'
+[[ "$(dispositions "$chain")" == '[["c-1",1,"selected"],["c-2a",1,"superseded"],["c-2b",2,"superseded"],["c-2c",3,"superseded"],["c-2d",4,"selected"]]' ]] || fail 'sequential dispositions'
+[[ "$(qa_request "$(jq -c 'map(.effective = {model:"gpt-5.6-luna",reasoningEffort:"max"})' <<< "$chain")" "$qa" | delegation_manifest_build | jq -c '[.evidenceLevel,.mismatchCodes]')" == '["VERIFIED",[]]' ]] || fail 'verified replacements'
+# The highest run must itself complete.
+[[ "$(summary "$(g2_runs "c-2/$g2/1/failed" "c-2r/$g2/2/failed")" "$qa")" == '["UNVERIFIED",["CHILD_FAILED"],2,2,1,2]' ]] || fail 'failed replacement'
+[[ "$(summary "$(g2_runs "c-2/$g2/1/failed" "c-2r/$g2/2/incomplete")" "$qa")" == '["UNVERIFIED",["CHILD_INCOMPLETE"],2,2,1,2]' ]] || fail 'incomplete replacement'
+# A completed run cannot be replaced, even when the next run also completes.
+[[ "$(codes "$(g2_runs "c-2/$g2/1/completed" "c-2r/$g2/2/completed")" "$qa")" == '["TASK_DUPLICATED"]' ]] || fail 'completed run replaced'
+[[ "$(codes "$(g2_runs "c-2/$g2/1/completed" "c-2r/$g2/2/failed")" "$qa")" == '["CHILD_FAILED","TASK_DUPLICATED"]' ]] || fail 'completed run replaced by failure'
+[[ "$(codes "$(g2_runs "c-2a/$g2/1/failed" "c-2b/$g2/2/completed" "c-2c/$g2/3/completed")" "$qa")" == '["TASK_DUPLICATED"]' ]] || fail 'completed middle run replaced'
+# Duplicate or overlapping runs are ambiguous and fail closed.
+[[ "$(codes "$(g2_runs "c-2a/$g2/1/failed" "c-2b/$g2/1/failed" "c-2r/$g2/2/completed")" "$qa")" == '["TASK_DUPLICATED"]' ]] || fail 'duplicate lower run'
+[[ "$(codes "$(g2_runs "c-2/$g2/1/failed" "c-2a/$g2/2/completed" "c-2b/$g2/2/failed")" "$qa")" == '["CHILD_FAILED","TASK_DUPLICATED"]' ]] || fail 'overlapping replacement runs'
+# Runs start at 1 and increase by exactly one.
+[[ "$(codes "$(g2_runs "c-2/$g2/1/failed" "c-2r/$g2/3/completed")" "$qa")" == '["TASK_UNEXPECTED"]' ]] || fail 'run gap'
+[[ "$(codes "$(g2_runs "c-2r/$g2/2/completed")" "$qa")" == '["TASK_UNEXPECTED"]' ]] || fail 'replacement without run 1'
+# A replacement must keep the assignment digest and task ID; a changed one binds
+# to nothing, so the failed run stays selected.
+[[ "$(codes "$(g2_runs "c-2/$g2/1/failed" "c-2r/$bad_digest/2/completed")" "$qa")" == '["ASSIGNMENT_DIGEST_MISMATCH","CHILD_FAILED"]' ]] || fail 'replacement changed digest'
+[[ "$(codes "$(g2_runs "c-2/$g2/1/failed" "c-2r/$g1/2/completed")" "$qa")" == '["ASSIGNMENT_DIGEST_MISMATCH","CHILD_FAILED"]' ]] || fail 'replacement took another assignment'
+[[ "$(codes "$(g2_runs "c-2/$g2/1/failed" "c-2r/$g2/2/completed" | jq -c '.[2].taskId = "qa_group_3"')" "$qa")" == '["ASSIGNMENT_DIGEST_MISMATCH","CHILD_FAILED"]' ]] || fail 'replacement changed task'
+# Missing identity proof on a lower run is never guessed into the chain.
+[[ "$(codes "$(g2_runs "c-2/$g2/1/failed" "c-2r/$g2/2/completed" | jq -c '.[1].assignmentDigest = null')" "$qa")" == '["ASSIGNMENT_DIGEST_MISMATCH","CHILD_FAILED","TASK_UNEXPECTED"]' ]] || fail 'unbound lower run'
+# Supersession never hides nesting or wrong exposed settings of an earlier run.
+replaced="$(g2_runs "c-2/$g2/1/failed" "c-2r/$g2/2/completed")"
+[[ "$(codes "$(jq -c --argjson n "$(qchild c-3 qa_group_2 "$g2" | jq -c '.parentId = "c-2" | .nested = true')" '. + [$n]' <<< "$replaced")" "$qa")" == '["NESTED_WORKER"]' ]] || fail 'nested under superseded run'
+[[ "$(codes "$(jq -c '.[1].effective.model = "gpt-5.6-sol"' <<< "$replaced")" "$qa")" == '["MODEL_MISMATCH"]' ]] || fail 'superseded wrong model'
+[[ "$(codes "$(jq -c '.[1].effective.reasoningEffort = "medium"' <<< "$replaced")" "$qa")" == '["EFFORT_MISMATCH"]' ]] || fail 'superseded wrong effort'
+[[ "$(qa_request "$replaced" "$qa" | jq -c '.evidence.modelHistory = {"c-2":["gpt-5.6-sol"]}' | delegation_manifest_build | jq -c '.mismatchCodes')" == '["MODEL_MISMATCH"]' ]] || fail 'superseded model history'
+# Replacements live inside one provider invocation: workers from an old parent
+# session cannot be superseded, and a fresh session restarts at run 1.
+[[ "$(codes "$(jq -c '.[1].parentId = "parent-0"' <<< "$replaced")" "$qa")" == '["CHILD_FAILED","PARENT_MISMATCH","TASK_UNEXPECTED"]' ]] || fail 'old-session run superseded'
+[[ "$(dispositions "$(jq -c '.[1].parentId = "parent-0"' <<< "$replaced")")" == '[["c-1",1,"selected"],["c-2",1,"selected"],["c-2r",2,"selected"]]' ]] || fail 'old-session disposition'
 [[ "$(codes "$(jq -c '.[1] += {completed:false,outcome:"incomplete"}' <<< "$two")" "$qa")" == '["CHILD_INCOMPLETE"]' ]] || fail 'incomplete worker'
 nested="$(qchild c-3 qa_group_1 "$g1" | jq -c '.parentId = "c-1" | .nested = true')"
 [[ "$(summary "$(jq -c --argjson n "$nested" '. + [$n]' <<< "$two")" "$qa")" == '["UNVERIFIED",["NESTED_WORKER"],2,2,2,2]' ]] || fail 'nested worker'
@@ -213,6 +259,9 @@ threads="$(jq -nc --arg h1 "${g1#sha256:}" --arg h2 "${g2#sha256:}" '{parentId:"
   {id:"c-2",parentId:"parent-1",direct:true,depth:1,spawnParent:"parent-1",task:("qa_r1_" + $h2),model:"gpt-5.6-luna",reasoningEffort:"max",turns:[{status:"completed",startedAt:1,completedAt:2,failed:false}]}]}')"
 codex_children="$(codex_delegation_normalize parent-1 "$plan_file" <<< "$threads")"
 [[ "$(qa_request "$codex_children" "$qa" | delegation_manifest_build | jq -c '[.evidenceLevel,.mismatchCodes,[.children[].taskId]]')" == '["VERIFIED",[],["qa_group_1","qa_group_2"]]' ]] || fail 'codex task names'
+codex_replaced="$(jq -c --arg h2 "${g2#sha256:}" '.threads[1].turns = [{status:"failed",startedAt:1,completedAt:2,failed:true}]
+  | .threads += [.threads[1] | .id = "c-2r" | .task = ("qa_r2_" + $h2) | .turns = [{status:"completed",startedAt:3,completedAt:4,failed:false}]]' <<< "$threads" | codex_delegation_normalize parent-1 "$plan_file")"
+[[ "$(qa_request "$codex_replaced" "$qa" | delegation_manifest_build | jq -c '[.evidenceLevel,.mismatchCodes,[.children[] | [.taskId,.run,.disposition]]]')" == '["VERIFIED",[],[["qa_group_1",1,"selected"],["qa_group_2",1,"superseded"],["qa_group_2",2,"selected"]]]' ]] || fail 'codex replacement task names'
 foreign="$(jq -c --arg h "$(printf 'a%.0s' {1..64})" '.threads[1].task = ("qa_r1_" + $h)' <<< "$threads" | codex_delegation_normalize parent-1 "$plan_file")"
 [[ "$(codes "$foreign" "$qa")" == '["ASSIGNMENT_DIGEST_MISMATCH","TASK_MISSING"]' ]] || fail 'foreign codex task name'
 # Provider failure and missing evidence still produce QA manifests.

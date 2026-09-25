@@ -433,12 +433,20 @@ test_runthrough_qa_checklist_prompt_defines_execution_and_progress_contract() {
   assert_contains "$prompt" "Never write, edit, or regenerate the plan"
   assert_contains "$prompt" "RALPH-TASK: <taskId>"
   assert_contains "$prompt" "RALPH-ASSIGNMENT: <assignmentDigest>"
-  assert_contains "$prompt" "RALPH-RUN: 1"
+  assert_contains "$prompt" "RALPH-RUN: <run>"
   assert_contains "$prompt" "first three lines"
-  assert_contains "$prompt" 'qa_r1_<assignment-digest-hex>'
+  assert_contains "$prompt" 'qa_r<run>_<assignment-digest-hex>'
   assert_contains "$prompt" '`spawn_agent` `task_name`'
-  assert_contains "$prompt" "exactly once"
-  assert_contains "$prompt" "Do not relaunch"
+  # qa-v1 replacements: parent-owned, sequential, never after a completed run.
+  assert_contains "$prompt" "The first run of every group is 1"
+  assert_contains "$prompt" "failed, stopped, or never finished"
+  assert_contains "$prompt" "the next run number"
+  assert_contains "$prompt" "unchanged taskId and assignmentDigest"
+  assert_contains "$prompt" "A completed run cannot be replaced"
+  assert_contains "$prompt" "unusable evidence fails this step"
+  assert_contains "$prompt" "Ralph never starts a replacement"
+  assert_contains "$prompt" "never run two workers for the same group at once"
+  [[ "$prompt" != *"Do not relaunch, replace"* ]] || fail "expected QA replacements to be allowed"
   assert_contains "$prompt" "  - Result:"
   assert_contains "$prompt" "  - Evidence:"
   assert_contains "$prompt" "<!-- ralph:qa-summary -->"
