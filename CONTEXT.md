@@ -76,6 +76,22 @@ _Avoid_: ordering hint, soft dependency
 Autonomous mode where an agent works without human interaction until done or blocked. Slices are "AFK-ready" when an agent can complete them unattended.
 _Avoid_: autonomous, unattended, headless
 
+**Automated Grilling Session**:
+An opt-in Grilling Session in which one Agent asks the Frontier questions and a separate Agent answers them from the requirement. A human confirms the final decision summary before the result becomes durable.
+_Avoid_: automatic interview, agent debate, human grilling
+
+**Grilling Agent**:
+The Agent that owns the design tree, asks each Frontier round, and produces the final decision summary in an Automated Grilling Session.
+_Avoid_: questioner, interviewer, moderator
+
+**Answering Agent**:
+The Agent that answers every Frontier round in an Automated Grilling Session, using the requirement plus the same read-only access the Grilling Agent has to investigate context. It escalates only when neither the requirement nor what it can inspect contains enough information to decide.
+_Avoid_: respondent, proxy user, simulated human
+
+**Grilling Session Record**:
+The durable local record of one Automated Grilling Session, including its progress and the identities needed to continue both Agent contexts.
+_Avoid_: State, Workspace, session manifest
+
 ### Wayfinding
 
 **Map**:
@@ -121,6 +137,7 @@ _Avoid_: manual review, approval gate
   deferred until normal work ends; it removes pipeline-owned **Local Resources**
 - A wayfinder **Map**'s destination issue is what `init` consumes; `create-and-review-prd` performs the `to-spec` handoff, while the **Map** itself stays outside the **Pipeline**
 - A **Quiz Grilling Session** presents each grilling **Frontier** without changing which decisions are ready or who owns them
+- An **Automated Grilling Session** pairs one **Grilling Agent** with one **Answering Agent**; its **Grilling Session Record** preserves both separate contexts until the human confirms the final decision summary
 - A **Workspace** holds the **State** and artifacts for one pipeline run
 
 ## Example dialogue
