@@ -96,6 +96,50 @@ A manifest is current only when its `attemptId` equals State's
 the earlier attempt, so it can never look current. The final write atomically
 replaces it. The final attempt stays in State after completion or failure.
 
+## Status
+
+`./ralph.sh status --issue N` shows delegation only for steps that have a
+`delegation` key. It displays what Ralph observed and never implies that Ralph
+orchestrated anything. The provider's main agent still owns every spawn,
+batch, and replacement. `./tests/run.sh status_delegation` covers this output
+through the CLI with fake Codex App Server pages and hand-written hook events
+and manifests. It needs the same prerequisites as the gate suite and no
+credentials.
+
+- **Terminal summary.** A `completed` or `failed` gated step prints exactly one
+  line under its table row:
+
+  ```text
+  2    multi-axis-pr-review     multi-axis-pr-review codex      completed    4m 2s      -
+       Delegation: OBSERVED 5/5
+  ```
+
+  The level is `OBSERVED`, `VERIFIED`, or `UNVERIFIED`. `N` is
+  `observed.selectedCount` and `M` is `expected.taskCount` from
+  `delegation/<step>.manifest.json`, so a missing child still counts in the
+  denominator. The mutable QA plan and checklist comment are never reread.
+  Ralph prints the line only when the manifest's `stepId` and `attemptId`
+  match the step and its State `delegationAttempt.id`. A stale-attempt or
+  missing manifest prints nothing.
+- **Live activity.** An `in_progress` gated step replaces the usual
+  "Current activity" log snippet with best-effort lines that carry no detail:
+  `[delegation] child started` and `[delegation] child completed`. Claude
+  lines come from the current attempt's sanitized hook events. A child starts
+  at `SubagentStart` and completes at its `completed` foreground Agent return
+  after a stop. Status reads those events only when the hook context names the
+  State attempt. Codex lines come from direct children of the current log's
+  parent, read through a fresh App Server (`RALPH_CODEX_COLLECT_TIMEOUT`
+  defaults to 10 seconds here). Status ignores a log older than the attempt's
+  `startedAt`. Nested work is not listed. Missing, stale, unbound, or
+  unavailable evidence prints no lines, and the status command still succeeds.
+- **Redaction.** Delegation output is limited to fixed strings and manifest
+  counts. It never prints prompts, tool arguments, opaque IDs, paths,
+  commands, or raw events. Gated steps therefore do not show the parent log
+  snippet, which can contain all of these.
+
+Steps without a `delegation` key, including every legacy step, keep their
+existing rows and log snippet unchanged.
+
 ## Related guides
 
 - `docs/delegation-contracts.md`: schemas, attempts, and private writes.
