@@ -528,8 +528,27 @@ test_answers_merge_into_decisions_and_reopens_route_the_contradiction() {
   teardown_grill_repo
 }
 
+# Asserts the session blocked as invalid_message on ex-0004 after exactly one
+# re-emit request in the same Answering session.
+assert_invalid_message_block_after_one_reemit() {
+  local record prompt
+
+  record="$(<"$(only_session_dir)/session.json")"
+  [[ "$(jq -r '.status' <<<"$record")" == "blocked" ]] || fail "expected status blocked"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "invalid_message" ]] || fail "expected invalid_message"
+  [[ "$(jq -c '.decisions' <<<"$record")" == "{}" ]] || fail "expected no decisions from an invalid message"
+  [[ "$(claude_call_count)" == "5" ]] || fail "expected the original send plus exactly one re-emit request"
+  [[ "$(claude_flag_value 0005 --resume)" == "$UUID_ANSWERING" ]] || fail "expected the re-emit in the same session"
+  prompt="$(claude_flag_value 0005 -p)"
+  assert_contains "$prompt" "[ralph-exchange:ex-0004]"
+  assert_contains "$prompt" "re-emit"
+  [[ "$(jq -c '[.exchanges[] | select(.id == "ex-0004") | .reemitRequested]' <<<"$record")" == "[true]" ]] \
+    || fail "expected one ex-0004 exchange with reemitRequested"
+  [[ -f "$(only_session_dir)/human-input-ex-0004.md" ]] || fail "expected a human-input file for the block"
+}
+
 test_partial_answer_set_is_invalid() {
-  local status record
+  local status
 
   setup_grill_repo
   git -C "$GRILL_REPO" checkout -q -b feature-work
@@ -542,10 +561,8 @@ test_partial_answer_set_is_invalid() {
   status=$?
   set -e
 
-  [[ "$status" -ne 0 ]] || fail "expected a partial answer set to stop the session"
-  record="$(<"$(only_session_dir)/session.json")"
-  [[ "$(jq -c '.decisions' <<<"$record")" == "{}" ]] || fail "expected no decisions from a partial answer set"
-  [[ "$(claude_call_count)" == "4" ]] || fail "expected no exchange after the invalid answers"
+  [[ "$status" -eq 0 ]] || fail "expected a blocked session to exit 0"
+  assert_invalid_message_block_after_one_reemit
 
   teardown_grill_repo
 }
@@ -565,8 +582,33 @@ test_answer_without_evidence_is_invalid() {
   status=$?
   set -e
 
-  [[ "$status" -ne 0 ]] || fail "expected an answer without evidence to stop the session"
-  [[ "$(claude_call_count)" == "4" ]] || fail "expected no exchange after the invalid answers"
+  [[ "$status" -eq 0 ]] || fail "expected a blocked session to exit 0"
+  assert_invalid_message_block_after_one_reemit
+
+  teardown_grill_repo
+}
+
+test_invalid_message_followed_by_a_valid_reemit_continues() {
+  local session_id record
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+  cp "$FAKE_CLAUDE_DIR/exchanges/ex-0004.json" "$FAKE_CLAUDE_DIR/exchanges/ex-0004.2.json"
+  exchange_fixture ex-0004 'Here are my answers: storage-backend is sqlite.'
+
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1)"
+
+  record="$(<"$GRILL_SESSIONS/$session_id/session.json")"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] || fail "expected the session to reach the gate"
+  [[ "$(claude_call_count)" == "11" ]] || fail "expected ten exchanges plus one re-emit request"
+  [[ "$(claude_flag_value 0005 --resume)" == "$UUID_ANSWERING" ]] || fail "expected the re-emit in the same session"
+  assert_contains "$(claude_flag_value 0005 -p)" "[ralph-exchange:ex-0004]"
+  [[ "$(jq -c '[.exchanges[] | select(.id == "ex-0004") | [.status, .reemitRequested]]' <<<"$record")" \
+    == '[["completed",true]]' ]] || fail "expected ex-0004 completed after one re-emit"
+  [[ "$(jq -r '.exchanges | length' <<<"$record")" == "10" ]] || fail "expected the re-emit to reuse the exchange ID"
+  [[ "$(jq -r '.decisions["storage-backend"].decision' <<<"$record")" == "postgres" ]] || fail "expected the run to continue"
 
   teardown_grill_repo
 }
@@ -726,6 +768,232 @@ expect_grill_failure() {
   assert_contains "$output" "$expected"
 }
 
+NEEDS_HUMAN_EX_0004='{"exchangeId":"ex-0004","needsHuman":{"questionIds":["storage-backend"],"reason":"Nothing says whether exports are shared across devices."}}'
+
+test_needs_human_blocks_with_a_human_input_file() {
+  local status session_id session_dir record input output
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+  exchange_fixture ex-0004 "$NEEDS_HUMAN_EX_0004"
+
+  set +e
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1)"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 0 ]] || fail "expected start to exit 0 on a needsHuman block"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -r '.status' <<<"$record")" == "blocked" ]] || fail "expected status blocked"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "needs_human" ]] || fail "expected needs_human"
+  [[ "$(jq -r '.agents.grilling.nativeSessionId' <<<"$record")" == "$UUID_GRILLING" ]] || fail "expected grilling native ID kept"
+  [[ "$(jq -r '.agents.answering.nativeSessionId' <<<"$record")" == "$UUID_ANSWERING" ]] || fail "expected answering native ID kept"
+  [[ "$(jq -c '.decisions' <<<"$record")" == "{}" ]] || fail "expected no decisions from a needsHuman reply"
+  [[ "$(claude_call_count)" == "4" ]] || fail "expected no exchange after needsHuman"
+
+  input="$session_dir/human-input-ex-0004.md"
+  [[ -f "$input" ]] || fail "expected human-input file $input"
+  [[ "$(file_mode "$input")" == "600" ]] || fail "expected human-input file mode 600"
+  assert_contains "$(<"$input")" "storage-backend"
+  assert_contains "$(<"$input")" "Where are exports stored?"
+  assert_contains "$(<"$input")" "Nothing says whether exports are shared across devices."
+  assert_contains "$(<"$input")" "## Answers"
+
+  output="$(grill status --id "$session_id")"
+  assert_contains "$output" "State: blocked"
+  assert_contains "$output" "Block reason: needs_human"
+
+  teardown_grill_repo
+}
+
+# Starts a session that blocks on needsHuman at ex-0004 and prints its ID.
+start_needs_human_session() {
+  queue_two_round_run
+  exchange_fixture ex-0004 "$NEEDS_HUMAN_EX_0004"
+  grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1
+}
+
+test_resume_with_empty_answers_prints_the_input_file_without_agent_calls() {
+  local session_id session_dir output status
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(start_needs_human_session)"
+  session_dir="$(cd "$GRILL_SESSIONS/$session_id" && pwd -P)"
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+
+  set +e
+  output="$(grill resume --id "$session_id" 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 0 ]] || fail "expected resume with empty answers to exit 0, got $status: $output"
+  assert_contains "$output" "$session_dir/human-input-ex-0004.md"
+  [[ "$(claude_call_count)" == "0" ]] || fail "expected no Agent calls with empty answers"
+  [[ "$(jq -r '.blockReason' "$session_dir/session.json")" == "needs_human" ]] || fail "expected the block to stay"
+
+  teardown_grill_repo
+}
+
+# Scripts the closing exchanges from the given first exchange number: an
+# empty Frontier, then the summary draft, review and final.
+queue_closing_from() {
+  local n="$1"
+
+  exchange_fixture "ex-$(printf '%04d' "$n")" \
+    "{\"exchangeId\":\"ex-$(printf '%04d' "$n")\",\"round\":$2,\"questions\":[],\"reopens\":[]}"
+  exchange_fixture "ex-$(printf '%04d' $((n + 1)))" "$(summary_fixture "ex-$(printf '%04d' $((n + 1)))" "- Storage: Postgres.")"
+  exchange_fixture "ex-$(printf '%04d' $((n + 2)))" \
+    "{\"exchangeId\":\"ex-$(printf '%04d' $((n + 2)))\",\"faithful\":true,\"discrepancies\":[]}"
+  exchange_fixture "ex-$(printf '%04d' $((n + 3)))" "$(summary_fixture "ex-$(printf '%04d' $((n + 3)))" "- Storage: Postgres.")"
+}
+
+test_resume_routes_human_input_to_answering_then_grilling() {
+  local session_id session_dir record prompt
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(start_needs_human_session)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  printf 'Exports are shared across devices, so use Postgres.\n' >> "$session_dir/human-input-ex-0004.md"
+  exchange_fixture ex-0005 '{"exchangeId":"ex-0005","answers":[
+      {"questionId":"storage-backend","choiceId":"postgres","rationale":"The human says exports are shared.","evidence":["human-input-ex-0004.md"]},
+      {"questionId":"export-format","choiceId":"csv","rationale":"Users open exports in spreadsheets.","evidence":["README.md"]}]}'
+  queue_closing_from 6 2
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+
+  grill resume --id "$session_id" >/dev/null 2>&1
+
+  [[ "$(claude_flag_value 0001 --resume)" == "$UUID_ANSWERING" ]] || fail "expected human input sent to the Answering session first"
+  prompt="$(claude_flag_value 0001 -p)"
+  assert_contains "$prompt" "[ralph-exchange:ex-0005]"
+  assert_contains "$prompt" "Exports are shared across devices, so use Postgres."
+  assert_contains "$prompt" "Where are exports stored?"
+  [[ "$(claude_flag_value 0002 --resume)" == "$UUID_GRILLING" ]] || fail "expected the updated decision relayed to the Grilling session second"
+  prompt="$(claude_flag_value 0002 -p)"
+  assert_contains "$prompt" "[ralph-exchange:ex-0006]"
+  assert_contains "$prompt" "The human says exports are shared."
+  [[ "$(claude_call_count)" == "5" ]] || fail "expected human input, relay and three closing exchanges"
+
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -c '[.exchanges[4:6][] | [.id, .kind, .role, .status]]' <<<"$record")" \
+    == '[["ex-0005","human_input","answering","completed"],["ex-0006","correction_relay","grilling","completed"]]' ]] \
+    || fail "expected human_input then correction_relay exchanges, got: $(jq -c '.exchanges' <<<"$record")"
+  [[ "$(jq -c '.decisions["storage-backend"]' <<<"$record")" \
+    == '{"exchangeId":"ex-0005","decision":"postgres","reopenedBy":null}' ]] || fail "expected the human-informed decision"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] || fail "expected grilling to continue to the gate"
+
+  teardown_grill_repo
+}
+
+test_identical_frontier_without_reopens_blocks_as_no_progress() {
+  local status session_id session_dir record
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+  jq -c '.exchangeId = "ex-0005" | .round = 2' "$FAKE_CLAUDE_DIR/exchanges/ex-0003.json" > "$GRILL_TMP/repeat.json"
+  exchange_fixture ex-0005 "$(<"$GRILL_TMP/repeat.json")"
+
+  set +e
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1)"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 0 ]] || fail "expected start to exit 0 on a no_progress block"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -r '.status' <<<"$record")" == "blocked" ]] || fail "expected status blocked"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "no_progress" ]] || fail "expected no_progress, got $(jq -r '.blockReason' <<<"$record")"
+  [[ "$(claude_call_count)" == "5" ]] || fail "expected no exchange after the repeated Frontier"
+  assert_contains "$(<"$session_dir/human-input-ex-0005.md")" "storage-backend"
+  assert_contains "$(<"$session_dir/human-input-ex-0005.md")" "## Answers"
+
+  teardown_grill_repo
+}
+
+# Writes a decision line into confirmation.md's ## Decision section.
+write_confirmation_decision() {
+  awk -v decision="$2" '/^## Answers/ { print decision; print "" } { print }' "$1" > "$1.new"
+  mv "$1.new" "$1"
+}
+
+test_correct_at_the_gate_routes_answering_then_grilling_back_to_the_gate() {
+  local session_id session_dir record output prompt confirmation
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1)"
+  session_dir="$(cd "$GRILL_SESSIONS/$session_id" && pwd -P)"
+  write_confirmation_decision "$session_dir/confirmation.md" correct
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+
+  output="$(grill resume --id "$session_id" 2>&1)"
+  assert_contains "$output" "$session_dir/confirmation.md"
+  [[ "$(claude_call_count)" == "0" ]] || fail "expected no Agent calls for a correction without text"
+
+  printf 'Exports must also be available as JSON.\n' >> "$session_dir/confirmation.md"
+  exchange_fixture ex-0007 '{"exchangeId":"ex-0007","answers":[
+      {"questionId":"export-format","choiceId":"json","rationale":"The human asked for JSON exports.","evidence":["confirmation.md"]}]}'
+  queue_closing_from 8 2
+
+  grill resume --id "$session_id" >/dev/null 2>&1
+
+  [[ "$(claude_flag_value 0001 --resume)" == "$UUID_ANSWERING" ]] || fail "expected the correction sent to the Answering session first"
+  prompt="$(claude_flag_value 0001 -p)"
+  assert_contains "$prompt" "[ralph-exchange:ex-0007]"
+  assert_contains "$prompt" "Exports must also be available as JSON."
+  [[ "$(claude_flag_value 0002 --resume)" == "$UUID_GRILLING" ]] || fail "expected the updated decision relayed to the Grilling session second"
+  prompt="$(claude_flag_value 0002 -p)"
+  assert_contains "$prompt" "[ralph-exchange:ex-0008]"
+  assert_contains "$prompt" "The human asked for JSON exports."
+  [[ "$(claude_call_count)" == "5" ]] || fail "expected correction, relay and a new closing pass"
+
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -r '.status' <<<"$record")" == "blocked" ]] || fail "expected status blocked"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] || fail "expected the confirmation gate again"
+  [[ "$(jq -c '[.exchanges[6:][] | [.id, .kind, .role]]' <<<"$record")" == "$(jq -n -c '[
+      ["ex-0007","human_input","answering"],
+      ["ex-0008","correction_relay","grilling"],
+      ["ex-0009","summary_draft","grilling"],
+      ["ex-0010","summary_review","answering"],
+      ["ex-0011","summary_final","grilling"]]')" ]] \
+    || fail "expected correction exchanges then a new closing pass, got: $(jq -c '.exchanges' <<<"$record")"
+  [[ "$(jq -r '.decisions["export-format"].decision' <<<"$record")" == "json" ]] || fail "expected the corrected decision"
+  confirmation="$(<"$session_dir/confirmation.md")"
+  assert_contains "$confirmation" "- Storage: Postgres."
+  [[ "$confirmation" != *"Exports must also be available as JSON."* ]] || fail "expected a fresh confirmation file"
+
+  teardown_grill_repo
+}
+
+test_gate_text_without_a_correct_decision_contacts_no_agent() {
+  local session_id session_dir output
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1)"
+  session_dir="$(cd "$GRILL_SESSIONS/$session_id" && pwd -P)"
+  printf 'Exports must also be available as JSON.\n' >> "$session_dir/confirmation.md"
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+
+  output="$(grill resume --id "$session_id" 2>&1)"
+
+  assert_contains "$output" "## Decision"
+  assert_contains "$output" "$session_dir/confirmation.md"
+  [[ "$(claude_call_count)" == "0" ]] || fail "expected no Agent calls without a decision"
+  [[ "$(jq -r '.blockReason' "$session_dir/session.json")" == "awaiting_confirmation" ]] || fail "expected the gate to stay"
+
+  teardown_grill_repo
+}
+
 test_status_logs_and_cleanup_require_a_known_id() {
   local subcommand
 
@@ -854,11 +1122,18 @@ run_test test_every_exchange_after_start_resumes_the_stored_native_session
 run_test test_answers_merge_into_decisions_and_reopens_route_the_contradiction
 run_test test_partial_answer_set_is_invalid
 run_test test_answer_without_evidence_is_invalid
+run_test test_invalid_message_followed_by_a_valid_reemit_continues
 run_test test_confirmation_flags_out_of_scope_changes_and_head_drift
 run_test test_confirmation_without_drift_has_no_flags
 run_test test_provider_logs_are_owner_only_per_exchange_and_role
 run_test test_resume_continues_a_grilling_session_to_the_gate
 run_test test_resume_rejects_configuration_flags
+run_test test_needs_human_blocks_with_a_human_input_file
+run_test test_resume_with_empty_answers_prints_the_input_file_without_agent_calls
+run_test test_resume_routes_human_input_to_answering_then_grilling
+run_test test_identical_frontier_without_reopens_blocks_as_no_progress
+run_test test_correct_at_the_gate_routes_answering_then_grilling_back_to_the_gate
+run_test test_gate_text_without_a_correct_decision_contacts_no_agent
 run_test test_status_logs_and_cleanup_require_a_known_id
 run_test test_status_shows_state_agents_and_next_action_without_raw_content
 run_test test_logs_summarize_activity_per_role_and_exchange

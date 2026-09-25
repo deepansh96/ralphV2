@@ -392,12 +392,87 @@ grill_resume() {
   [[ -f "$record_file" ]] || { grill_die "no Grilling Session Record for $session_id in $sessions_dir"; return 1; }
 
   status="$(jq -r '.status' "$record_file")"
-  [[ "$status" == "grilling" ]] \
-    || { grill_die "session $session_id is $status; resume continues only grilling sessions"; return 1; }
-  in_flight="$(jq -r '[.exchanges[] | select(.status != "completed") | .id] | join(", ")' "$record_file")"
-  [[ -z "$in_flight" ]] \
-    || { grill_die "session $session_id has an in-flight exchange ($in_flight); it cannot be resumed yet"; return 1; }
+  case "$status" in
+    grilling) grill_resume_grilling "$record_file" ;;
+    blocked) grill_resume_blocked "$record_file" ;;
+    *)
+      grill_die "session $session_id is $status; resume continues only grilling or blocked sessions"
+      return 1
+      ;;
+  esac
+}
 
+grill_resume_grilling() {
+  local record_file="$1"
+  local in_flight
+
+  in_flight="$(jq -r '[.exchanges[] | select(.status == "intent" or .status == "sent") | .id] | join(", ")' "$record_file")"
+  [[ -z "$in_flight" ]] \
+    || { grill_die "session $(jq -r '.id' "$record_file") has an in-flight exchange ($in_flight); it cannot be resumed yet"; return 1; }
+
+  grill_run "$record_file"
+}
+
+# Prints the text under the last `## Answers` heading of a human-input file,
+# without leading or trailing blank lines.
+grill_answers_section() {
+  awk '
+    /^## Answers[[:space:]]*$/ { n = 0; found = 1; next }
+    found { lines[++n] = $0 }
+    END {
+      first = 1; while (first <= n && lines[first] ~ /^[[:space:]]*$/) first++
+      last = n; while (last >= first && lines[last] ~ /^[[:space:]]*$/) last--
+      for (i = first; i <= last; i++) print lines[i]
+    }' "$1"
+}
+
+# Prints the first line under confirmation.md's `## Decision` heading that is
+# exactly approve, reject or correct, or nothing.
+grill_confirmation_decision() {
+  awk '
+    /^## / { in_decision = ($0 ~ /^## Decision[[:space:]]*$/); next }
+    in_decision {
+      line = tolower($0); gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+      if (line ~ /^(approve|reject|correct)$/) { print line; exit }
+    }' "$1"
+}
+
+# Continues a blocked session from the human-input file for its block (at the
+# gate, a `correct` decision in confirmation.md). Without input it prints where
+# to write and contacts no Agent.
+grill_resume_blocked() {
+  local record_file="$1"
+  local session_id input_file block_reason decision answers
+
+  session_id="$(jq -r '.id' "$record_file")"
+  input_file="$(dirname "$record_file")/$(jq -r '.humanInputPath' "$record_file")"
+  block_reason="$(jq -r '.blockReason' "$record_file")"
+  if [[ "$block_reason" == "awaiting_confirmation" ]]; then
+    decision="$(grill_confirmation_decision "$input_file")"
+    case "$decision" in
+      correct) ;;
+      "")
+        echo "No decision yet: write approve, reject or correct under ## Decision in $input_file, then run: ralph.sh grill resume --id $session_id"
+        return 0
+        ;;
+      *)
+        grill_die "the '$decision' decision is not supported yet"
+        return 1
+        ;;
+    esac
+  fi
+
+  answers="$(grill_answers_section "$input_file")"
+  if [[ -z "$answers" ]]; then
+    echo "No human input yet: write it under ## Answers in $input_file, then run: ralph.sh grill resume --id $session_id"
+    return 0
+  fi
+
+  # Human input goes to the Answering Agent first; the loop then relays its
+  # updated answers to the Grilling Agent.
+  grill_record_update "$record_file" '.status = "grilling" | .blockReason = null' || return 1
+  grill_step_human_input "$record_file" "$block_reason" "$answers" \
+    || [[ "$(jq -r '.status' "$record_file")" == "blocked" ]] || return 1
   grill_run "$record_file"
 }
 
@@ -506,9 +581,18 @@ GRILL_JQ_DEFS='
 def text: type == "string" and length > 0;
 def evidence: type == "array" and length > 0 and all(.[]; text);
 def envelope: type == "object" and .exchangeId == $exchangeId;
+def answer: type == "object" and (.questionId | text)
+  and ((.choiceId | text) or (.text | text)) and (.rationale | text) and (.evidence | evidence);
+def needs_human: (has("answers") | not)
+  and (.needsHuman | type == "object" and (.reason | text) and (.questionIds | type == "array" and length > 0 and all(.[]; text)));
 '
 
-# Needs $round and $decided (settled question IDs).
+# The normalized question-ID set and bodies that frontierHash covers.
+GRILL_JQ_FRONTIER_KEY='[.questions[] | {id, body}] | sort_by(.id)'
+
+# Needs $round, $decided (settled question IDs) and $previous (the previous
+# Frontier's key, or null). Repeating the previous Frontier without reopens is
+# let through so the coordinator can block it as no_progress.
 GRILL_JQ_FRONTIER='
 envelope
 and .round == $round
@@ -521,23 +605,37 @@ and all(.questions[];
   and (.choices | type == "array" and all(.[]; type == "object" and (.id | text) and (.label | text)))
   and (.recommendation | type == "object" and (.rationale | text) and ((.choiceId | text) or (.text | text))))
 and ([.questions[].id] | length == (unique | length))
-and all(.questions[].id; IN($decided[]) | not)
+and (((.reopens // []) | length == 0) and ('"$GRILL_JQ_FRONTIER_KEY"') == $previous
+  or all(.questions[].id; IN($decided[]) | not))
 and all((.reopens // [])[];
   type == "object" and (.questionId | text and IN($decided[]))
   and (.contradiction | text) and (.evidence | evidence))
 and ([(.reopens // [])[].questionId] | length == (unique | length))
 '
 
-# Needs $expected (question IDs in the round, reopens included).
+# Needs $expected (question IDs in the round, reopens included). A needsHuman
+# reply names only question IDs from the round.
 GRILL_JQ_ANSWERS='
 envelope
-and (has("needsHuman") | not)
-and (.answers | type == "array")
-and all(.answers[];
-  type == "object" and (.questionId | text)
-  and ((.choiceId | text) or (.text | text))
-  and (.rationale | text) and (.evidence | evidence))
-and ([.answers[].questionId] | sort) == ($expected | sort)
+and if has("needsHuman") then
+  needs_human and all(.needsHuman.questionIds[]; IN($expected[]))
+else
+  (.answers | type == "array") and all(.answers[]; answer)
+  and ([.answers[].questionId] | sort) == ($expected | sort)
+end
+'
+
+# Needs $required (open question IDs the human input must settle). Answers may
+# also update settled decisions, once per question ID.
+GRILL_JQ_HUMAN_ANSWERS='
+envelope
+and if has("needsHuman") then
+  needs_human
+else
+  (.answers | type == "array") and all(.answers[]; answer)
+  and ([.answers[].questionId] | length == (unique | length))
+  and ([.answers[].questionId] as $ids | all($required[]; IN($ids[])))
+end
 '
 
 GRILL_JQ_SUMMARY='
@@ -570,22 +668,39 @@ grill_render_fragment() {
   printf '%s\n' "$text"
 }
 
-# Prints the validated message of the last completed exchange of a kind, or
-# nothing when there is none.
+# Prints the validated message of the last completed exchange of any of the
+# given kinds, or nothing when there is none.
 grill_last_message() {
   local record_file="$1"
-  local kind="$2"
+  shift
   local message_rel
 
-  message_rel="$(jq -r --arg kind "$kind" \
-    '[.exchanges[] | select(.kind == $kind and .status == "completed")] | last | .messagePath // empty' "$record_file")"
+  message_rel="$(jq -r --argjson kinds "$(jq -n -c '$ARGS.positional' --args "$@")" \
+    '[.exchanges[] | select((.kind | IN($kinds[])) and .status == "completed")] | last | .messagePath // empty' \
+    "$record_file")"
   [[ -z "$message_rel" ]] || cat "$(dirname "$record_file")/$message_rel"
 }
 
+# Prints the single JSON value in an Agent reply when it passes the jq
+# validator; fails otherwise. Extra arguments are passed to the validator.
+grill_valid_message() {
+  local raw="$1"
+  local exchange_id="$2"
+  local validator="$3"
+  shift 3
+  local message
+
+  message="$(jq -c -s 'if length == 1 then .[0] else error("expected one JSON value") end' <<<"$raw" 2>/dev/null)" \
+    && jq -e --arg exchangeId "$exchange_id" "$@" "$GRILL_JQ_DEFS $validator" <<<"$message" >/dev/null 2>&1 \
+    && printf '%s\n' "$message"
+}
+
 # Records, sends, validates and completes one exchange: intent before sending,
-# sent while the provider has it, completed once the message validates. The
-# validated message is saved to messages/<id>.json and printed. Extra
-# arguments are passed to the jq validator.
+# sent while the provider has it, completed once the message validates. An
+# invalid message gets exactly one re-emit request in the same session for the
+# same exchange ID; a second invalid message blocks the session as
+# invalid_message. The validated message is saved to messages/<id>.json and
+# printed. Extra arguments are passed to the jq validator.
 grill_exchange() {
   local record_file="$1"
   local kind="$2"
@@ -595,7 +710,7 @@ grill_exchange() {
   local schema="$6"
   local validator="$7"
   shift 7
-  local session_dir log_rel message_rel config native raw message
+  local session_dir log_rel reemit_log_rel message_rel config native schema_file raw message
 
   session_dir="$(dirname "$record_file")"
   log_rel="logs/$exchange_id-$role.jsonl"
@@ -612,15 +727,30 @@ grill_exchange() {
   grill_record_update "$record_file" '.exchanges |= map(if .id == $id then .status = "sent" else . end)' \
     --arg id "$exchange_id" || return 1
 
-  if ! raw="$(adapter_send "$role" "$config" "$native" "$prompt" "$SCRIPT_DIR/prompts/grill/schemas/$schema.schema.json" \
-    "$session_dir/$log_rel")"; then
+  schema_file="$SCRIPT_DIR/prompts/grill/schemas/$schema.schema.json"
+  if ! raw="$(adapter_send "$role" "$config" "$native" "$prompt" "$schema_file" "$session_dir/$log_rel")"; then
     grill_fail_record "$record_file" "the $role agent did not answer $exchange_id; see $session_dir/$log_rel"
     return 1
   fi
-  if ! message="$(jq -c -s 'if length == 1 then .[0] else error("expected one JSON value") end' <<<"$raw" 2>/dev/null)" \
-    || ! jq -e --arg exchangeId "$exchange_id" "$@" "$GRILL_JQ_DEFS $validator" <<<"$message" >/dev/null 2>&1; then
-    grill_fail_record "$record_file" "the $role agent sent an invalid $kind message for $exchange_id; see $session_dir/$log_rel"
-    return 1
+  if ! message="$(grill_valid_message "$raw" "$exchange_id" "$validator" "$@")"; then
+    reemit_log_rel="logs/$exchange_id-$role-reemit.jsonl"
+    grill_record_update "$record_file" \
+      '.exchanges |= map(if .id == $id then .reemitRequested = true | .reemitLogPath = $log else . end)' \
+      --arg id "$exchange_id" --arg log "$reemit_log_rel" || return 1
+    grill_record_write_file "$session_dir/$reemit_log_rel" < /dev/null || return 1
+    if ! raw="$(adapter_send "$role" "$config" "$native" \
+      "$(grill_render_fragment reemit EXCHANGE_ID "$exchange_id" KIND "$schema")" "$schema_file" \
+      "$session_dir/$reemit_log_rel")"; then
+      grill_fail_record "$record_file" "the $role agent did not answer the re-emit request for $exchange_id; see $session_dir/$reemit_log_rel"
+      return 1
+    fi
+    if ! message="$(grill_valid_message "$raw" "$exchange_id" "$validator" "$@")"; then
+      grill_record_update "$record_file" '.exchanges |= map(if .id == $id then .status = "invalid" else . end)' \
+        --arg id "$exchange_id" || return 1
+      grill_block "$record_file" invalid_message "$exchange_id" \
+        "The $role Agent sent an invalid $kind message for $exchange_id twice, once after a re-emit request. See $session_dir/$log_rel and $session_dir/$reemit_log_rel."
+      return 1
+    fi
   fi
 
   jq '.' <<<"$message" | grill_record_write_file "$session_dir/$message_rel" || return 1
@@ -630,43 +760,146 @@ grill_exchange() {
   printf '%s\n' "$message"
 }
 
+# Sends the next Frontier round: a regular round after answers, or a
+# correction_relay of the Answering Agent's human-informed answers. Blocks as
+# no_progress when the Frontier repeats the previous one without reopens.
 grill_step_frontier() {
   local record_file="$1"
-  local round exchange_id answers prompt
+  local kind="${2:-frontier}"
+  local round exchange_id answers fragment prompt previous previous_key="null" frontier hash
 
   round=$(( $(jq '.round' "$record_file") + 1 ))
   exchange_id="$(grill_next_exchange_id "$record_file")"
-  answers="$(grill_last_message "$record_file" answers)"
+  answers="$(grill_last_message "$record_file" answers human_input)"
   if [[ -n "$answers" ]]; then
     answers="$(jq '.answers' <<<"$answers")"
   else
     answers="None. This is the first round."
   fi
-  prompt="$(grill_render_fragment round-frontier EXCHANGE_ID "$exchange_id" ROUND "$round" ANSWERS "$answers")"
+  fragment="round-frontier"
+  [[ "$kind" == "frontier" ]] || fragment=correction
+  prompt="$(grill_render_fragment "$fragment" EXCHANGE_ID "$exchange_id" ROUND "$round" ANSWERS "$answers")"
+  previous="$(grill_last_message "$record_file" frontier correction_relay)"
+  [[ -z "$previous" ]] || previous_key="$(jq -c "$GRILL_JQ_FRONTIER_KEY" <<<"$previous")"
 
   grill_record_update "$record_file" '.round = $round' --argjson round "$round" || return 1
-  grill_exchange "$record_file" frontier grilling "$exchange_id" "$prompt" frontier "$GRILL_JQ_FRONTIER" \
-    --argjson round "$round" --argjson decided "$(jq -c '.decisions | keys' "$record_file")" >/dev/null
+  frontier="$(grill_exchange "$record_file" "$kind" grilling "$exchange_id" "$prompt" frontier "$GRILL_JQ_FRONTIER" \
+    --argjson round "$round" --argjson decided "$(jq -c '.decisions | keys' "$record_file")" \
+    --argjson previous "$previous_key")" || return 1
+
+  hash="$(jq -c "$GRILL_JQ_FRONTIER_KEY" <<<"$frontier" | grill_sha256 -)"
+  grill_record_update "$record_file" '.exchanges |= map(if .id == $id then .frontierHash = $hash else . end)' \
+    --arg id "$exchange_id" --arg hash "$hash" || return 1
+  if [[ "$previous_key" != "null" && "$(jq -c "$GRILL_JQ_FRONTIER_KEY" <<<"$frontier")" == "$previous_key" ]] \
+    && jq -e '(.questions | length) > 0 and ((.reopens // []) | length) == 0' <<<"$frontier" >/dev/null; then
+    grill_block "$record_file" no_progress "$exchange_id" \
+      "The Grilling Agent sent the same Frontier as the previous round without a reopen.
+
+## Questions
+
+$(grill_render_questions "$frontier" "$(jq -c '[.questions[].id]' <<<"$frontier")")"
+  fi
+}
+
+# Prints a Frontier's reopens, each with the decision it reopens.
+grill_reopens_with_decisions() {
+  local record_file="$1"
+  local frontier="$2"
+
+  jq --argjson decisions "$(jq -c '.decisions' "$record_file")" \
+    '(.reopens // []) | map(. + {previousDecision: $decisions[.questionId].decision})' <<<"$frontier"
 }
 
 # Relays the last Frontier to the Answering Agent, reopens included with their
 # contradiction and previous decision, then merges the answers into decisions.
 grill_step_answers() {
   local record_file="$1"
-  local frontier frontier_id exchange_id questions reopens expected prompt answers
+  local frontier exchange_id expected prompt answers
 
-  frontier="$(grill_last_message "$record_file" frontier)"
-  frontier_id="$(jq -r '.exchangeId' <<<"$frontier")"
+  frontier="$(grill_last_message "$record_file" frontier correction_relay)"
   exchange_id="$(grill_next_exchange_id "$record_file")"
-  questions="$(jq '.questions' <<<"$frontier")"
-  reopens="$(jq --argjson decisions "$(jq -c '.decisions' "$record_file")" \
-    '(.reopens // []) | map(. + {previousDecision: $decisions[.questionId].decision})' <<<"$frontier")"
   expected="$(jq -c '[.questions[].id] + [(.reopens // [])[].questionId]' <<<"$frontier")"
   prompt="$(grill_render_fragment round-answers EXCHANGE_ID "$exchange_id" ROUND "$(jq '.round' "$record_file")" \
-    QUESTIONS "$questions" REOPENS "$reopens")"
+    QUESTIONS "$(jq '.questions' <<<"$frontier")" REOPENS "$(grill_reopens_with_decisions "$record_file" "$frontier")")"
 
   answers="$(grill_exchange "$record_file" answers answering "$exchange_id" "$prompt" answers "$GRILL_JQ_ANSWERS" \
     --argjson expected "$expected")" || return 1
+  grill_apply_answers "$record_file" "$answers" "$frontier"
+}
+
+# Prints the Frontier that the block left unanswered: the one a needsHuman
+# reply or an invalid Answers message was for, or a no_progress Frontier.
+# Prints nothing when no question is open.
+grill_pending_frontier() {
+  local record_file="$1"
+  local last_kind message
+
+  last_kind="$(jq -r '[.exchanges[] | select(.status == "completed")] | last | .kind' "$record_file")"
+  message="$(grill_last_message "$record_file" "$last_kind")"
+  case "$last_kind" in
+    frontier|correction_relay)
+      if jq -e '(.questions | length) > 0 or ((.reopens // []) | length) > 0' <<<"$message" >/dev/null; then
+        printf '%s\n' "$message"
+      fi
+      ;;
+    answers|human_input)
+      if jq -e 'has("needsHuman")' <<<"$message" >/dev/null; then
+        grill_last_message "$record_file" frontier correction_relay
+      fi
+      ;;
+  esac
+}
+
+# Sends the human's input for a block to the Answering Agent, with the
+# questions the block left open, and merges its updated answers.
+grill_step_human_input() {
+  local record_file="$1"
+  local block_reason="$2"
+  local human_input="$3"
+  local pending exchange_id required prompt answers
+
+  pending="$(grill_pending_frontier "$record_file")"
+  [[ -n "$pending" ]] || pending='{"exchangeId":null,"questions":[],"reopens":[]}'
+  exchange_id="$(grill_next_exchange_id "$record_file")"
+  required="$(jq -c '[.questions[].id] + [(.reopens // [])[].questionId]' <<<"$pending")"
+  prompt="$(grill_render_fragment human-input EXCHANGE_ID "$exchange_id" BLOCK_REASON "$block_reason" \
+    HUMAN_INPUT "$human_input" QUESTIONS "$(jq '.questions' <<<"$pending")" \
+    REOPENS "$(grill_reopens_with_decisions "$record_file" "$pending")" DECISIONS "$(jq '.decisions' "$record_file")")"
+
+  answers="$(grill_exchange "$record_file" human_input answering "$exchange_id" "$prompt" answers \
+    "$GRILL_JQ_HUMAN_ANSWERS" --argjson required "$required")" || return 1
+  grill_apply_answers "$record_file" "$answers" "$pending"
+}
+
+# Prints the Markdown for the given question IDs of a Frontier, with choices.
+grill_render_questions() {
+  jq -r --argjson ids "$2" '. as $frontier | [$ids[] as $id
+    | (first($frontier.questions[] | select(.id == $id))
+       // {id: $id, title: "Reopened or settled decision",
+           body: (first(($frontier.reopens // [])[] | select(.questionId == $id) | .contradiction) // "See the reason above.")})
+    | "### \(.id): \(.title)\n\n\(.body)\n"
+      + ((.choices // []) | map("\n- `\(.id)` \(.label)\(if .description then ": \(.description)" else "" end)") | join(""))
+    ] | join("\n\n")' <<<"$1"
+}
+
+# Merges an Answers message into decisions, or blocks on needsHuman with the
+# open questions in the human-input file.
+grill_apply_answers() {
+  local record_file="$1"
+  local answers="$2"
+  local frontier="$3"
+  local frontier_id
+
+  frontier_id="$(jq -r '.exchangeId' <<<"$frontier")"
+  if jq -e 'has("needsHuman")' <<<"$answers" >/dev/null; then
+    grill_block "$record_file" needs_human "$(jq -r '.exchangeId' <<<"$answers")" \
+      "The Answering Agent needs a human decision: $(jq -r '.needsHuman.reason' <<<"$answers")
+
+## Questions
+
+$(grill_render_questions "$frontier" "$(jq -c '.needsHuman.questionIds' <<<"$answers")")"
+    return
+  fi
 
   grill_record_update "$record_file" \
     '.decisions += ($answers.answers | map({key: .questionId, value: {
@@ -675,6 +908,29 @@ grill_step_answers() {
         reopenedBy: (.questionId as $q | if ($reopened | index($q)) then $frontier else null end)}}) | from_entries)' \
     --argjson answers "$answers" --arg frontier "$frontier_id" \
     --argjson reopened "$(jq -c '[(.reopens // [])[].questionId]' <<<"$frontier")"
+}
+
+# Blocks the session: writes the human-input file for this block
+# (human-input-<exchange-id>.md, ending with the `## Answers` section the human
+# fills in) and records it. Both native sessions are kept.
+grill_block() {
+  local record_file="$1"
+  local reason="$2"
+  local exchange_id="$3"
+  local details="$4"
+  local session_dir input_rel
+
+  session_dir="$(dirname "$record_file")"
+  input_rel="human-input-$exchange_id.md"
+  {
+    printf '# Human input for Automated Grilling Session %s\n\n' "$(jq -r '.id' "$record_file")"
+    printf 'Blocked: %s at %s.\n\n%s\n\n' "$reason" "$exchange_id" "$details"
+    printf 'Write your input under `## Answers`, then run: ralph.sh grill resume --id %s\n\n' "$(jq -r '.id' "$record_file")"
+    printf '## Answers\n\n'
+  } | grill_record_write_file "$session_dir/$input_rel" || return 1
+  grill_record_update "$record_file" \
+    '.status = "blocked" | .blockReason = $reason | .humanInputPath = $input' \
+    --arg reason "$reason" --arg input "$input_rel"
 }
 
 grill_step_summary_draft() {
@@ -766,41 +1022,57 @@ grill_write_confirmation() {
 }
 
 # The relay loop: each step follows from the last completed exchange, so
-# `start` and `resume` share it. Stops at the confirmation gate.
+# `start` and `resume` share it. Stops when the session blocks, at the latest
+# at the confirmation gate.
 grill_run() {
   local record_file="$1"
-  local last_kind frontier
+  local session_dir last_kind frontier
+  local -a step
 
+  session_dir="$(dirname "$record_file")"
   while true; do
+    if [[ "$(jq -r '.status' "$record_file")" == "blocked" ]]; then
+      if [[ "$(jq -r '.blockReason' "$record_file")" == "awaiting_confirmation" ]]; then
+        echo "Awaiting confirmation: review $session_dir/confirmation.md and write your decision there." >&2
+      else
+        echo "Blocked ($(jq -r '.blockReason' "$record_file")): write your input under ## Answers in $session_dir/$(jq -r '.humanInputPath' "$record_file"), then run: ralph.sh grill resume --id $(jq -r '.id' "$record_file")" >&2
+      fi
+      return 0
+    fi
     last_kind="$(jq -r '[.exchanges[] | select(.status == "completed")] | last | .kind' "$record_file")"
     case "$last_kind" in
       session_start|answers)
-        grill_step_frontier "$record_file" || return 1
+        step=(grill_step_frontier "$record_file")
         ;;
-      frontier)
-        frontier="$(grill_last_message "$record_file" frontier)"
+      human_input)
+        step=(grill_step_frontier "$record_file" correction_relay)
+        ;;
+      frontier|correction_relay)
+        frontier="$(grill_last_message "$record_file" frontier correction_relay)"
         if jq -e '(.questions | length) == 0 and ((.reopens // []) | length) == 0' <<<"$frontier" >/dev/null; then
-          grill_step_summary_draft "$record_file" || return 1
+          step=(grill_step_summary_draft "$record_file")
         else
-          grill_step_answers "$record_file" || return 1
+          step=(grill_step_answers "$record_file")
         fi
         ;;
       summary_draft)
-        grill_step_summary_review "$record_file" || return 1
+        step=(grill_step_summary_review "$record_file")
         ;;
       summary_review)
-        grill_step_summary_final "$record_file" || return 1
+        step=(grill_step_summary_final "$record_file")
         ;;
       summary_final)
         grill_write_confirmation "$record_file" || return 1
-        grill_record_update "$record_file" '.status = "blocked" | .blockReason = "awaiting_confirmation"' || return 1
-        echo "Awaiting confirmation: review $(dirname "$record_file")/confirmation.md and write your decision there." >&2
-        return 0
+        grill_record_update "$record_file" \
+          '.status = "blocked" | .blockReason = "awaiting_confirmation" | .humanInputPath = "confirmation.md"' || return 1
+        continue
         ;;
       *)
         grill_die "cannot continue from exchange kind '$last_kind'"
         return 1
         ;;
     esac
+    # A step that blocked the session stops the loop at the check above.
+    "${step[@]}" || [[ "$(jq -r '.status' "$record_file")" == "blocked" ]] || return 1
   done
 }

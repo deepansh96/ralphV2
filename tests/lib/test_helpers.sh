@@ -1261,7 +1261,8 @@ run_test() {
 # stdin). The prompt's `[ralph-exchange:<id>]` marker selects a per-exchange
 # fixture: $FAKE_CLAUDE_DIR/exchanges/<id>.sh runs first in the working
 # directory (to simulate Agent edits), then $FAKE_CLAUDE_DIR/exchanges/<id>.json
-# is the result text. Without a fixture, result text is popped from
+# is the result text; a repeated call for the same exchange ID (a re-emit)
+# reads <id>.<n>.json for its nth call when present. Without a fixture, result text is popped from
 # $FAKE_CLAUDE_DIR/queue/* in name order, falling back to a readiness
 # acknowledgement. Prompts are appended to a fake session store at
 # $FAKE_CLAUDE_DIR/sessions/<native-id>.
@@ -1326,6 +1327,13 @@ printf '%s\n' "$prompt" >> "$state_dir/sessions/${native_id:-unknown}"
 
 exchange_id="$(grep -oE '\[ralph-exchange:ex-[0-9]+\]' <<<"$prompt" | head -n 1 | sed -E 's/^\[ralph-exchange:(.*)\]$/\1/' || true)"
 fixture="$state_dir/exchanges/$exchange_id"
+# A second call for the same exchange ID (a re-emit) reads <id>.2.json first.
+if [[ -n "$exchange_id" ]]; then
+  mkdir -p "$state_dir/seen"
+  printf 'x' >> "$state_dir/seen/$exchange_id"
+  seen="$(wc -c < "$state_dir/seen/$exchange_id" | tr -d ' ')"
+  [[ "$seen" -lt 2 || ! -f "$fixture.$seen.json" ]] || fixture="$fixture.$seen"
+fi
 if [[ -n "$exchange_id" && -f "$fixture.sh" ]]; then
   bash "$fixture.sh"
 fi
