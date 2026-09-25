@@ -13,12 +13,10 @@ delegation_validate child <<< "$child"
 for mutation in '. + {prompt:"secret"}' '.effective += {response:"secret"}' '.run = 0' '.outcome = "success"' '.started = "true"' '.assignmentDigest = "bad"'; do
   if jq "$mutation" <<< "$child" | delegation_validate child; then exit 1; fi
 done
-[[ "$(delegation_sort_codes <<< '["TASK_MISSING","CHILD_FAILED","TASK_MISSING"]')" == '["CHILD_FAILED","TASK_MISSING"]' ]]
-if delegation_sort_codes <<< '["UNKNOWN"]'; then exit 1; fi
 manifest='{"schemaVersion":1,"issue":37,"stepId":"review","attemptId":"attempt-1","provider":"codex","evidenceSource":"app-server","parentId":"parent-1","policy":"pr-review-v1","requested":{"parent":{"model":"sol","reasoningEffort":"medium"},"worker":{"model":"luna","reasoningEffort":"max"}},"expected":{"taskCount":1,"taskIds":["matt_spec"]},"observed":{"startedCount":1,"completedCount":1,"selectedCount":1},"children":[],"evidenceLevel":"OBSERVED","mismatchCodes":[]}'
 manifest="$(jq --argjson child "$child" '.children = [$child + {disposition:"selected"}]' <<< "$manifest")"
 delegation_validate manifest <<< "$manifest"
-for mutation in '.requested = .requested.parent' '.requested.worker.prompt = "secret"' '.children[0].response = "secret"' '.mismatchCodes = ["TASK_MISSING","CHILD_FAILED"]' '.evidenceLevel = "OK"' '.transcript = "/secret"'; do
+for mutation in '.requested = .requested.parent' '.requested.worker.prompt = "secret"' '.children[0].response = "secret"' '.mismatchCodes = ["TASK_MISSING","CHILD_FAILED"]' '.mismatchCodes = ["CHILD_FAILED","CHILD_FAILED"]' '.mismatchCodes = ["UNKNOWN"]' '.evidenceLevel = "OK"' '.transcript = "/secret"'; do
   if jq "$mutation" <<< "$manifest" | delegation_validate manifest; then exit 1; fi
 done
 plan='{"schemaVersion":1,"stepId":"runthrough-qa-checklist","attemptId":"attempt-1","checklist":{"commentId":"123","updatedAt":"2026-08-25T10:00:00Z","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","items":[{"id":"QA-01","text":"First check instruction"}]},"assignments":[{"taskId":"qa_group_1","checklistItemIds":["QA-01"],"assignmentDigest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}'

@@ -38,8 +38,8 @@ Unknown fields are rejected throughout artifacts and nested records. Effective
 child model/effort may be null; requested parent/worker settings must be present.
 The Codex evidence source is `app-server`; the Claude hook source is `hooks`.
 Manifest children sort by taskId, run, then childId; task IDs, checklist IDs,
-assignments, and mismatch codes use lexicographic ordering. `delegation_sort_codes`
-sorts and deduplicates codes. `delegation_sort_children` validates and sorts
+assignments, and mismatch codes use lexicographic ordering.
+`delegation_sort_children` validates and sorts
 normalized records without deleting duplicate evidence. Manifest validation
 requires already sorted children and unique sorted codes.
 

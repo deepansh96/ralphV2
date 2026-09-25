@@ -446,6 +446,7 @@ test_runthrough_qa_checklist_prompt_defines_execution_and_progress_contract() {
   # qa-v1 replacements: parent-owned, sequential, never after a completed run.
   assert_contains "$prompt" "The first run of every group is 1"
   assert_contains "$prompt" "failed, stopped, or never finished"
+  assert_contains "$prompt" "Stop a run that never finished before replacing it"
   assert_contains "$prompt" "the next run number"
   assert_contains "$prompt" "unchanged taskId and assignmentDigest"
   assert_contains "$prompt" "A completed run cannot be replaced"

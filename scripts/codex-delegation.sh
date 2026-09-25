@@ -39,11 +39,7 @@ codex_delegation_threads() {
 codex_delegation_collect() {
   local parent="$1" plan_file="${2:-}" threads
   threads="$(codex_delegation_threads "$parent")" || return 1
-  if [[ -n "$plan_file" ]]; then
-    codex_delegation_normalize "$parent" "$plan_file" <<< "$threads"
-  else
-    codex_delegation_normalize "$parent" <<< "$threads"
-  fi
+  codex_delegation_normalize "$parent" "$plan_file" <<< "$threads"
 }
 
 # Collector envelope for the future verifier: the shared children plus the
@@ -51,11 +47,7 @@ codex_delegation_collect() {
 codex_delegation_evidence() {
   local parent="$1" plan_file="${2:-}" threads children
   threads="$(codex_delegation_threads "$parent")" || return 1
-  if [[ -n "$plan_file" ]]; then
-    children="$(codex_delegation_normalize "$parent" "$plan_file" <<< "$threads")" || return 1
-  else
-    children="$(codex_delegation_normalize "$parent" <<< "$threads")" || return 1
-  fi
+  children="$(codex_delegation_normalize "$parent" "$plan_file" <<< "$threads")" || return 1
   jq -nc --arg parent "$parent" --argjson children "$children" --argjson threads "$threads" \
     '{parentId:$parent,children:$children,threads:$threads.threads}'
 }

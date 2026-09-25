@@ -104,12 +104,17 @@ prove the plan's digest and task ID:
 
 - Runs must be exactly `1..N`, each once. The highest run is `selected` and
   must complete; its lifecycle codes apply as usual.
-- A lower run that did not complete is `superseded` and does not fail by itself.
+- A lower run that ended `failed` or `stopped` is `superseded` and does not
+  fail by itself. Only those outcomes prove a run ended: a lower `incomplete`
+  run may still be running beside its replacement, so it fails with
+  `TASK_DUPLICATED`. The parent must stop a hung run before replacing it.
 - A completed run cannot be replaced in v1, even when its returned evidence is
   unusable: that result fails the step instead. A completed lower run fails
   with `TASK_DUPLICATED`.
 - Nesting, parentage, and model/effort checks apply to every run, superseded or
-  not, so supersession never hides them.
+  not, so supersession never hides them. `VERIFIED` needs provider-reported
+  settings only on selected runs; a superseded run without them does not cap
+  the level.
 - A worker with a missing or foreign digest, another task ID, or another parent
   joins no chain; it never fills a gap or supersedes anything.
 
@@ -119,7 +124,8 @@ again at run 1 and can never supersede an old session's workers.
 
 | Chain | Result |
 | --- | --- |
-| run 1 failed, stopped, or incomplete; run 2 completed | pass; run 1 `superseded` |
+| run 1 failed or stopped; run 2 completed | pass; run 1 `superseded` |
+| run 1 incomplete (no end evidence); run 2 completed | `TASK_DUPLICATED` |
 | run 1 completed; any run 2 | `TASK_DUPLICATED` |
 | two workers with the same run | `TASK_DUPLICATED` |
 | runs 1 and 3, or only run 2 | `TASK_UNEXPECTED` |

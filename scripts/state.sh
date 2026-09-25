@@ -3,6 +3,7 @@
 STATE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=ralph-v2/scripts/config.sh
 source "$STATE_SCRIPT_DIR/config.sh"
+source "$STATE_SCRIPT_DIR/delegation.sh"
 
 state_read() {
   local state_file="$1"
@@ -264,13 +265,10 @@ state_backfill_delegation_metadata() {
   local policy="$3"
   local tmp_file
 
-  case "$policy" in
-    pr-review-v1|qa-v1) ;;
-    *)
-      echo "Error: unknown delegation policy '$policy'" >&2
-      return 1
-      ;;
-  esac
+  if ! jq -nc --arg policy "$policy" '{schemaVersion: 1, policy: $policy}' | delegation_validate metadata; then
+    echo "Error: unknown delegation policy '$policy'" >&2
+    return 1
+  fi
   if ! jq -e --arg id "$step_id" 'any(.steps[]?; .id == $id)' "$state_file" >/dev/null; then
     echo "Error: delegated step '$step_id' is missing" >&2
     return 1

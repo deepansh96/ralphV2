@@ -79,7 +79,6 @@ if length != 1 then false else .[0] |
 if $schema == "metadata" then metadata
 elif $schema == "child" then child
 elif $schema == "children" then type == "array" and all(.[]; child)
-elif $schema == "codes" then code_array
 elif $schema == "manifest" then manifest
 elif $schema == "plan" then plan
 elif $schema == "attempt" then attempt

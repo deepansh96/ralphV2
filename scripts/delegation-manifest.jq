@@ -8,6 +8,8 @@ def model_ok($requested; $reported):
     ($reported | split("-")) as $parts
     | $parts[0] == "claude" and (($parts[1:] | index($requested)) != null)
   else $reported == $requested end;
+# Only failed or stopped outcomes prove a run ended; incomplete may still run.
+def ended: .outcome == "failed" or .outcome == "stopped";
 # $digests: null for pr-review-v1; for qa-v1 the recomputed plan and refetched
 # checklist digests (delegation_manifest_qa_digests).
 
@@ -40,7 +42,6 @@ $r.requested.worker as $worker |
 [
   (if $r.providerFailed then "PROVIDER_FAILED" else empty end),
   (if $r.evidence == null then "EVIDENCE_UNAVAILABLE" else empty end),
-  (if $r.policy | IN("pr-review-v1","qa-v1") | not then "POLICY_UNSUPPORTED" else empty end),
   (if $qa then
      if $r.qa.plan == null then "PLAN_MISSING"
      elif $plan == null then "PLAN_INVALID"
@@ -79,9 +80,10 @@ $r.requested.worker as $worker |
   # Task identity is judged only under a supported policy with bound evidence.
   # qa-v1: every direct child proves one immutable plan assignment (digest and
   # task ID). Each assignment's chain has runs exactly 1..N, each once; only
-  # failed, stopped, or incomplete runs may be replaced (a completed lower run
-  # is a duplicate execution). Nesting, parentage, and settings are still judged
-  # on every run, so supersession hides none of them.
+  # runs that ended failed or stopped may be replaced (a completed lower run is
+  # a duplicate execution, an incomplete one a possibly concurrent duplicate).
+  # Nesting, parentage, and settings are still judged on every run, so
+  # supersession hides none of them.
   (if $plan != null and $r.evidence != null then
      ($plan.assignments[] | . as $a
        | [$chains[] | select(.[0].assignmentDigest == $a.assignmentDigest)[]] as $runs
@@ -89,7 +91,7 @@ $r.requested.worker as $worker |
        | if $runs == [] then "TASK_MISSING"
          else
            (if ($numbers | length) != ($numbers | unique | length)
-               or any($runs[]; .run < ($numbers | max) and (.completed or .outcome == "completed"))
+               or any($runs[]; .run < ($numbers | max) and (.completed or (ended | not)))
             then "TASK_DUPLICATED" else empty end),
            (if ($numbers | unique) != [range(1; ($numbers | max) + 1)] then "TASK_UNEXPECTED" else empty end)
          end),
@@ -123,7 +125,7 @@ $r.requested.worker as $worker |
     effective: {model: .effective.model, reasoningEffort: .effective.reasoningEffort},
     nested, disposition: (if any($superseded[]; . == $c) then "superseded" else "selected" end)})),
   evidenceLevel: (if ($codes | length) > 0 then "UNVERIFIED"
-    elif all($direct[]; .effective.model != null and .effective.reasoningEffort != null) then "VERIFIED"
+    elif all($selected[]; .effective.model != null and .effective.reasoningEffort != null) then "VERIFIED"
     else "OBSERVED" end),
   mismatchCodes: $codes
 }

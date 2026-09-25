@@ -200,8 +200,8 @@ comment 123 "$after" 2026-08-25T12:30:00Z
 [[ "$(codes "$(jq -c --arg d "$g1" '.[1].assignmentDigest = $d' <<< "$two")" "$qa")" == '["ASSIGNMENT_DIGEST_MISMATCH","TASK_MISSING"]' ]] || fail 'digest of another task'
 [[ "$(summary "$(jq -c '. + [.[1] | .childId = "c-2b"]' <<< "$two")" "$qa")" == '["UNVERIFIED",["TASK_DUPLICATED"],2,3,3,3]' ]] || fail 'duplicate run'
 
-# Replacement runs (#37 "QA plan and policy"). The parent may replace a failed,
-# stopped, or incomplete run with the next run of the same unchanged
+# Replacement runs (#37 "QA plan and policy"). The parent may replace a run
+# that ended failed or stopped with the next run of the same unchanged
 # assignment. The highest run is selected and must complete; lower runs are
 # superseded. Counts describe the selected logical assignments.
 qrun() { jq -nc --arg id "$1" --arg digest "$2" --argjson run "$3" --arg outcome "$4" '{childId:$id,parentId:"parent-1",taskId:"qa_group_2",run:$run,assignmentDigest:$digest,
@@ -209,15 +209,23 @@ qrun() { jq -nc --arg id "$1" --arg digest "$2" --argjson run "$3" --arg outcome
   effective:{model:null,reasoningEffort:null},nested:false}'; }
 g2_runs() { jq -c '.[0:1]' <<< "$two" | jq -c --argjson runs "$(for spec in "$@"; do qrun ${spec//\// }; done | jq -sc .)" '. + $runs'; }
 dispositions() { qa_request "$1" "$qa" | delegation_manifest_build | jq -c '[.children[] | [.childId,.run,.disposition]]'; }
-for lower in failed stopped incomplete unstarted; do
+for lower in failed stopped; do
   replaced="$(g2_runs "c-2/$g2/1/$lower" "c-2r/$g2/2/completed")"
   [[ "$(summary "$replaced" "$qa")" == '["OBSERVED",[],2,2,2,2]' ]] || fail "replacement after $lower run"
   [[ "$(dispositions "$replaced")" == '[["c-1",1,"selected"],["c-2",1,"superseded"],["c-2r",2,"selected"]]' ]] || fail "dispositions after $lower run"
 done
-chain="$(g2_runs "c-2a/$g2/1/failed" "c-2b/$g2/2/stopped" "c-2c/$g2/3/incomplete" "c-2d/$g2/4/completed")"
+# An incomplete or unstarted lower run has no evidence that it ended; it may
+# still be running beside its replacement, a concurrent duplicate.
+for lower in incomplete unstarted; do
+  [[ "$(codes "$(g2_runs "c-2/$g2/1/$lower" "c-2r/$g2/2/completed")" "$qa")" == '["TASK_DUPLICATED"]' ]] || fail "replacement beside $lower run"
+done
+[[ "$(codes "$(g2_runs "c-2a/$g2/1/failed" "c-2b/$g2/2/incomplete" "c-2c/$g2/3/completed")" "$qa")" == '["TASK_DUPLICATED"]' ]] || fail 'running middle run replaced'
+chain="$(g2_runs "c-2a/$g2/1/failed" "c-2b/$g2/2/stopped" "c-2c/$g2/3/failed" "c-2d/$g2/4/completed")"
 [[ "$(summary "$chain" "$qa")" == '["OBSERVED",[],2,2,2,2]' ]] || fail 'sequential replacements'
 [[ "$(dispositions "$chain")" == '[["c-1",1,"selected"],["c-2a",1,"superseded"],["c-2b",2,"superseded"],["c-2c",3,"superseded"],["c-2d",4,"selected"]]' ]] || fail 'sequential dispositions'
-[[ "$(qa_request "$(jq -c 'map(.effective = {model:"gpt-5.6-luna",reasoningEffort:"max"})' <<< "$chain")" "$qa" | delegation_manifest_build | jq -c '[.evidenceLevel,.mismatchCodes]')" == '["VERIFIED",[]]' ]] || fail 'verified replacements'
+# VERIFIED needs provider-reported settings on selected workers only; a
+# superseded run that never reported a model or effort does not cap the level.
+[[ "$(qa_request "$(jq -c 'map(if .childId == "c-1" or .childId == "c-2d" then .effective = {model:"gpt-5.6-luna",reasoningEffort:"max"} else . end)' <<< "$chain")" "$qa" | delegation_manifest_build | jq -c '[.evidenceLevel,.mismatchCodes]')" == '["VERIFIED",[]]' ]] || fail 'verified replacements'
 # The highest run must itself complete.
 [[ "$(summary "$(g2_runs "c-2/$g2/1/failed" "c-2r/$g2/2/failed")" "$qa")" == '["UNVERIFIED",["CHILD_FAILED"],2,2,1,2]' ]] || fail 'failed replacement'
 [[ "$(summary "$(g2_runs "c-2/$g2/1/failed" "c-2r/$g2/2/incomplete")" "$qa")" == '["UNVERIFIED",["CHILD_INCOMPLETE"],2,2,1,2]' ]] || fail 'incomplete replacement'

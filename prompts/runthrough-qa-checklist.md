@@ -90,8 +90,10 @@ the run number, then the 64 hex characters of `assignmentDigest` without the
 
 You decide whether to replace a worker; Ralph never starts a replacement.
 You may replace a group's worker only when its run
-failed, stopped, or never finished. End that run first (stop it if it hangs),
-then launch one replacement with the next run number (2, then 3, and so on,
+failed, stopped, or never finished.
+Stop a run that never finished before replacing it: Ralph accepts a
+replacement only beside a failed or stopped run and treats a lower run still
+in progress as a concurrent duplicate. Then launch one replacement with the next run number (2, then 3, and so on,
 with no gaps) and the unchanged taskId and assignmentDigest. Ralph selects the
 highest run, which must complete; lower runs become `superseded`. Never split
 or merge a group or change its items, and

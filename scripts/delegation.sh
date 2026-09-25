@@ -6,14 +6,6 @@ delegation_validate() {
   jq -e -s --arg schema "$1" -f "$DELEGATION_DIR/delegation-schema.jq" >/dev/null 2>&1
 }
 
-# Normalization is explicit; validators do not silently repair malformed artifacts.
-delegation_sort_codes() {
-  local value
-  value="$(cat)"
-  delegation_validate codes <<< "$value" || return 1
-  jq -c 'unique' <<< "$value"
-}
-
 # Caller registers workspace ownership before using this helper. NAME is a
 # basename, never a provider path. Node supplies fsync, unavailable in Bash/jq.
 delegation_write_json() {

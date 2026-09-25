@@ -90,10 +90,11 @@ rejects unknown keys at every level.
 ## Evidence levels
 
 - `UNVERIFIED`: at least one mismatch code. The future gate fails the step.
-- `OBSERVED`: no mismatch codes, but at least one direct child lacks an
+- `OBSERVED`: no mismatch codes, but at least one selected child lacks an
   effective model or effort. This passes the v1 gate.
-- `VERIFIED`: no mismatch codes and every direct child reports an effective
-  model and effort that match `requested.worker`.
+- `VERIFIED`: no mismatch codes and every selected child reports an effective
+  model and effort that match `requested.worker`. Superseded `qa-v1` runs are
+  still checked for mismatches but need not report settings.
 
 Missing effective settings never fail a run and are never invented.
 
@@ -122,7 +123,7 @@ Expected identities are the five `(taskId, run 1)` pairs for `isolated_codex`,
 | Code | Meaning |
 | --- | --- |
 | `TASK_MISSING` | An expected identity has no direct child. |
-| `TASK_DUPLICATED` | An expected identity has more than one direct child. |
+| `TASK_DUPLICATED` | An expected identity has more than one direct child, or a `qa-v1` lower run completed or has no end evidence. |
 | `TASK_UNEXPECTED` | A direct child has an unexpected task ID or a run other than 1 (retries are not allowed). |
 | `CHILD_MISSING` | A direct child never started. |
 | `CHILD_INCOMPLETE` | A direct child started but did not finish. |
