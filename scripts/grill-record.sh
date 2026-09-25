@@ -73,3 +73,30 @@ grill_record_update() {
     || return 1
   printf '%s\n' "$updated" | grill_record_write_file "$record_file"
 }
+
+# Session lock: an atomic mkdir of <session-dir>/lock holding the owner PID.
+# A live owner fails the caller clearly; a dead owner's lock is reclaimed.
+grill_record_lock() {
+  local session_dir="$1"
+  local lock_dir="$session_dir/lock"
+  local pid
+
+  while ! (umask 077 && mkdir "$lock_dir") 2>/dev/null; do
+    pid="$(cat "$lock_dir/pid" 2>/dev/null || true)"
+    if [[ -z "$pid" ]] || ps -p "$pid" >/dev/null 2>&1; then
+      echo "Error: session $(basename "$session_dir") is locked by another coordinator (PID ${pid:-unknown}); wait for it to exit, or remove $lock_dir if no coordinator is running" >&2
+      return 1
+    fi
+    rm -rf "$lock_dir"
+  done
+  printf '%s\n' "$$" | grill_record_write_file "$lock_dir/pid"
+}
+
+# Releases the session lock if this process owns it.
+grill_record_unlock() {
+  local lock_dir="$1/lock"
+
+  if [[ "$(cat "$lock_dir/pid" 2>/dev/null || true)" == "$$" ]]; then
+    rm -rf "$lock_dir"
+  fi
+}

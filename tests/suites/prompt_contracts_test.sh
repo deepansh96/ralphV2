@@ -555,7 +555,7 @@ test_session_start_fragment_carries_exchange_marker_and_requirement() {
 test_exchange_fragments_carry_exchange_marker_and_json_only_reply() {
   local name prompt
 
-  for name in round-frontier round-answers closing-draft closing-review closing-final reemit human-input correction; do
+  for name in round-frontier round-answers closing-draft closing-review closing-final reemit recover human-input correction; do
     prompt="$(<"$ROOT_DIR/prompts/grill/$name.md")"
     assert_contains "$prompt" "[ralph-exchange:{{EXCHANGE_ID}}]"
     assert_contains "$prompt" "JSON only"

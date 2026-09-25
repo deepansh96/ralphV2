@@ -7,11 +7,18 @@
 #   adapter_start <role> <config-json> <prompt> <log>   -> prints native session ID
 #   adapter_send <role> <config-json> <native-id> <prompt> <schema-file> <log>
 #                                                       -> prints the final message
+#   adapter_exchange_received <provider> <native-id> <exchange-id>
+#                                                       -> prints yes, no or unknown
+# adapter_send retries transient CLI failures (RALPH_RETRY_DELAYS) in the same
+# native session, and exits GRILL_ADAPTER_CONTEXT_LOST when the native session
+# cannot be found.
 # <config-json> carries provider, model, reasoningEffort, repoRoot and, for
 # providers whose IDs the coordinator generates, nativeSessionId.
 # Access is always granted through provider-native permission and sandbox
 # controls, never --dangerously-skip-permissions. Sessions are only ever
 # resumed by explicit native ID, never --continue, --last or --fork-session.
+
+GRILL_ADAPTER_CONTEXT_LOST=3
 
 GRILL_CLAUDE_REQUIRED_FLAGS=(
   --session-id
@@ -71,6 +78,18 @@ adapter_send() {
       echo "Error: no session adapter is available for provider '$provider'" >&2
       return 1
       ;;
+  esac
+}
+
+# Answers whether the native session has seen the exchange's
+# `[ralph-exchange:<id>]` marker, so a crashed exchange is re-emitted rather
+# than resent.
+adapter_exchange_received() {
+  local provider="$1"
+
+  case "$provider" in
+    claude) claude_adapter_exchange_received "$2" "$3" ;;
+    *) printf 'unknown\n' ;;
   esac
 }
 
@@ -197,7 +216,9 @@ claude_adapter_start() {
 }
 
 # Resumes the stored session and prints its final message: the structured
-# output when the CLI returns one, otherwise the result text.
+# output when the CLI returns one, otherwise the result text. Transient
+# failures are retried in the same session; each failed attempt's log is kept
+# as <log>.attempt-N.
 claude_adapter_send() {
   local role="$1"
   local config="$2"
@@ -205,16 +226,49 @@ claude_adapter_send() {
   local prompt="$4"
   local schema_file="$5"
   local log_file="$6"
+  local attempt=1 max_attempts
+  local -a delays
 
   [[ -n "$native_id" ]] || { echo "Error: claude adapter needs a native session ID to resume" >&2; return 1; }
+  read -r -a delays <<<"$(agent_retry_delays)"
+  max_attempts=$(( ${#delays[@]} + 1 ))
 
-  if ! claude_adapter_run "$role" "$config" "$prompt" "$log_file" \
-    --resume "$native_id" --json-schema "$(jq -c . "$schema_file")"; then
-    echo "Error: claude failed to resume the $role session $native_id; see $log_file" >&2
-    return 1
-  fi
+  until claude_adapter_run "$role" "$config" "$prompt" "$log_file" \
+    --resume "$native_id" --json-schema "$(jq -c . "$schema_file")"; do
+    if grep -q 'No conversation found with session ID' "$log_file"; then
+      echo "Error: claude could not find the $role session $native_id; see $log_file" >&2
+      return "$GRILL_ADAPTER_CONTEXT_LOST"
+    fi
+    if [[ "$attempt" -ge "$max_attempts" ]] || ! agent_log_has_transient_error "$log_file"; then
+      echo "Error: claude failed to resume the $role session $native_id; see $log_file" >&2
+      return 1
+    fi
+    mv "$log_file" "$log_file.attempt-$attempt"
+    agent_sleep_before_retry "$attempt"
+    attempt=$((attempt + 1))
+  done
 
   grep '^{' "$log_file" | jq -s -r '
     [.[] | select(.type == "result")] | last
     | if (.structured_output | type) == "object" then (.structured_output | tojson) else .result end'
+}
+
+# Looks for the exchange marker in Claude's local session store,
+# <config-dir>/projects/<encoded-cwd>/<native-id>.jsonl. Anything but a
+# readable JSON Lines transcript is an unrecognized layout: unknown.
+claude_adapter_exchange_received() {
+  local native_id="$1"
+  local exchange_id="$2"
+  local projects_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
+  local transcript
+
+  transcript="$(find "$projects_dir" -mindepth 2 -maxdepth 2 -type f -name "$native_id.jsonl" 2>/dev/null | head -n 1)"
+  if [[ -z "$native_id" || -z "$transcript" ]] \
+    || ! jq -s -e 'length > 0 and all(.[]; type == "object")' "$transcript" >/dev/null 2>&1; then
+    printf 'unknown\n'
+  elif grep -qF "[ralph-exchange:$exchange_id]" "$transcript"; then
+    printf 'yes\n'
+  else
+    printf 'no\n'
+  fi
 }

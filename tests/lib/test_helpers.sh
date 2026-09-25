@@ -1264,8 +1264,13 @@ run_test() {
 # is the result text; a repeated call for the same exchange ID (a re-emit)
 # reads <id>.<n>.json for its nth call when present. Without a fixture, result text is popped from
 # $FAKE_CLAUDE_DIR/queue/* in name order, falling back to a readiness
-# acknowledgement. Prompts are appended to a fake session store at
-# $FAKE_CLAUDE_DIR/sessions/<native-id>.
+# acknowledgement. Prompts are appended as user messages to a fake session
+# store in Claude's layout, $CLAUDE_CONFIG_DIR/projects/<cwd>/<native-id>.jsonl.
+# Per-exchange modes: <id>.transient fails the first call with a transient 529
+# error; <id>.kill (containing `received` or `lost`) interrupts the whole
+# process group once, after or before the prompt reaches the store. A file
+# $FAKE_CLAUDE_DIR/lost/<native-id> makes resuming that session fail as not
+# found.
 # FAKE_CLAUDE_HELP_OMIT removes a flag from `--help` output so capability
 # checks can be failed.
 install_fake_grill_claude() {
@@ -1301,7 +1306,7 @@ HELP
 fi
 
 state_dir="${FAKE_CLAUDE_DIR:?FAKE_CLAUDE_DIR is required}"
-mkdir -p "$state_dir/calls" "$state_dir/sessions" "$state_dir/queue"
+mkdir -p "$state_dir/calls" "$state_dir/queue"
 call_count="$(find "$state_dir/calls" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
 call_dir="$state_dir/calls/$(printf '%04d' $((call_count + 1)))"
 mkdir -p "$call_dir"
@@ -1323,10 +1328,37 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-printf '%s\n' "$prompt" >> "$state_dir/sessions/${native_id:-unknown}"
+if [[ -f "$state_dir/lost/${native_id:-unknown}" ]]; then
+  echo "No conversation found with session ID: $native_id" >&2
+  exit 1
+fi
 
 exchange_id="$(grep -oE '\[ralph-exchange:ex-[0-9]+\]' <<<"$prompt" | head -n 1 | sed -E 's/^\[ralph-exchange:(.*)\]$/\1/' || true)"
 fixture="$state_dir/exchanges/$exchange_id"
+if [[ -n "$exchange_id" && -f "$fixture.transient" ]]; then
+  rm -f "$fixture.transient"
+  echo 'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}' >&2
+  exit 1
+fi
+
+store_prompt() {
+  local store="${CLAUDE_CONFIG_DIR:?CLAUDE_CONFIG_DIR is required}/projects/$(pwd | sed 's/[^A-Za-z0-9]/-/g')"
+  mkdir -p "$store"
+  jq -n -c --arg id "$native_id" --arg prompt "$prompt" \
+    '{type: "user", sessionId: $id, message: {role: "user", content: $prompt}}' >> "$store/${native_id:-unknown}.jsonl"
+}
+
+# Interrupts the whole process group (as Ctrl-C does), once.
+if [[ -n "$exchange_id" && -f "$fixture.kill" ]]; then
+  kill_mode="$(<"$fixture.kill")"
+  rm -f "$fixture.kill"
+  [[ "$kill_mode" != "received" ]] || store_prompt
+  kill -INT 0
+  sleep 5
+  exit 130
+fi
+store_prompt
+
 # A second call for the same exchange ID (a re-emit) reads <id>.2.json first.
 if [[ -n "$exchange_id" ]]; then
   mkdir -p "$state_dir/seen"

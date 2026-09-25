@@ -142,6 +142,19 @@ grill_fail_record() {
   grill_die "$reason"
 }
 
+# Holds the session lock until this process exits. INT and TERM exit through
+# the EXIT trap, which releases the lock and leaves any in-flight exchange as
+# intent or sent for resume to recover.
+grill_hold_lock() {
+  local session_dir="$1"
+
+  grill_record_lock "$session_dir" || return 1
+  GRILL_LOCKED_DIR="$session_dir"
+  trap 'grill_record_unlock "$GRILL_LOCKED_DIR"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+}
+
 # Starts one role's native session as a recorded exchange and stores its ID.
 grill_start_role_session() {
   local record_file="$1"
@@ -302,6 +315,7 @@ grill_start() {
   session_id="$(grill_record_create_dir "$sessions_dir")" || { grill_die "could not create a session directory in $sessions_dir"; return 1; }
   session_dir="$sessions_dir/$session_id"
   record_file="$session_dir/session.json"
+  grill_hold_lock "$session_dir" || return 1
   (umask 077 && mkdir -p "$session_dir/logs" "$session_dir/messages") \
     && chmod 700 "$session_dir/logs" "$session_dir/messages"
   if [[ -n "$issue" ]]; then
@@ -390,11 +404,16 @@ grill_resume() {
   sessions_dir="$(cd "$SCRIPT_DIR" && pwd -P)/grilling-sessions"
   record_file="$sessions_dir/$session_id/session.json"
   [[ -f "$record_file" ]] || { grill_die "no Grilling Session Record for $session_id in $sessions_dir"; return 1; }
+  grill_hold_lock "$sessions_dir/$session_id" || return 1
 
   status="$(jq -r '.status' "$record_file")"
   case "$status" in
     grilling) grill_resume_grilling "$record_file" ;;
     blocked) grill_resume_blocked "$record_file" ;;
+    completed|rejected|context_lost|failed)
+      grill_die "session $session_id is $status and cannot be resumed; start a new session with: ralph.sh grill start"
+      return 1
+      ;;
     *)
       grill_die "session $session_id is $status; resume continues only grilling or blocked sessions"
       return 1
@@ -402,13 +421,31 @@ grill_resume() {
   esac
 }
 
+# Prints the ID of the exchange left in intent or sent, or nothing.
+grill_in_flight_exchange() {
+  jq -r 'first(.exchanges[] | select(.status == "intent" or .status == "sent") | .id) // empty' "$1"
+}
+
+# Continues a grilling session. An exchange a crash left in flight keeps its
+# ID: when its native session may have seen it (yes or unknown), the Agent is
+# asked to re-emit its reply; when it never did (no), the exchange is resent.
 grill_resume_grilling() {
   local record_file="$1"
-  local in_flight
+  local in_flight role provider native received recovery
 
-  in_flight="$(jq -r '[.exchanges[] | select(.status == "intent" or .status == "sent") | .id] | join(", ")' "$record_file")"
-  [[ -z "$in_flight" ]] \
-    || { grill_die "session $(jq -r '.id' "$record_file") has an in-flight exchange ($in_flight); it cannot be resumed yet"; return 1; }
+  in_flight="$(grill_in_flight_exchange "$record_file")"
+  if [[ -n "$in_flight" ]]; then
+    role="$(jq -r --arg id "$in_flight" '.exchanges[] | select(.id == $id) | .role' "$record_file")"
+    provider="$(jq -r --arg role "$role" '.agents[$role].provider' "$record_file")"
+    native="$(jq -r --arg role "$role" '.agents[$role].nativeSessionId' "$record_file")"
+    received="$(adapter_exchange_received "$provider" "$native" "$in_flight")"
+    recovery="reemit"
+    [[ "$received" != "no" ]] || recovery="resend"
+    grill_record_update "$record_file" \
+      '.exchanges |= map(if .id == $id then .received = $received | .recovery = $recovery else . end)' \
+      --arg id "$in_flight" --arg received "$received" --arg recovery "$recovery" || return 1
+    echo "Recovering in-flight exchange $in_flight (received: $received): $recovery" >&2
+  fi
 
   grill_run "$record_file"
 }
@@ -470,7 +507,7 @@ grill_resume_blocked() {
 
   # Human input goes to the Answering Agent first; the loop then relays its
   # updated answers to the Grilling Agent.
-  grill_record_update "$record_file" '.status = "grilling" | .blockReason = null' || return 1
+  grill_record_update "$record_file" '.status = "grilling" | .lastBlockReason = .blockReason | .blockReason = null' || return 1
   grill_step_human_input "$record_file" "$block_reason" "$answers" \
     || [[ "$(jq -r '.status' "$record_file")" == "blocked" ]] || return 1
   grill_run "$record_file"
@@ -649,8 +686,17 @@ and (.discrepancies | type == "array"
   and all(.[]; type == "object" and (.problem | text) and (.fix | text)))
 '
 
+# Prints the in-flight exchange's ID when there is one, so a recovered step
+# reuses it; otherwise the next sequential ID.
 grill_next_exchange_id() {
-  printf 'ex-%04d\n' "$(( $(jq '.exchanges | length' "$1") + 1 ))"
+  local in_flight
+
+  in_flight="$(grill_in_flight_exchange "$1")"
+  if [[ -n "$in_flight" ]]; then
+    printf '%s\n' "$in_flight"
+  else
+    printf 'ex-%04d\n' "$(( $(jq '.exchanges | length' "$1") + 1 ))"
+  fi
 }
 
 # Prints a per-exchange prompt fragment with {{KEY}} placeholders replaced by
@@ -700,7 +746,9 @@ grill_valid_message() {
 # invalid message gets exactly one re-emit request in the same session for the
 # same exchange ID; a second invalid message blocks the session as
 # invalid_message. The validated message is saved to messages/<id>.json and
-# printed. Extra arguments are passed to the jq validator.
+# printed. An exchange already in flight is not recorded again: it is sent as
+# its recorded recovery (a re-emit request or the original prompt) with its own
+# log. Extra arguments are passed to the jq validator.
 grill_exchange() {
   local record_file="$1"
   local kind="$2"
@@ -710,40 +758,41 @@ grill_exchange() {
   local schema="$6"
   local validator="$7"
   shift 7
-  local session_dir log_rel reemit_log_rel message_rel config native schema_file raw message
+  local session_dir log_rel reemit_log_rel message_rel schema_file raw message recovery
 
   session_dir="$(dirname "$record_file")"
   log_rel="logs/$exchange_id-$role.jsonl"
   message_rel="messages/$exchange_id.json"
+  recovery="$(jq -r --arg id "$exchange_id" 'first(.exchanges[] | select(.id == $id) | .recovery // "resend") // empty' "$record_file")"
 
-  grill_record_update "$record_file" \
-    '.exchanges += [{id: $id, kind: $kind, role: $role, status: "intent", reemitRequested: false, logPath: $log}]' \
-    --arg id "$exchange_id" --arg kind "$kind" --arg role "$role" --arg log "$log_rel" || return 1
+  if [[ -z "$recovery" ]]; then
+    grill_record_update "$record_file" \
+      '.exchanges += [{id: $id, kind: $kind, role: $role, status: "intent", reemitRequested: false, logPath: $log}]' \
+      --arg id "$exchange_id" --arg kind "$kind" --arg role "$role" --arg log "$log_rel" || return 1
+  else
+    # The crashed attempt's log stays as diagnostics.
+    log_rel="logs/$exchange_id-$role-recovery.jsonl"
+    [[ "$recovery" != "reemit" ]] || prompt="$(grill_render_fragment recover EXCHANGE_ID "$exchange_id")"
+    grill_record_update "$record_file" '.exchanges |= map(if .id == $id then .recoveryLogPath = $log else . end)' \
+      --arg id "$exchange_id" --arg log "$log_rel" || return 1
+  fi
   (umask 077 && mkdir -p "$session_dir/logs" "$session_dir/messages") || return 1
   grill_record_write_file "$session_dir/$log_rel" < /dev/null || return 1
 
-  config="$(jq -c --arg role "$role" '.agents[$role] + {repoRoot: .repo.root}' "$record_file")"
-  native="$(jq -r --arg role "$role" '.agents[$role].nativeSessionId' "$record_file")"
   grill_record_update "$record_file" '.exchanges |= map(if .id == $id then .status = "sent" else . end)' \
     --arg id "$exchange_id" || return 1
 
   schema_file="$SCRIPT_DIR/prompts/grill/schemas/$schema.schema.json"
-  if ! raw="$(adapter_send "$role" "$config" "$native" "$prompt" "$schema_file" "$session_dir/$log_rel")"; then
-    grill_fail_record "$record_file" "the $role agent did not answer $exchange_id; see $session_dir/$log_rel"
-    return 1
-  fi
+  raw="$(grill_send "$record_file" "$role" "$exchange_id" "$prompt" "$schema_file" "$log_rel")" || return 1
   if ! message="$(grill_valid_message "$raw" "$exchange_id" "$validator" "$@")"; then
     reemit_log_rel="logs/$exchange_id-$role-reemit.jsonl"
     grill_record_update "$record_file" \
       '.exchanges |= map(if .id == $id then .reemitRequested = true | .reemitLogPath = $log else . end)' \
       --arg id "$exchange_id" --arg log "$reemit_log_rel" || return 1
     grill_record_write_file "$session_dir/$reemit_log_rel" < /dev/null || return 1
-    if ! raw="$(adapter_send "$role" "$config" "$native" \
+    raw="$(grill_send "$record_file" "$role" "$exchange_id" \
       "$(grill_render_fragment reemit EXCHANGE_ID "$exchange_id" KIND "$schema")" "$schema_file" \
-      "$session_dir/$reemit_log_rel")"; then
-      grill_fail_record "$record_file" "the $role agent did not answer the re-emit request for $exchange_id; see $session_dir/$reemit_log_rel"
-      return 1
-    fi
+      "$reemit_log_rel")" || return 1
     if ! message="$(grill_valid_message "$raw" "$exchange_id" "$validator" "$@")"; then
       grill_record_update "$record_file" '.exchanges |= map(if .id == $id then .status = "invalid" else . end)' \
         --arg id "$exchange_id" || return 1
@@ -760,6 +809,37 @@ grill_exchange() {
   printf '%s\n' "$message"
 }
 
+# Sends one prompt to a role's stored native session and prints the reply. A
+# native session that cannot be found ends the record as context_lost, keeping
+# its logs; no replacement session is ever started. Other failures fail it.
+grill_send() {
+  local record_file="$1"
+  local role="$2"
+  local exchange_id="$3"
+  local prompt="$4"
+  local schema_file="$5"
+  local log_rel="$6"
+  local session_dir config native raw status=0
+
+  session_dir="$(dirname "$record_file")"
+  config="$(jq -c --arg role "$role" '.agents[$role] + {repoRoot: .repo.root}' "$record_file")"
+  native="$(jq -r --arg role "$role" '.agents[$role].nativeSessionId' "$record_file")"
+  raw="$(adapter_send "$role" "$config" "$native" "$prompt" "$schema_file" "$session_dir/$log_rel")" || status=$?
+  case "$status" in
+    0) printf '%s\n' "$raw" ;;
+    "$GRILL_ADAPTER_CONTEXT_LOST")
+      grill_record_update "$record_file" '.status = "context_lost" | .failureReason = $reason' \
+        --arg reason "the $role native session $native was not found at $exchange_id; see $session_dir/$log_rel" || true
+      grill_die "context_lost: the $role native session $native cannot be resumed; the session keeps its logs in $session_dir and no replacement session is started"
+      return 1
+      ;;
+    *)
+      grill_fail_record "$record_file" "the $role agent did not answer $exchange_id; see $session_dir/$log_rel"
+      return 1
+      ;;
+  esac
+}
+
 # Sends the next Frontier round: a regular round after answers, or a
 # correction_relay of the Answering Agent's human-informed answers. Blocks as
 # no_progress when the Frontier repeats the previous one without reopens.
@@ -768,8 +848,9 @@ grill_step_frontier() {
   local kind="${2:-frontier}"
   local round exchange_id answers fragment prompt previous previous_key="null" frontier hash
 
-  round=$(( $(jq '.round' "$record_file") + 1 ))
   exchange_id="$(grill_next_exchange_id "$record_file")"
+  # A recovered Frontier keeps the round it was recorded in.
+  round="$(jq --arg id "$exchange_id" 'if any(.exchanges[]; .id == $id) then .round else .round + 1 end' "$record_file")"
   answers="$(grill_last_message "$record_file" answers human_input)"
   if [[ -n "$answers" ]]; then
     answers="$(jq '.answers' <<<"$answers")"
@@ -1040,7 +1121,17 @@ grill_run() {
       return 0
     fi
     last_kind="$(jq -r '[.exchanges[] | select(.status == "completed")] | last | .kind' "$record_file")"
+    # A human_input exchange left in flight does not follow from the last
+    # completed exchange; recover it with the input and block it answered.
+    if [[ "$(jq -r 'first(.exchanges[] | select(.status == "intent" or .status == "sent") | .kind) // empty' "$record_file")" \
+      == "human_input" ]]; then
+      last_kind="in_flight_human_input"
+    fi
     case "$last_kind" in
+      in_flight_human_input)
+        step=(grill_step_human_input "$record_file" "$(jq -r '.lastBlockReason' "$record_file")"
+          "$(grill_answers_section "$session_dir/$(jq -r '.humanInputPath' "$record_file")")")
+        ;;
       session_start|answers)
         step=(grill_step_frontier "$record_file")
         ;;
