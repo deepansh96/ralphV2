@@ -13,8 +13,8 @@ binaries. `./tests/run.sh` includes it. Prerequisites are Bash, jq 1.6+, and
 Node.js 20+. The deterministic suite needs no provider credentials. The early
 collection probes passed on Claude Code 2.1.263 and Codex CLI 0.153.4 (see the
 collector guides). Fake fixtures are not compatibility proof: the full gated
-path is compatibility-verified only by the real smoke tests. The Claude smoke
-test is [below](#live-claude-smoke-test); the Codex one is #48.
+path is compatibility-verified only by the real smoke tests:
+[Claude](#live-claude-smoke-test) and [Codex](#live-codex-smoke-test).
 
 ## Activation
 
@@ -214,6 +214,103 @@ On 2026-09-25 the smoke test passed on Claude Code 2.1.282 with the
 worker. The step completed at `VERIFIED 1/1`: the provider reported the worker
 model and effort, and the progress edit did not fail the gate. Temporary inputs
 were removed and user settings were unchanged.
+
+## Live Codex smoke test
+
+`tests/probes/codex-gate-smoke.sh` runs the complete gated Codex path once
+against real Codex. It uses `ralph.sh --issue N` and the normal `codex exec`
+adapter. `./tests/run.sh` never runs it. Like the Claude test, it checks
+compatibility and adds no policy: it uses `qa-v1` unchanged, with one checklist
+item and one assignment. The Codex parent owns orchestration: it writes the
+plan, spawns and waits for its one `qa_r1_<digest>` worker, and edits the
+checklist comment. Ralph only stamps the attempt, observes, and gates.
+
+Prerequisites:
+
+- Bash, jq, git, Node.js 22.13+ (for `--permission`), and a Codex CLI with
+  `spawn_agent` and `app-server`.
+- A logged-in Codex CLI (`codex login status`) that can use the requested
+  models.
+- An empty scratch directory with an absolute path. Before you run the test,
+  register it, workspace `workspaces/9949`, and the process in the issue's
+  local-resource ledger.
+
+```bash
+RALPH_CODEX_GATE_SMOKE=1 \
+  tests/probes/codex-gate-smoke.sh /absolute/registered/empty-scratch-directory
+```
+
+The fixture matches the Claude test: a disposable git project, a linked
+`ralph-v2`, and the shared local `gh` stub with one `QA-01` comment. The
+pending `runthrough-qa-checklist` step uses agent `codex`. During the run,
+`CODEX_BIN` points the gate's collector at
+`tests/probes/codex-gate-smoke-rpc.cjs`. That recorder forwards the real
+`codex app-server` stdio and forces every `thread/list` page size to 1. It
+records only methods, parameters, listed IDs, cursors, and read IDs.
+Optional variables change the run:
+
+- `RALPH_CODEX_SMOKE_MODEL`: the parent model. Default `gpt-5.6-sol`,
+  effort `medium`.
+- `RALPH_CODEX_SMOKE_WORKER` and `RALPH_CODEX_SMOKE_WORKER_EFFORT`: the
+  worker model and effort. Defaults `gpt-5.6-luna` and `max`.
+- `RALPH_CODEX_SMOKE_ISSUE`: the workspace issue number. Default `9949`.
+
+It passes only when all of these hold:
+
+- `ralph.sh` exits 0, the step is `completed`, and the 0600 manifest and plan
+  both carry State's current `delegationAttempt.id`.
+- The manifest is `qa-v1` from `app-server`, has no mismatch codes, and shows
+  `observed` 1/1/1. Its parent is the single `thread.started` parent in this
+  attempt's step log. Its one child is a completed, non-nested, run-1 direct
+  worker of that parent. The child is bound to the plan's task ID and
+  assignment digest.
+- The gate's own App Server session sent only `initialize`, `initialized`,
+  `thread/list`, and `thread/read`. Both listings (`parentThreadId`, then
+  `ancestorThreadId`) used the five subagent source kinds and page size 1. The
+  first request had no cursor. Each later request carried the previous
+  non-null `nextCursor`, and the last page's cursor was null. The direct
+  listing returned exactly the manifest child, which was then read with
+  `includeTurns: true`.
+- A second fresh App Server process reproduces the manifest children. This
+  collector runs under `node --permission` with read access only to its own
+  script, so it cannot read rollout files or any other file. The App Server
+  itself is provider-owned and runs without that restriction. Unavailable
+  evidence fails the test. There is no rollout-file fallback.
+- A `VERIFIED` result must have thread-level worker model and effort equal to
+  the request. An `OBSERVED` result must be missing an effective field, and
+  the output names it.
+- The comment's `updated_at` changed and `QA-01` shows a `[x]` progress tag,
+  yet the gate passed.
+- The manifest has only the contract keys. It contains no fixture token,
+  checklist text, packet markers, prompt heading, or scratch/home/checkout
+  path. The `ralph.sh status` output shows `Delegation: <level> 1/1` and
+  contains no fixture token, packet markers, or checklist text. It also shows
+  no attempt, parent, or child ID. No `ralph-delegation-*` input remains.
+
+Exit 0 is PASS and 1 is FAIL. Exit 2 is a SKIP, never a pass. The test skips
+when:
+
+- the opt-in or scratch directory is missing;
+- a tool is missing, or Node lacks `--permission`;
+- Codex is not logged in;
+- the workspace already exists.
+
+On failure the test prints only the gate's fixed `Delegation gate:` line. It
+removes the workspace, scratch contents, and RPC records on every exit. Codex
+keeps its own session history under its home directory, as for any
+`codex exec`. `./tests/run.sh codex_gate_smoke` checks this harness with a fake
+Codex parent and a paginating fake App Server. It covers skips, VERIFIED and
+OBSERVED passes that follow two page cursors, and failures for a missing
+worker, an unavailable App Server, and a missing progress edit.
+
+On 2026-09-25 the smoke test passed on Codex CLI 0.155.1 with a
+`gpt-5.6-sol`/medium parent and a `gpt-5.6-luna`/max worker. The step
+completed at `VERIFIED 1/1`: the App Server reported the worker model and
+effort. The progress edit did not fail the gate, and the file-read-denied
+collector reproduced the evidence. With one child, the real server answered
+each one-item listing with a null `nextCursor`. The live run therefore
+checked the page size and cursor termination. The harness covers following
+several pages.
 
 ## Related guides
 

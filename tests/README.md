@@ -24,6 +24,7 @@ Run one or more suites by name:
 - `delegation_test.sh`: shared delegation schemas, safe artifact writes, and fresh invocation preparation.
 - `claude_delegation_test.sh`: opt-in Claude hook sanitization, lifecycle correlation, and the fake foreground Agent CLI seam.
 - `claude_gate_smoke_test.sh`: the opt-in live Claude gate smoke harness, run with a fake Claude parent and its local `gh` stub: skip/prerequisite exits, VERIFIED and honest OBSERVED passes, and failures on a missing worker, a missing progress edit, or a user-settings change. It never runs the live test.
+- `codex_gate_smoke_test.sh`: the opt-in live Codex gate smoke harness, run with a fake Codex parent, a paginating fake App Server, the real JSON-RPC recorder, and the local `gh` stub: skip/prerequisite exits, VERIFIED and honest OBSERVED passes with followed page cursors, and failures on a missing worker, unavailable App Server evidence, or a missing progress edit. It never runs the live test.
 - `codex_delegation_test.sh`: opt-in Codex App Server collection through a fake JSON-RPC server: exact read-only requests, pagination, lifecycle, nesting, task identity, and fail-closed evidence.
 - `delegation_qa_test.sh`: QA checklist parsing across progress edits, canonical digest vectors, plan writes, exact-comment refetch through a fake `gh`, QA replacement and supersession chains, and every `qa-v1` mismatch code.
 - `delegation_gate_test.sh`: end-to-end runner gate through `ralph.sh` with fake Claude hooks, a fake Codex exec/App Server, and fake `gh`: passing PR-review and QA runs for both providers, UNVERIFIED and PROVIDER_FAILED manifests, retry attempt isolation, HITL deferral, fail-closed configuration and artifact errors, interruption cleanup, and unchanged legacy steps.
@@ -37,6 +38,6 @@ Run one or more suites by name:
 - `skill_docs_test.sh`: bundled skill/link integrity and workflow documentation.
 - `parse_log_test.sh`: log summarization for Claude, Codex, and Pi JSONL output.
 
-Opt-in live checks live in `tests/probes/` and never run from `./tests/run.sh`: the Claude and Codex collection probes (`docs/claude-delegation.md`, `docs/codex-delegation.md`) and the Claude gate smoke test (`docs/delegation-gate.md`). Each requires an explicit environment opt-in and real credentials; a missing opt-in, credential, or prerequisite is never a pass.
+Opt-in live checks live in `tests/probes/` and never run from `./tests/run.sh`: the Claude and Codex collection probes (`docs/claude-delegation.md`, `docs/codex-delegation.md`) and the Claude and Codex gate smoke tests (`docs/delegation-gate.md`). Each requires an explicit environment opt-in and real credentials; a missing opt-in, credential, or prerequisite is never a pass.
 
 External tools such as `claude`, `codex`, `pi`, `gh`, and `council` are faked inside the suite. Tests must be deterministic, offline, and safe to run repeatedly.

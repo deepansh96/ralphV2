@@ -262,9 +262,11 @@ exactly as before. The provider's main agent owns all worker orchestration;
 Ralph only observes and gates. Run
 `./tests/run.sh delegation_gate claude_delegation codex_delegation delegation_manifest delegation_qa`
 for deterministic coverage; the linked guides document prerequisites and the
-separate opt-in live collection probes. The opt-in live Claude smoke test,
-`tests/probes/claude-gate-smoke.sh`, runs one real gated QA step end to end
-([docs](docs/delegation-gate.md#live-claude-smoke-test)).
+separate opt-in live collection probes. The opt-in live smoke tests,
+`tests/probes/claude-gate-smoke.sh` and `tests/probes/codex-gate-smoke.sh`, each
+run one real gated QA step end to end
+([Claude](docs/delegation-gate.md#live-claude-smoke-test),
+[Codex](docs/delegation-gate.md#live-codex-smoke-test)).
 
 ## Bundled Skills
 

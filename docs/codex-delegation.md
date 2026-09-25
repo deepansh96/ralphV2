@@ -109,5 +109,5 @@ one direct `matt_spec` worker completed, bound to the exec parent by both
 `parentThreadId` and `ancestorThreadId` filters even though the generated
 schema for this version omits them, so the collector additionally rejects any
 listed thread that is not bound to the parent; an ignored filter can never
-pass as evidence. This proves collection only; #48 owns the later full gated
-QA smoke test.
+pass as evidence. This proves collection only. The full gated QA path has its own opt-in smoke
+test, `tests/probes/codex-gate-smoke.sh`; see `docs/delegation-gate.md`.

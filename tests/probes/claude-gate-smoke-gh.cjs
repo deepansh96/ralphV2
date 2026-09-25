@@ -1,5 +1,6 @@
-// Local `gh` stand-in for tests/probes/claude-gate-smoke.sh: one PR, its
-// issue, and one mutable QA checklist comment. Nothing leaves the machine.
+// Local `gh` stand-in for tests/probes/claude-gate-smoke.sh and
+// tests/probes/codex-gate-smoke.sh: one PR, its issue, and one mutable QA
+// checklist comment. Nothing leaves the machine.
 // Usage: node claude-gate-smoke-gh.cjs DATA_DIR <gh arguments...>
 const fs = require('node:fs');
 const path = require('node:path');
