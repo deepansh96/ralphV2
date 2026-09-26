@@ -12,9 +12,8 @@ try {
   }
   const root = fs.realpathSync(workspace);
   const target = path.join(root, name);
-  if (fs.existsSync(target) || fs.lstatSync(target, { throwIfNoEntry: false })) {
-    if (!fs.lstatSync(target).isFile()) throw new Error('Artifact must be a regular file');
-  }
+  const st = fs.lstatSync(target, { throwIfNoEntry: false });
+  if (st && !st.isFile()) throw new Error('Artifact must be a regular file');
   const value = JSON.parse(fs.readFileSync(0, 'utf8'));
   temporary = path.join(root, `.${name}.tmp-${randomUUID()}`);
   fd = fs.openSync(temporary, 'wx', 0o600);
