@@ -107,6 +107,13 @@ adapter_exchange_received() {
   esac
 }
 
+# Creates <log> owner-only if missing. A retry recreates the log after moving
+# the failed attempt aside, and the call's redirect would otherwise create it
+# with the ambient umask.
+adapter_prepare_log() {
+  (umask 077 && : >> "$1")
+}
+
 claude_adapter_capabilities() {
   local help_text flag
   local -a missing=()
@@ -128,6 +135,10 @@ claude_adapter_capabilities() {
 # hatch, whole-machine reads, web reads, read-only gh, and no Git/gh writes.
 # autoAllowBashIfSandboxed approves every command the deny list leaves out, so
 # the list names each Git index/ref/remote write and each gh write family.
+# Command-prefix rules miss forms such as `bash -c 'git commit'`, so the
+# filesystem is the real boundary: Edit deny rules also bind sandboxed Bash,
+# keeping .git unwritable for both roles and everything unwritable for the
+# Answering Agent (whose repository changes also fail the session).
 # Sandboxed Bash reaches only GitHub's domains (for gh reads; WebFetch and
 # WebSearch cover the rest of the web), and enableWeakerNetworkIsolation lets
 # Go binaries such as gh verify TLS through the macOS trust service.
@@ -189,7 +200,8 @@ claude_adapter_settings() {
         "Bash(gh cache:*)", "Bash(gh codespace:*)", "Bash(gh auth:*)",
         "Bash(gh config:*)", "Bash(gh extension:*)", "Bash(gh alias:*)",
         "Bash(gh api:*)"
-      ] + (if $role == "answering" then ["Edit(//**)"] else [] end))
+      ] + ["Edit(./.git/**)"]
+        + (if $role == "answering" then ["Edit(//**)"] else [] end))
     }
   }'
 }
@@ -238,9 +250,7 @@ claude_adapter_run() {
   [[ -z "$effort" ]] || claude_args+=(--effort "$effort")
   claude_args+=("${policy_args[@]}")
 
-  # A retry recreates the log after moving the failed attempt aside; create it
-  # owner-only before the redirect truncates it.
-  (umask 077 && : >> "$log_file") || return 1
+  adapter_prepare_log "$log_file" || return 1
   set +e
   (cd "$repo_root" && claude "${claude_args[@]}") < /dev/null > "$log_file" 2>&1
   status=$?
@@ -429,8 +439,7 @@ codex_adapter_run() {
   [[ -z "$effort" ]] || codex_args+=(-c "model_reasoning_effort=\"$effort\"")
   codex_args+=(exec "$@")
 
-  # Owner-only even when a retry recreates the log (see claude_adapter_run).
-  (umask 077 && : >> "$log_file") || return 1
+  adapter_prepare_log "$log_file" || return 1
   set +e
   printf '%s' "$prompt" | (cd "$repo_root" && codex "${codex_args[@]}") > "$log_file" 2>&1
   status=$?

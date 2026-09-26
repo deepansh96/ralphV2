@@ -138,18 +138,16 @@ grill_render_start_prompt() {
       EXCHANGE_ID "$exchange_id" REQUIREMENT "$(<"$requirement_file")"
 }
 
-# Replaces {{KEY}} placeholders in stdin with the given KEY VALUE pairs. Both
-# pattern and replacement are quoted, so values are inserted verbatim (bash
-# 5.2's patsub_replacement would otherwise expand `&` in them).
+# Replaces {{KEY}} placeholders in stdin with the given KEY VALUE pairs in a
+# single pass, so values are inserted verbatim: a value containing `&` or
+# another placeholder (a human answer quoting {{DECISIONS}}, say) is never
+# rewritten by a later substitution. Unknown placeholders are left as they are.
 grill_fill_placeholders() {
-  local text
-
-  text="$(cat)"
-  while [[ $# -ge 2 ]]; do
-    text="${text//"{{$1}}"/"$2"}"
-    shift 2
-  done
-  printf '%s\n' "$text"
+  # Text and values reach jq through files, never argv, so large values fit.
+  jq -n -r --rawfile text /dev/stdin --slurpfile values <(printf '%s\0' "$@" \
+      | jq -R -s -c 'split("\u0000")[:-1] | [range(0; length; 2) as $i | {key: .[$i], value: .[$i + 1]}] | from_entries') '
+    $text | sub("\n+$"; "")
+    | gsub("\\{\\{(?<key>[A-Z_]+)\\}\\}"; $values[0][.key] // "{{\(.key)}}")'
 }
 
 grill_fail_record() {
@@ -548,6 +546,11 @@ grill_resume_blocked() {
   session_id="$(jq -r '.id' "$record_file")"
   input_file="$(dirname "$record_file")/$(jq -r '.humanInputPath' "$record_file")"
   block_reason="$(jq -r '.blockReason' "$record_file")"
+  # The block is the effect of the exchange that caused it. A crash after
+  # blocking but before marking that exchange applied must not re-apply it:
+  # re-blocking would rewrite the human-input file and lose the human's input.
+  grill_record_update "$record_file" \
+    '.exchanges |= map(if .status == "completed" then .effectsApplied = true else . end)' || return 1
   if [[ "$block_reason" == "transient_failure" ]]; then
     grill_record_update "$record_file" '.status = "grilling" | .blockReason = null' || return 1
     grill_resume_grilling "$record_file"
@@ -877,7 +880,17 @@ grill_exchange() {
 
   schema_file="$SCRIPT_DIR/prompts/grill/schemas/$schema.schema.json"
   raw="$(grill_send "$record_file" "$role" "$exchange_id" "$prompt" "$schema_file" "$log_rel")" || return 1
-  if ! message="$(grill_valid_message "$raw" "$exchange_id" "$validator" "$@")"; then
+  if ! message="$(grill_valid_message "$raw" "$exchange_id" "$validator" "$@")" \
+    && [[ "$(jq -r --arg id "$exchange_id" 'first(.exchanges[] | select(.id == $id) | .reemitRequested)' "$record_file")" == "true" ]]; then
+    # A crash already spent this exchange's one re-emit request: the invalid
+    # reply to its recovery is the second strike.
+    grill_record_update "$record_file" '.exchanges |= map(if .id == $id then .status = "invalid" else . end)' \
+      --arg id "$exchange_id" || return 1
+    grill_block "$record_file" invalid_message "$exchange_id" \
+      "The $role Agent sent an invalid $kind message for $exchange_id after its one re-emit request (the second reply came after a crash recovery). See $session_dir/$log_rel."
+    return 1
+  fi
+  if [[ -z "$message" ]]; then
     reemit_log_rel="logs/$exchange_id-$role-reemit.jsonl"
     grill_record_update "$record_file" \
       '.exchanges |= map(if .id == $id then .reemitRequested = true | .reemitLogPath = $log else . end)' \
@@ -1434,11 +1447,17 @@ grill_apply() {
 # the gate listed, are left alone. No Agent is contacted.
 grill_reject() {
   local record_file="$1"
-  local repo_root session_id path archived
+  local repo_root session_id branch current_branch path archived
   local -a tracked=()
 
   repo_root="$(jq -r '.repo.root' "$record_file")"
   session_id="$(jq -r '.id' "$record_file")"
+  branch="$(jq -r '.repo.branch' "$record_file")"
+  current_branch="$(git -C "$repo_root" branch --show-current)"
+  if [[ "$current_branch" != "$branch" ]]; then
+    echo "Not rejected: the session's branch is $branch but ${current_branch:-a detached HEAD} is checked out, and rejecting would discard that branch's CONTEXT.md and docs/adr/ changes. Check out $branch, then run: ralph.sh grill resume --id $session_id" >&2
+    return 0
+  fi
   while IFS= read -r -d '' path; do
     tracked+=("$path")
   done < <(git -C "$repo_root" ls-tree -r -z --name-only HEAD -- "${GRILL_DOC_PATHS[@]}")

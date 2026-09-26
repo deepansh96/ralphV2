@@ -2481,6 +2481,109 @@ test_gate_works_when_ralph_session_storage_is_gitignored() {
   teardown_grill_repo
 }
 
+# A crash after a needsHuman block is written but before its exchange is
+# marked applied must not re-block on resume and wipe the human's input.
+test_resume_keeps_human_input_when_the_blocking_exchange_was_left_unmarked() {
+  local session_id session_dir record
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(start_needs_human_session)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  jq '.exchanges |= map(del(.effectsApplied))' "$session_dir/session.json" > "$GRILL_TMP/crashed.json"
+  cp "$GRILL_TMP/crashed.json" "$session_dir/session.json"
+  printf 'Exports are shared across devices, so use Postgres.\n' >> "$session_dir/human-input-ex-0004.md"
+  exchange_fixture ex-0005 '{"exchangeId":"ex-0005","answers":[
+      {"questionId":"storage-backend","choiceId":"postgres","rationale":"The human says exports are shared.","evidence":["human-input-ex-0004.md"]},
+      {"questionId":"export-format","choiceId":"csv","rationale":"Users open exports in spreadsheets.","evidence":["README.md"]}]}'
+  queue_closing_from 6 2
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+
+  grill resume --id "$session_id" >/dev/null 2>&1
+
+  assert_contains "$(<"$session_dir/human-input-ex-0004.md")" "Exports are shared across devices, so use Postgres."
+  [[ "$(claude_flag_value 0001 --resume)" == "$UUID_ANSWERING" ]] || fail "expected the human input sent"
+  assert_contains "$(claude_flag_value 0001 -p)" "Exports are shared across devices, so use Postgres."
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "awaiting_confirmation" ]] || fail "expected grilling to continue to the gate"
+
+  teardown_grill_repo
+}
+
+test_reject_waits_for_the_session_branch_to_be_checked_out() {
+  local session_id session_dir output
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  queue_two_round_run
+  session_id="$(grill start --requirement-file "$REQUIREMENT_FILE" \
+    --grilling-agent claude --answering-agent claude 2>/dev/null | tail -n 1)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  write_confirmation_decision "$session_dir/confirmation.md" reject
+  git -C "$GRILL_REPO" checkout -q -b elsewhere
+
+  output="$(grill resume --id "$session_id" 2>&1)"
+
+  assert_contains "$output" "Not rejected: the session's branch is feature-work but elsewhere is checked out"
+  assert_contains "$(<"$GRILL_REPO/CONTEXT.md")" "Offline Export"
+  [[ "$(jq -r '.status' "$session_dir/session.json")" == "blocked" ]] || fail "expected the session to stay at the gate"
+
+  git -C "$GRILL_REPO" checkout -q feature-work
+  grill resume --id "$session_id" >/dev/null 2>&1
+  [[ ! -e "$GRILL_REPO/CONTEXT.md" ]] || fail "expected the session's CONTEXT.md discarded on its branch"
+  assert_archived "$session_id" rejected
+
+  teardown_grill_repo
+}
+
+# Placeholders are filled in one pass: text a human (or an Agent) writes that
+# quotes another placeholder reaches the Agents verbatim.
+test_human_input_quoting_placeholders_reaches_the_agent_verbatim() {
+  local session_id session_dir
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(start_needs_human_session)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  printf 'Please reconsider {{DECISIONS}} and {{QUESTIONS}}; R&D says \\1.\n' >> "$session_dir/human-input-ex-0004.md"
+  exchange_fixture ex-0005 '{"exchangeId":"ex-0005","answers":[
+      {"questionId":"storage-backend","choiceId":"postgres","rationale":"Human input.","evidence":["human-input-ex-0004.md"]},
+      {"questionId":"export-format","choiceId":"csv","rationale":"Spreadsheets.","evidence":["README.md"]}]}'
+  queue_closing_from 6 2
+  rm -rf "$FAKE_CLAUDE_DIR/calls"
+
+  grill resume --id "$session_id" >/dev/null 2>&1
+
+  assert_contains "$(claude_flag_value 0001 -p)" 'Please reconsider {{DECISIONS}} and {{QUESTIONS}}; R&D says \1.'
+
+  teardown_grill_repo
+}
+
+# A crash after an exchange's one re-emit request was sent spends that
+# re-emit: an invalid reply to the recovery blocks instead of earning another.
+test_invalid_reply_after_a_crashed_reemit_blocks_without_another_reemit() {
+  local session_id session_dir record
+
+  setup_grill_repo
+  git -C "$GRILL_REPO" checkout -q -b feature-work
+  session_id="$(start_then_rewind)"
+  session_dir="$GRILL_SESSIONS/$session_id"
+  jq '.exchanges += [{id: "ex-0003", kind: "frontier", role: "grilling", status: "sent", reemitRequested: true,
+        logPath: "logs/ex-0003-grilling.jsonl", reemitLogPath: "logs/ex-0003-grilling-reemit.jsonl",
+        received: "yes", recovery: "reemit"}] | .round = 1' "$session_dir/session.json" > "$GRILL_TMP/crashed.json"
+  cp "$GRILL_TMP/crashed.json" "$session_dir/session.json"
+  exchange_fixture ex-0003 'not json'
+
+  grill resume --id "$session_id" >/dev/null 2>&1
+
+  record="$(<"$session_dir/session.json")"
+  [[ "$(jq -r '.blockReason' <<<"$record")" == "invalid_message" ]] || fail "expected invalid_message, got $(jq -r '.status' <<<"$record")"
+  [[ "$(claude_call_count)" == "1" ]] || fail "expected only the recovery call, got $(claude_call_count)"
+  assert_contains "$(claude_flag_value 0001 -p)" "## Recover"
+
+  teardown_grill_repo
+}
+
 test_claude_settings_deny_git_index_and_gh_write_commands() {
   local settings rule
 
@@ -2490,6 +2593,8 @@ test_claude_settings_deny_git_index_and_gh_write_commands() {
 
   for call in 0001 0002; do
     settings="$(claude_flag_value "$call" --settings)"
+    jq -e '.permissions.deny | index("Edit(./.git/**)")' <<<"$settings" >/dev/null \
+      || fail "expected call $call to keep .git unwritable"
     for rule in "Bash(git add:*)" "Bash(git rm:*)" "Bash(git restore:*)" "Bash(git clean:*)" \
       "Bash(gh release create:*)" "Bash(gh label create:*)" "Bash(gh repo edit:*)" \
       "Bash(gh workflow run:*)" "Bash(gh pr close:*)" "Bash(gh pr review:*)"; do
@@ -2587,5 +2692,9 @@ run_test test_interrupted_issue_create_is_found_instead_of_duplicated
 run_test test_failed_issue_edit_is_retried_alone_on_resume
 run_test test_claude_settings_deny_git_index_and_gh_write_commands
 run_test test_gate_works_when_ralph_session_storage_is_gitignored
+run_test test_resume_keeps_human_input_when_the_blocking_exchange_was_left_unmarked
+run_test test_reject_waits_for_the_session_branch_to_be_checked_out
+run_test test_human_input_quoting_placeholders_reaches_the_agent_verbatim
+run_test test_invalid_reply_after_a_crashed_reemit_blocks_without_another_reemit
 
 echo "grill_test.sh passed"
