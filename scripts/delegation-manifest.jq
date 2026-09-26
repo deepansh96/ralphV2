@@ -81,7 +81,9 @@ $r.requested.worker as $worker |
   # qa-v1: every direct child proves one immutable plan assignment (digest and
   # task ID). Each assignment's chain has runs exactly 1..N, each once; only
   # runs that ended failed or stopped may be replaced (a completed lower run is
-  # a duplicate execution, an incomplete one a possibly concurrent duplicate).
+  # a duplicate execution, an incomplete one a possibly concurrent duplicate),
+  # and only when the lower run's endedAt is at or before every later run's
+  # startedAt. Missing marks cannot prove sequence, so they fail closed.
   # Nesting, parentage, and settings are still judged on every run, so
   # supersession hides none of them.
   (if $plan != null and $r.evidence != null then
@@ -92,6 +94,9 @@ $r.requested.worker as $worker |
          else
            (if ($numbers | length) != ($numbers | unique | length)
                or any($runs[]; .run < ($numbers | max) and (.completed or (ended | not)))
+               or any($runs[]; . as $lower | .run < ($numbers | max)
+                    and ($lower.endedAt == null
+                      or any($runs[]; .run > $lower.run and (.startedAt == null or .startedAt < $lower.endedAt))))
             then "TASK_DUPLICATED" else empty end),
            (if ($numbers | unique) != [range(1; ($numbers | max) + 1)] then "TASK_UNEXPECTED" else empty end)
          end),
@@ -121,7 +126,7 @@ $r.requested.worker as $worker |
              completedCount: ([$selected[] | select(.completed)] | length),
              selectedCount: ($selected | length)},
   children: ($children | sort_by(.taskId, .run, .childId) | map(. as $c | {
-    childId, parentId, taskId, run, assignmentDigest, started, completed, outcome,
+    childId, parentId, taskId, run, assignmentDigest, started, completed, outcome, startedAt, endedAt,
     effective: {model: .effective.model, reasoningEffort: .effective.reasoningEffort},
     nested, disposition: (if any($superseded[]; . == $c) then "superseded" else "selected" end)})),
   evidenceLevel: (if ($codes | length) > 0 then "UNVERIFIED"

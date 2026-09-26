@@ -4,6 +4,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$ROOT/scripts/delegation-qa.sh"
 source "$ROOT/scripts/delegation-manifest.sh"
 source "$ROOT/scripts/codex-delegation.sh"
+source "$ROOT/scripts/claude-delegation.sh"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 rejects() { if "$@" >/dev/null 2>&1; then fail "accepted: $*"; fi; }
@@ -138,13 +139,13 @@ qa="$(delegation_qa_verification "$plan_file" deepansh96/ralphV2)"
 [[ "$(jq -c '.checklist | [.commentId,.status,(.items|length)]' <<< "$qa")" == '["123","ok",3]' ]] || fail 'refetch facts'
 g1=sha256:20c0036e0e890c2de1d1b4ee23aa561cb6f6436ab765f0e0c25d60b8f5c73fb7
 g2=sha256:098e8207f52e1930ba93995117125feec37564a64babac664e2a3d1c5024bef2
-qchild() { jq -nc --arg id "$1" --arg task "$2" --arg digest "$3" '{childId:$id,parentId:"parent-1",taskId:$task,run:1,assignmentDigest:$digest,started:true,completed:true,outcome:"completed",effective:{model:null,reasoningEffort:null},nested:false}'; }
+qchild() { jq -nc --arg id "$1" --arg task "$2" --arg digest "$3" '{childId:$id,parentId:"parent-1",taskId:$task,run:1,assignmentDigest:$digest,started:true,completed:true,outcome:"completed",startedAt:1,endedAt:2,effective:{model:null,reasoningEffort:null},nested:false}'; }
 two="$(jq -sc . <(qchild c-1 qa_group_1 "$g1") <(qchild c-2 qa_group_2 "$g2"))"
 qa_request() { jq -nc --argjson children "$1" --argjson qa "$2" '{issue:37,stepId:"runthrough-qa-checklist",attemptId:"attempt-1",provider:"codex",policy:"qa-v1",
   requested:{parent:{model:"gpt-5.6-sol",reasoningEffort:"medium"},worker:{model:"gpt-5.6-luna",reasoningEffort:"max"}},
   providerFailed:false,evidence:{attemptId:"attempt-1",parentId:"parent-1",children:$children,modelHistory:{}},qa:$qa}'; }
 # Hand-authored from #37 "Manifest" and "QA plan and policy".
-expected_manifest='{"schemaVersion":1,"issue":37,"stepId":"runthrough-qa-checklist","attemptId":"attempt-1","provider":"codex","evidenceSource":"app-server","parentId":"parent-1","policy":"qa-v1","requested":{"parent":{"model":"gpt-5.6-sol","reasoningEffort":"medium"},"worker":{"model":"gpt-5.6-luna","reasoningEffort":"max"}},"expected":{"taskCount":2,"taskIds":["qa_group_1","qa_group_2"]},"observed":{"startedCount":2,"completedCount":2,"selectedCount":2},"children":[{"childId":"c-1","parentId":"parent-1","taskId":"qa_group_1","run":1,"assignmentDigest":"sha256:20c0036e0e890c2de1d1b4ee23aa561cb6f6436ab765f0e0c25d60b8f5c73fb7","started":true,"completed":true,"outcome":"completed","effective":{"model":null,"reasoningEffort":null},"nested":false,"disposition":"selected"},{"childId":"c-2","parentId":"parent-1","taskId":"qa_group_2","run":1,"assignmentDigest":"sha256:098e8207f52e1930ba93995117125feec37564a64babac664e2a3d1c5024bef2","started":true,"completed":true,"outcome":"completed","effective":{"model":null,"reasoningEffort":null},"nested":false,"disposition":"selected"}],"evidenceLevel":"OBSERVED","mismatchCodes":[]}'
+expected_manifest='{"schemaVersion":1,"issue":37,"stepId":"runthrough-qa-checklist","attemptId":"attempt-1","provider":"codex","evidenceSource":"app-server","parentId":"parent-1","policy":"qa-v1","requested":{"parent":{"model":"gpt-5.6-sol","reasoningEffort":"medium"},"worker":{"model":"gpt-5.6-luna","reasoningEffort":"max"}},"expected":{"taskCount":2,"taskIds":["qa_group_1","qa_group_2"]},"observed":{"startedCount":2,"completedCount":2,"selectedCount":2},"children":[{"childId":"c-1","parentId":"parent-1","taskId":"qa_group_1","run":1,"assignmentDigest":"sha256:20c0036e0e890c2de1d1b4ee23aa561cb6f6436ab765f0e0c25d60b8f5c73fb7","started":true,"completed":true,"outcome":"completed","startedAt":1,"endedAt":2,"effective":{"model":null,"reasoningEffort":null},"nested":false,"disposition":"selected"},{"childId":"c-2","parentId":"parent-1","taskId":"qa_group_2","run":1,"assignmentDigest":"sha256:098e8207f52e1930ba93995117125feec37564a64babac664e2a3d1c5024bef2","started":true,"completed":true,"outcome":"completed","startedAt":1,"endedAt":2,"effective":{"model":null,"reasoningEffort":null},"nested":false,"disposition":"selected"}],"evidenceLevel":"OBSERVED","mismatchCodes":[]}'
 [[ "$(qa_request "$two" "$qa" | delegation_manifest_build)" == "$expected_manifest" ]] || fail 'valid qa manifest'
 [[ "$(qa_request "$(jq -c reverse <<< "$two")" "$qa" | delegation_manifest_build)" == "$expected_manifest" ]] || fail 'order independence'
 full="$(jq -c 'map(.effective = {model:"gpt-5.6-luna",reasoningEffort:"max"})' <<< "$two")"
@@ -204,8 +205,12 @@ comment 123 "$after" 2026-08-25T12:30:00Z
 # that ended failed or stopped with the next run of the same unchanged
 # assignment. The highest run is selected and must complete; lower runs are
 # superseded. Counts describe the selected logical assignments.
-qrun() { jq -nc --arg id "$1" --arg digest "$2" --argjson run "$3" --arg outcome "$4" '{childId:$id,parentId:"parent-1",taskId:"qa_group_2",run:$run,assignmentDigest:$digest,
+# Spec: id/digest/run/outcome[/startedAt/endedAt]. By default each run starts
+# at run*10 and, once finished, ends at run*10+5: strictly sequential.
+qrun() { jq -nc --arg id "$1" --arg digest "$2" --argjson run "$3" --arg outcome "$4" --argjson start "${5:-null}" --argjson end "${6:-null}" '{childId:$id,parentId:"parent-1",taskId:"qa_group_2",run:$run,assignmentDigest:$digest,
   started:($outcome != "unstarted"),completed:($outcome == "completed"),outcome:(if $outcome == "unstarted" then "incomplete" else $outcome end),
+  startedAt:(if $start != null then $start elif $outcome == "unstarted" then null else $run * 10 end),
+  endedAt:(if $end != null then $end elif ($outcome | IN("completed","failed","stopped")) then $run * 10 + 5 else null end),
   effective:{model:null,reasoningEffort:null},nested:false}'; }
 g2_runs() { jq -c '.[0:1]' <<< "$two" | jq -c --argjson runs "$(for spec in "$@"; do qrun ${spec//\// }; done | jq -sc .)" '. + $runs'; }
 dispositions() { qa_request "$1" "$qa" | delegation_manifest_build | jq -c '[.children[] | [.childId,.run,.disposition]]'; }
@@ -226,6 +231,21 @@ chain="$(g2_runs "c-2a/$g2/1/failed" "c-2b/$g2/2/stopped" "c-2c/$g2/3/failed" "c
 # VERIFIED needs provider-reported settings on selected workers only; a
 # superseded run that never reported a model or effort does not cap the level.
 [[ "$(qa_request "$(jq -c 'map(if .childId == "c-1" or .childId == "c-2d" then .effective = {model:"gpt-5.6-luna",reasoningEffort:"max"} else . end)' <<< "$chain")" "$qa" | delegation_manifest_build | jq -c '[.evidenceLevel,.mismatchCodes]')" == '["VERIFIED",[]]' ]] || fail 'verified replacements'
+# A superseded run must provably end before every later run of its chain
+# starts (#37, #46: overlapping runs fail). Timing marks are provider-scoped
+# (Claude hook-event order, Codex App Server turn seconds); ending exactly when
+# the replacement starts is sequential.
+[[ "$(summary "$(g2_runs "c-2/$g2/1/failed/10/20" "c-2r/$g2/2/completed/20/30")" "$qa")" == '["OBSERVED",[],2,2,2,2]' ]] || fail 'replacement at run end'
+for lower in failed stopped; do
+  [[ "$(codes "$(g2_runs "c-2/$g2/1/$lower/10/25" "c-2r/$g2/2/completed/20/30")" "$qa")" == '["TASK_DUPLICATED"]' ]] || fail "replacement overlapping $lower run"
+done
+[[ "$(codes "$(g2_runs "c-2a/$g2/1/failed/10/15" "c-2b/$g2/2/stopped/20/35" "c-2c/$g2/3/completed/30/40")" "$qa")" == '["TASK_DUPLICATED"]' ]] || fail 'overlap later in chain'
+[[ "$(codes "$(g2_runs "c-2a/$g2/1/failed/10/35" "c-2b/$g2/2/stopped/20/25" "c-2c/$g2/3/completed/40/50")" "$qa")" == '["TASK_DUPLICATED"]' ]] || fail 'run 1 outlived run 2'
+# Missing timing evidence on a replaced run or its replacement fails closed.
+[[ "$(codes "$(g2_runs "c-2/$g2/1/failed" "c-2r/$g2/2/completed" | jq -c '.[1].endedAt = null')" "$qa")" == '["TASK_DUPLICATED"]' ]] || fail 'superseded run without end'
+[[ "$(codes "$(g2_runs "c-2/$g2/1/failed" "c-2r/$g2/2/completed" | jq -c '.[2].startedAt = null')" "$qa")" == '["TASK_DUPLICATED"]' ]] || fail 'replacement without start'
+# Without a replacement, missing timing evidence changes nothing.
+[[ "$(summary "$(jq -c 'map(.startedAt = null | .endedAt = null)' <<< "$two")" "$qa")" == '["OBSERVED",[],2,2,2,2]' ]] || fail 'timing needed only for replacements'
 # The highest run must itself complete.
 [[ "$(summary "$(g2_runs "c-2/$g2/1/failed" "c-2r/$g2/2/failed")" "$qa")" == '["UNVERIFIED",["CHILD_FAILED"],2,2,1,2]' ]] || fail 'failed replacement'
 [[ "$(summary "$(g2_runs "c-2/$g2/1/failed" "c-2r/$g2/2/incomplete")" "$qa")" == '["UNVERIFIED",["CHILD_INCOMPLETE"],2,2,1,2]' ]] || fail 'incomplete replacement'
@@ -270,6 +290,23 @@ codex_children="$(codex_delegation_normalize parent-1 "$plan_file" <<< "$threads
 codex_replaced="$(jq -c --arg h2 "${g2#sha256:}" '.threads[1].turns = [{status:"failed",startedAt:1,completedAt:2,failed:true}]
   | .threads += [.threads[1] | .id = "c-2r" | .task = ("qa_r2_" + $h2) | .turns = [{status:"completed",startedAt:3,completedAt:4,failed:false}]]' <<< "$threads" | codex_delegation_normalize parent-1 "$plan_file")"
 [[ "$(qa_request "$codex_replaced" "$qa" | delegation_manifest_build | jq -c '[.evidenceLevel,.mismatchCodes,[.children[] | [.taskId,.run,.disposition]]]')" == '["VERIFIED",[],[["qa_group_1",1,"selected"],["qa_group_2",1,"superseded"],["qa_group_2",2,"selected"]]]' ]] || fail 'codex replacement task names'
+# Collector seam: a Codex replacement whose turn started before the failed run's
+# turn completed overlapped it; an interrupted run without completedAt has no
+# end proof. Both fail closed.
+codex_overlap="$(jq -c '.threads[1].turns = [{status:"failed",startedAt:1,completedAt:5,failed:true}]' <<< "$(jq -c --arg h2 "${g2#sha256:}" '.threads += [.threads[1] | .id = "c-2r" | .task = ("qa_r2_" + $h2) | .turns = [{status:"completed",startedAt:3,completedAt:6,failed:false}]]' <<< "$threads")" | codex_delegation_normalize parent-1 "$plan_file")"
+[[ "$(codes "$codex_overlap" "$qa")" == '["TASK_DUPLICATED"]' ]] || fail 'codex overlapping replacement'
+codex_unended="$(jq -c '.threads[1].turns = [{status:"interrupted",startedAt:1,completedAt:null,failed:false}]' <<< "$(jq -c --arg h2 "${g2#sha256:}" '.threads += [.threads[1] | .id = "c-2r" | .task = ("qa_r2_" + $h2) | .turns = [{status:"completed",startedAt:3,completedAt:4,failed:false}]]' <<< "$threads")" | codex_delegation_normalize parent-1 "$plan_file")"
+[[ "$(codes "$codex_unended" "$qa")" == '["TASK_DUPLICATED"]' ]] || fail 'codex replacement without end proof'
+# Collector seam: Claude hook-log order proves (or disproves) the sequence.
+cev() { jq -nc --arg tool "$1" --arg child "$2" --arg task "$3" --arg digest "$4" --argjson run "$5" --arg status "$6" '[
+  {event:"PreToolUse",tool_use_id:$tool,agent_id:null,subagent_type:"ralph-worker",model:null,taskId:$task,assignmentDigest:$digest,run:$run},
+  {event:"SubagentStart",agent_id:$child,agent_type:"ralph-worker"},
+  {event:"SubagentStop",agent_id:$child,agent_type:"ralph-worker",status:$status,effort:{level:"max"}},
+  {event:"PostToolUse",tool_use_id:$tool,agentId:$child,status:$status,resolvedModel:null,modelsUsed:[]}]'; }
+c1="$(cev t-1 c-1 qa_group_1 "$g1" 1 completed)"; c2="$(cev t-2 c-2 qa_group_2 "$g2" 1 failed)"; c2r="$(cev t-2r c-2r qa_group_2 "$g2" 2 completed)"
+claude_codes() { jq -c --argjson a "$c1" --argjson b "$c2" --argjson r "$c2r" "$1" <<< null | claude_delegation_normalize parent-1 | { read -r children; codes "$children" "$qa"; }; }
+[[ "$(claude_codes '$a + $b + $r')" == '[]' ]] || fail 'claude sequential replacement'
+[[ "$(claude_codes '$a + [$b[0],$b[1],$r[0],$r[1],$b[2],$b[3],$r[2],$r[3]]')" == '["TASK_DUPLICATED"]' ]] || fail 'claude overlapping replacement'
 foreign="$(jq -c --arg h "$(printf 'a%.0s' {1..64})" '.threads[1].task = ("qa_r1_" + $h)' <<< "$threads" | codex_delegation_normalize parent-1 "$plan_file")"
 [[ "$(codes "$foreign" "$qa")" == '["ASSIGNMENT_DIGEST_MISMATCH","TASK_MISSING"]' ]] || fail 'foreign codex task name'
 # Provider failure and missing evidence still produce QA manifests.

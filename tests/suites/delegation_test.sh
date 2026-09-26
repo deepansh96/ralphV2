@@ -8,9 +8,12 @@ delegation_validate metadata <<< '{"schemaVersion":1,"policy":"qa-v1"}'
 for invalid in 'null' '{}' '{"schemaVersion":2,"policy":"qa-v1"}' '{"schemaVersion":1,"policy":"other"}' '{"schemaVersion":1,"policy":"qa-v1","prompt":"secret"}'; do
   if delegation_validate metadata <<< "$invalid"; then exit 1; fi
 done
-child='{"childId":"child-1","parentId":"parent-1","taskId":"matt_spec","run":1,"assignmentDigest":null,"started":true,"completed":true,"outcome":"completed","effective":{"model":null,"reasoningEffort":null},"nested":false}'
+child='{"childId":"child-1","parentId":"parent-1","taskId":"matt_spec","run":1,"assignmentDigest":null,"started":true,"completed":true,"outcome":"completed","startedAt":1786897497,"endedAt":1786897863,"effective":{"model":null,"reasoningEffort":null},"nested":false}'
 delegation_validate child <<< "$child"
-for mutation in '. + {prompt:"secret"}' '.effective += {response:"secret"}' '.run = 0' '.outcome = "success"' '.started = "true"' '.assignmentDigest = "bad"'; do
+# Lifecycle marks are required, nullable, non-negative integers.
+jq '.startedAt = null | .endedAt = null' <<< "$child" | delegation_validate child
+for mutation in '. + {prompt:"secret"}' '.effective += {response:"secret"}' '.run = 0' '.outcome = "success"' '.started = "true"' '.assignmentDigest = "bad"' \
+  'del(.startedAt)' 'del(.endedAt)' '.startedAt = -1' '.endedAt = 1.5' '.startedAt = "2026-09-26T00:00:00Z"' '.endedAt = {"at":1}'; do
   if jq "$mutation" <<< "$child" | delegation_validate child; then exit 1; fi
 done
 manifest='{"schemaVersion":1,"issue":37,"stepId":"review","attemptId":"attempt-1","provider":"codex","evidenceSource":"app-server","parentId":"parent-1","policy":"pr-review-v1","requested":{"parent":{"model":"sol","reasoningEffort":"medium"},"worker":{"model":"luna","reasoningEffort":"max"}},"expected":{"taskCount":1,"taskIds":["matt_spec"]},"observed":{"startedCount":1,"completedCount":1,"selectedCount":1},"children":[],"evidenceLevel":"OBSERVED","mismatchCodes":[]}'
@@ -43,6 +46,13 @@ if delegation_write_json "$workspace" manifest.json manifest <<< '{}'; then exit
 if delegation_write_json "$workspace" ../escape.json manifest <<< "$manifest"; then exit 1; fi
 ln -s "$workspace/manifest.json" "$workspace/link.json"
 if delegation_write_json "$workspace" link.json manifest <<< "$manifest"; then exit 1; fi
+# A dangling symlink or a directory is refused too, never followed or replaced.
+ln -s "$workspace/nowhere.json" "$workspace/dangling.json"
+if delegation_write_json "$workspace" dangling.json manifest <<< "$manifest"; then exit 1; fi
+[[ -L "$workspace/dangling.json" && ! -e "$workspace/nowhere.json" ]]
+mkdir "$workspace/dir.json"
+if delegation_write_json "$workspace" dir.json manifest <<< "$manifest"; then exit 1; fi
+rm "$workspace/dangling.json"; rmdir "$workspace/dir.json"
 [[ "$(find "$workspace" -name '*.tmp-*' | wc -l | tr -d ' ')" == 0 ]]
 cat > "$workspace/state.json" <<'JSON'
 {"issue":37,"unrelated":"preserved","steps":[{"id":"review","status":"pending","delegation":{"schemaVersion":1,"policy":"pr-review-v1"}},{"id":"legacy","status":"pending"}]}

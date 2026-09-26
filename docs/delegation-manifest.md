@@ -71,8 +71,8 @@ pass whatever partial children were bound.
 The manifest follows #37 exactly: fixed key order, `evidenceSource`
 `app-server` for Codex and `hooks` for Claude, `expected` task IDs sorted,
 children sorted by `taskId`, `run`, then `childId`, and unique lexicographically
-sorted `mismatchCodes`. Every child carries the full normalized record plus
-`disposition`; `pr-review-v1` has no supersession, so every record is
+sorted `mismatchCodes`. Every child carries the full normalized record,
+including its `startedAt`/`endedAt` lifecycle marks, plus `disposition`; `pr-review-v1` has no supersession, so every record is
 `selected`. `parentId` is `null` only when no evidence bound a parent, such as a
 provider that failed before reporting its thread.
 
@@ -123,7 +123,7 @@ Expected identities are the five `(taskId, run 1)` pairs for `isolated_codex`,
 | Code | Meaning |
 | --- | --- |
 | `TASK_MISSING` | An expected identity has no direct child. |
-| `TASK_DUPLICATED` | An expected identity has more than one direct child, or a `qa-v1` lower run completed or has no end evidence. |
+| `TASK_DUPLICATED` | An expected identity has more than one direct child, or a `qa-v1` lower run completed, has no end evidence, or did not end before a later run started. |
 | `TASK_UNEXPECTED` | A direct child has an unexpected task ID or a run other than 1 (retries are not allowed). |
 | `CHILD_MISSING` | A direct child never started. |
 | `CHILD_INCOMPLETE` | A direct child started but did not finish. |

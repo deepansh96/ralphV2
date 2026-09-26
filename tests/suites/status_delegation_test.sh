@@ -35,7 +35,7 @@ write_manifest() {
       expected: {taskCount: $expected, taskIds: ["isolated_codex","matt_spec","matt_standards","ponytail","supe"][:$expected]},
       observed: {startedCount: $selected, completedCount: $selected, selectedCount: $selected},
       children: [range($selected) | {childId: "child-SECRET-\(.)", parentId: "parent-SECRET-thread", taskId: "matt_spec",
-        run: 1, assignmentDigest: null, started: true, completed: true, outcome: "completed",
+        run: 1, assignmentDigest: null, started: true, completed: true, outcome: "completed", startedAt: 1, endedAt: 2,
         effective: {model: "gpt-5.6-luna", reasoningEffort: "max"}, nested: false, disposition: "selected"}],
       evidenceLevel: $level, mismatchCodes: (if $selected < $expected then ["CHILD_MISSING","TASK_MISSING"] else [] end)
     }' > "$workspace/delegation/$step.manifest.json"

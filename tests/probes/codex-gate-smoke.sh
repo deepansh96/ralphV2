@@ -145,8 +145,8 @@ jq -e --arg attempt "$attempt" --argjson issue "$ISSUE" --arg step "$STEP" --arg
   and .observed == {startedCount:1,completedCount:1,selectedCount:1}
   and .mismatchCodes == [] and (.evidenceLevel == "OBSERVED" or .evidenceLevel == "VERIFIED")
   and (.children | length == 1) and (.parentId | type == "string")
-  and (.children[0] | (keys == ["assignmentDigest","childId","completed","disposition","effective","nested","outcome",
-       "parentId","run","started","taskId"]) and .disposition == "selected")
+  and (.children[0] | (keys == ["assignmentDigest","childId","completed","disposition","effective","endedAt","nested",
+       "outcome","parentId","run","started","startedAt","taskId"]) and .disposition == "selected")
 ' "$manifest" >/dev/null || fail 'manifest is not a passing current-attempt qa-v1 manifest with one assignment.'
 
 # The manifest parent is this attempt's exec parent, and its one direct worker
@@ -155,6 +155,7 @@ parent="$(codex_delegation_parent_id "$workspace/logs/$STEP.log")" || fail 'the 
 jq -e --arg parent "$parent" --slurpfile plan "$plan" '
   .parentId == $parent and ($plan[0].assignments[0] as $a | .children[0]
   | .parentId == $parent and (.nested | not) and .started and .completed and .outcome == "completed"
+    and (.startedAt | type == "number") and (.endedAt | type == "number") and .startedAt <= .endedAt
     and .run == 1 and .taskId == $a.taskId and .assignmentDigest == $a.assignmentDigest)
 ' "$manifest" >/dev/null || fail 'the worker is not a completed direct child of the exec parent bound to the planned assignment.'
 child="$(jq -r '.children[0].childId' "$manifest")"

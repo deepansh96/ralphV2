@@ -22,7 +22,13 @@ nonzero on invalid input, and never echoes rejected data. Supported schemas:
   nonempty ID and nonnegative integer epoch seconds.
 - `state`: validates the new fields on all steps while preserving the open
   legacy State schema. A step without metadata must not have an attempt.
-- `child` / `children`: the provider-neutral record / array of records.
+- `child` / `children`: the provider-neutral record / array of records. Each
+  record carries lifecycle marks `startedAt` and `endedAt`: nullable
+  nonnegative integers that order one attempt's runs. They are provider-scoped
+  and comparable only within one evidence set: Claude marks are positions in
+  the attempt's hook log, Codex marks are App Server turn epoch seconds. `null`
+  means the provider gave no proof (not started, still running, or a missing
+  timestamp).
 - `manifest`: the exact v1 artifact, including separate requested `parent` and
   `worker` settings, counts, children with `selected` or `superseded`
   disposition, evidence level, and closed mismatch vocabulary. `parentId` may

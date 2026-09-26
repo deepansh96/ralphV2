@@ -35,8 +35,14 @@ $threads | map(. as $t |
   (any($turns[]; .status == "failed" or .failed == true)) as $failed |
   ($started and all($turns[]; .status | terminal) and ($turns | last | .status == "completed") and ($failed | not)) as $completed |
   ($started and ($failed | not) and all($turns[]; .status | terminal) and ($turns | last | .status == "interrupted")) as $stopped |
+  # Lifecycle marks are App Server turn epoch seconds. Every turn must report
+  # them (and be terminal for the end); otherwise the mark is null, never guessed.
+  (if $started and all($turns[]; .startedAt | type == "number") then [$turns[].startedAt] | min else null end) as $startedAt |
+  (if $started and all($turns[]; (.status | terminal) and (.completedAt | type == "number"))
+   then [$turns[].completedAt] | max else null end) as $endedAt |
   {childId:$t.id, parentId:$t.parentId, taskId:$identity.taskId, run:$identity.run,
    assignmentDigest:$identity.assignmentDigest, started:$started, completed:$completed,
    outcome:(if $failed then "failed" elif $completed then "completed" elif $stopped then "stopped" else "incomplete" end),
+   startedAt:$startedAt, endedAt:$endedAt,
    effective:{model:($t.model // null), reasoningEffort:($t.reasoningEffort // null)},
    nested:($t.direct | not)})

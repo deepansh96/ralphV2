@@ -69,6 +69,12 @@ is dropped in memory before output.
   turns are terminal, the final turn is `completed`, and no turn failed or
   carries an error. A failing turn yields `failed`; a final `interrupted` turn
   yields `stopped`; anything else, including unknown statuses, is `incomplete`.
+- Lifecycle marks: `startedAt` is the earliest turn `startedAt` and `endedAt`
+  the latest turn `completedAt`, both App Server epoch seconds. `startedAt` is
+  null without turns or when any turn lacks a start; `endedAt` is null unless
+  every turn is terminal and reports `completedAt`. `qa-v1` uses them to prove a
+  replaced run ended before its replacement started; a missing mark fails that
+  replacement closed.
 - `effective.model` and `effective.reasoningEffort` are the thread-level values
   when present and null otherwise. They are persisted configuration, not per-turn
   telemetry, so #41 must still cap evidence at `OBSERVED` when they are null.

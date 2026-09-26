@@ -20,8 +20,26 @@ events='[
 {"event":"SubagentStop","agent_id":"child-1","agent_type":"ralph-worker","status":null,"effort":{"level":"high"}},
 {"event":"PostToolUse","tool_use_id":"tool-1","agentId":"child-1","status":"completed","resolvedModel":"claude-sonnet-4-6","modelsUsed":["claude-sonnet-4-6"]}
 ]'
-expected_child='[{"childId":"child-1","parentId":"parent-1","taskId":"matt_spec","run":1,"assignmentDigest":null,"started":true,"completed":true,"outcome":"completed","effective":{"model":"claude-sonnet-4-6","reasoningEffort":"high"},"nested":false}]'
+expected_child='[{"childId":"child-1","parentId":"parent-1","taskId":"matt_spec","run":1,"assignmentDigest":null,"started":true,"completed":true,"outcome":"completed","startedAt":0,"endedAt":3,"effective":{"model":"claude-sonnet-4-6","reasoningEffort":"high"},"nested":false}]'
 [[ "$(claude_delegation_normalize parent-1 <<< "$events")" == "$expected_child" ]]
+# Lifecycle marks are positions in the attempt's append-only hook log: the
+# PreToolUse hook finishes before the worker starts and every end hook fires
+# after it returned, so end-before-start in the log proves sequence. endedAt is
+# the last end event of a child that ended, and null while it may still run.
+timing() { claude_delegation_normalize parent-1 | jq -c 'map([.outcome,.startedAt,.endedAt])'; }
+[[ "$(jq '.[3].status = "stopped"' <<< "$events" | timing)" == '[["stopped",0,3]]' ]]
+[[ "$(jq '. + [{"event":"PostToolUseFailure","tool_use_id":"tool-1","status":"failed"}]' <<< "$events" | timing)" == '[["failed",0,4]]' ]]
+[[ "$(jq 'map(select(.event != "SubagentStop"))' <<< "$events" | timing)" == '[["incomplete",0,null]]' ]]
+# A background launch returns before the worker ends; only its stop proves the end.
+[[ "$(jq '[.[0],.[3],.[1],.[2]] | .[1].status = "async_launched" | .[3].status = "failed"' <<< "$events" | timing)" == '[["failed",0,3]]' ]]
+[[ "$(jq '[.[0],.[3],.[1]] | .[1].status = "async_launched" | . + [{"event":"PostToolUseFailure","tool_use_id":"tool-1","status":"failed"}]' <<< "$events" | timing)" == '[["failed",0,null]]' ]]
+# Two workers: sequential when the first ends before the second's PreToolUse.
+second='[{"event":"PreToolUse","tool_use_id":"tool-2","agent_id":null,"subagent_type":"ralph-worker","model":"sonnet","taskId":"matt_spec","assignmentDigest":null,"run":2},
+{"event":"SubagentStart","agent_id":"child-2","agent_type":"ralph-worker"},
+{"event":"SubagentStop","agent_id":"child-2","agent_type":"ralph-worker","status":null,"effort":{"level":"high"}},
+{"event":"PostToolUse","tool_use_id":"tool-2","agentId":"child-2","status":"completed","resolvedModel":"claude-sonnet-4-6","modelsUsed":["claude-sonnet-4-6"]}]'
+[[ "$(jq -c --argjson b "$second" '. + $b' <<< "$events" | timing)" == '[["completed",0,3],["completed",4,7]]' ]]
+[[ "$(jq -c --argjson b "$second" '[.[0],$b[0],.[1],$b[1],.[2],.[3],$b[2],$b[3]]' <<< "$events" | timing)" == '[["completed",0,5],["completed",1,7]]' ]]
 for mutation in 'map(select(.event != "SubagentStart"))' 'map(select(.event != "SubagentStop"))'; do
   result="$(jq "$mutation" <<< "$events" | claude_delegation_normalize parent-1)"
   jq -e '.[0].completed == false and .[0].outcome == "incomplete"' <<< "$result" >/dev/null
@@ -143,8 +161,9 @@ if claude_delegation_collect "$inputs" attempt-6 parent-1 >/dev/null; then
 fi
 chmod 600 "$inputs/events.jsonl"
 claude_delegation_cleanup "$inputs"
-# Event order and archived sibling files are not correlation evidence.
-[[ "$(jq 'reverse' <<< "$events" | claude_delegation_normalize parent-1)" == "$expected_child" ]]
+# Event order and archived sibling files are not correlation evidence; order
+# only positions the lifecycle marks.
+[[ "$(jq 'reverse' <<< "$events" | claude_delegation_normalize parent-1 | jq -c 'map(del(.startedAt,.endedAt))')" == "$(jq -c 'map(del(.startedAt,.endedAt))' <<< "$expected_child")" ]]
 inputs="$(claude_delegation_prepare "$workspace" attempt-7 parent-1)"
 printf 'not current JSON\n' > "$workspace/old-hooks.jsonl"
 printf 'not current JSON\n' > "$inputs/events.jsonl.attempt-1"

@@ -23,7 +23,7 @@ facts='{"parentId":"01a07eb4-da4f-70e2-b282-4079106da2e5","threads":[
 {"id":"child-1","parentId":"01a07eb4-da4f-70e2-b282-4079106da2e5","direct":true,"depth":1,"spawnParent":"01a07eb4-da4f-70e2-b282-4079106da2e5","task":"matt_spec","model":"gpt-5.6-luna","reasoningEffort":"max",
  "turns":[{"status":"completed","startedAt":1786897497,"completedAt":1786897863,"failed":false}]}
 ]}'
-expected_child='[{"childId":"child-1","parentId":"01a07eb4-da4f-70e2-b282-4079106da2e5","taskId":"matt_spec","run":1,"assignmentDigest":null,"started":true,"completed":true,"outcome":"completed","effective":{"model":"gpt-5.6-luna","reasoningEffort":"max"},"nested":false}]'
+expected_child='[{"childId":"child-1","parentId":"01a07eb4-da4f-70e2-b282-4079106da2e5","taskId":"matt_spec","run":1,"assignmentDigest":null,"started":true,"completed":true,"outcome":"completed","startedAt":1786897497,"endedAt":1786897863,"effective":{"model":"gpt-5.6-luna","reasoningEffort":"max"},"nested":false}]'
 [[ "$(codex_delegation_normalize "$parent" <<< "$facts")" == "$expected_child" ]]
 # Lifecycle comes only from turns[].status and error: a child is complete when it has a turn,
 # all turns are terminal, the final turn completed, and none failed.
@@ -37,6 +37,19 @@ outcome_of() { jq -c --argjson turns "$1" '.threads[0].turns = $turns' <<< "$fac
 [[ "$(outcome_of '[{"status":"interrupted","startedAt":1,"completedAt":null,"failed":false}]')" == '[true,false,"stopped"]' ]]
 [[ "$(outcome_of '[{"status":"completed","startedAt":null,"completedAt":2,"failed":false},{"status":"interrupted","startedAt":3,"completedAt":null,"failed":false},{"status":"completed","startedAt":4,"completedAt":5,"failed":false}]')" == '[true,true,"completed"]' ]]
 [[ "$(outcome_of '[{"status":"unknown-provider-status","startedAt":1,"completedAt":2,"failed":false}]')" == '[true,false,"incomplete"]' ]]
+# Lifecycle marks come from turn epoch seconds: startedAt is the earliest turn
+# start, endedAt the latest turn completion once every turn is terminal. Any
+# missing turn timestamp, or a turn still running, leaves the mark null.
+timing_of() { jq -c --argjson turns "$1" '.threads[0].turns = $turns' <<< "$facts" | codex_delegation_normalize "$parent" | jq -c '.[0] | [.startedAt,.endedAt]'; }
+[[ "$(timing_of '[]')" == '[null,null]' ]]
+[[ "$(timing_of '[{"status":"inProgress","startedAt":1,"completedAt":null,"failed":false}]')" == '[1,null]' ]]
+[[ "$(timing_of '[{"status":"failed","startedAt":1,"completedAt":2,"failed":true}]')" == '[1,2]' ]]
+[[ "$(timing_of '[{"status":"interrupted","startedAt":1,"completedAt":3,"failed":false}]')" == '[1,3]' ]]
+[[ "$(timing_of '[{"status":"interrupted","startedAt":1,"completedAt":null,"failed":false}]')" == '[1,null]' ]]
+[[ "$(timing_of '[{"status":"completed","startedAt":1,"completedAt":2,"failed":false},{"status":"completed","startedAt":3,"completedAt":4,"failed":false}]')" == '[1,4]' ]]
+[[ "$(timing_of '[{"status":"failed","startedAt":1,"completedAt":2,"failed":true},{"status":"inProgress","startedAt":3,"completedAt":null,"failed":false}]')" == '[1,null]' ]]
+[[ "$(timing_of '[{"status":"completed","startedAt":null,"completedAt":2,"failed":false},{"status":"completed","startedAt":3,"completedAt":4,"failed":false}]')" == '[null,4]' ]]
+[[ "$(timing_of '[{"status":"unknown-provider-status","startedAt":1,"completedAt":2,"failed":false}]')" == '[1,null]' ]]
 # Effective settings stay null when App Server does not expose them.
 [[ "$(jq -c 'del(.threads[0].model, .threads[0].reasoningEffort)' <<< "$facts" | codex_delegation_normalize "$parent" | jq -c '.[0].effective')" == '{"model":null,"reasoningEffort":null}' ]]
 # Descendants below a direct child are nested workers with their real parent.
@@ -74,7 +87,7 @@ jq -n --arg parent "$parent" \
     threads:{matt_standards:$a,matt_spec:$b,ponytail:$c,helper:$d}}' > "$fixture"
 install_fake_codex_app_server "$fake_bin" "$fixture"
 children="$(PATH="$fake_bin:$PATH" codex_delegation_collect "$parent")"
-expected_children='[{"childId":"helper","parentId":"matt_spec","taskId":"helper","run":1,"assignmentDigest":null,"started":false,"completed":false,"outcome":"incomplete","effective":{"model":"gpt-5.6-luna","reasoningEffort":"max"},"nested":true},{"childId":"matt_spec","parentId":"01a07eb4-da4f-70e2-b282-4079106da2e5","taskId":"matt_spec","run":1,"assignmentDigest":null,"started":true,"completed":true,"outcome":"completed","effective":{"model":"gpt-5.6-luna","reasoningEffort":"max"},"nested":false},{"childId":"matt_standards","parentId":"01a07eb4-da4f-70e2-b282-4079106da2e5","taskId":"matt_standards","run":1,"assignmentDigest":null,"started":true,"completed":true,"outcome":"completed","effective":{"model":"gpt-5.6-luna","reasoningEffort":"max"},"nested":false},{"childId":"ponytail","parentId":"01a07eb4-da4f-70e2-b282-4079106da2e5","taskId":"ponytail","run":1,"assignmentDigest":null,"started":true,"completed":false,"outcome":"failed","effective":{"model":"gpt-5.6-luna","reasoningEffort":"max"},"nested":false}]'
+expected_children='[{"childId":"helper","parentId":"matt_spec","taskId":"helper","run":1,"assignmentDigest":null,"started":false,"completed":false,"outcome":"incomplete","startedAt":null,"endedAt":null,"effective":{"model":"gpt-5.6-luna","reasoningEffort":"max"},"nested":true},{"childId":"matt_spec","parentId":"01a07eb4-da4f-70e2-b282-4079106da2e5","taskId":"matt_spec","run":1,"assignmentDigest":null,"started":true,"completed":true,"outcome":"completed","startedAt":1786897497,"endedAt":1786897863,"effective":{"model":"gpt-5.6-luna","reasoningEffort":"max"},"nested":false},{"childId":"matt_standards","parentId":"01a07eb4-da4f-70e2-b282-4079106da2e5","taskId":"matt_standards","run":1,"assignmentDigest":null,"started":true,"completed":true,"outcome":"completed","startedAt":1786897497,"endedAt":1786897863,"effective":{"model":"gpt-5.6-luna","reasoningEffort":"max"},"nested":false},{"childId":"ponytail","parentId":"01a07eb4-da4f-70e2-b282-4079106da2e5","taskId":"ponytail","run":1,"assignmentDigest":null,"started":true,"completed":false,"outcome":"failed","startedAt":1,"endedAt":2,"effective":{"model":"gpt-5.6-luna","reasoningEffort":"max"},"nested":false}]'
 [[ "$children" == "$expected_children" ]]
 requests="$fake_bin/app-server-requests.jsonl"
 [[ "$(jq -r '.method' "$requests" | head -1)" == initialize ]]

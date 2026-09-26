@@ -63,6 +63,12 @@ Provider-owned internal storage is outside this collector's control.
 Pre/Post records join by tool-use ID, then start/stop by returned child ID.
 Completion requires all three lifecycle facts and a completed foreground return.
 Missing starts/stops remain incomplete; ambiguous or unbound records fail closed.
+Each child also gets lifecycle marks from the order of the append-only event log
+(no clock involved): `startedAt` is its PreToolUse position and `endedAt` its
+last PostToolUse, PostToolUseFailure, or SubagentStop position, set only once the
+child completed, failed, or stopped with a foreground return or a stop record
+(a background launch without its stop may still run, so it stays null). `qa-v1`
+uses them to prove a replaced run ended before its replacement started.
 An invoking `agent_id` means nesting; malformed or null invoking IDs are rejected.
 Conflicting worker types and explicit requested model overrides fail collection.
 Effective settings stay null when absent. Alias and model-history policy checks

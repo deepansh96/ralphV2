@@ -93,7 +93,9 @@ You may replace a group's worker only when its run
 failed, stopped, or never finished.
 Stop a run that never finished before replacing it: Ralph accepts a
 replacement only beside a failed or stopped run and treats a lower run still
-in progress as a concurrent duplicate. Then launch one replacement with the next run number (2, then 3, and so on,
+in progress as a concurrent duplicate. Wait until the run has fully ended:
+Ralph checks that each replaced run ended before its replacement started and
+fails an overlapping replacement. Then launch one replacement with the next run number (2, then 3, and so on,
 with no gaps) and the unchanged taskId and assignmentDigest. Ralph selects the
 highest run, which must complete; lower runs become `superseded`. Never split
 or merge a group or change its items, and

@@ -7,12 +7,17 @@ def digest: type == "string" and test("^sha256:[0-9a-f]{64}$");
 def policy: . == "pr-review-v1" or . == "qa-v1";
 def metadata: exact(["schemaVersion","policy"]) and .schemaVersion == 1 and (.policy | policy);
 def settings: exact(["model","reasoningEffort"]) and (.model | nullable_text) and (.reasoningEffort | nullable_text);
+# startedAt/endedAt: provider-scoped lifecycle marks, comparable only within one
+# evidence set (Claude hook-event order, Codex turn epoch seconds); null when
+# the provider gave no proof.
+def mark: . == null or integer;
 def child:
-  exact(["childId","parentId","taskId","run","assignmentDigest","started","completed","outcome","effective","nested"])
+  exact(["childId","parentId","taskId","run","assignmentDigest","started","completed","outcome","startedAt","endedAt","effective","nested"])
   and ([.childId,.parentId,.taskId] | all(.[]; text))
   and (.run | positive) and (.assignmentDigest | . == null or digest)
   and ([.started,.completed,.nested] | all(.[]; type == "boolean"))
-  and (.outcome | IN("completed","failed","stopped","incomplete")) and (.effective | settings);
+  and (.outcome | IN("completed","failed","stopped","incomplete"))
+  and (.startedAt | mark) and (.endedAt | mark) and (.effective | settings);
 def codes: ["ASSIGNMENT_DIGEST_MISMATCH","ASSIGNMENT_DUPLICATED","ASSIGNMENT_MISSING","ATTEMPT_MISMATCH","ATTEMPT_MISSING","CHECKLIST_CHANGED","CHECKLIST_INVALID","CHECKLIST_UNAVAILABLE","CHILD_FAILED","CHILD_INCOMPLETE","CHILD_MISSING","CHILD_STOPPED","EFFORT_MISMATCH","EVIDENCE_UNAVAILABLE","MANIFEST_WRITE_FAILED","MODEL_MISMATCH","NESTED_WORKER","PARENT_MISMATCH","PLAN_INVALID","PLAN_MISSING","POLICY_UNSUPPORTED","PROVIDER_FAILED","TASK_DUPLICATED","TASK_MISSING","TASK_UNEXPECTED"];
 def code_array: type == "array" and all(.[]; . as $code | codes | index($code) != null);
 def sorted_strings: type == "array" and all(.[]; text) and . == (sort | unique);

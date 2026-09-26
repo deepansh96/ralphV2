@@ -108,6 +108,13 @@ prove the plan's digest and task ID:
   fail by itself. Only those outcomes prove a run ended: a lower `incomplete`
   run may still be running beside its replacement, so it fails with
   `TASK_DUPLICATED`. The parent must stop a hung run before replacing it.
+- A superseded run must also have ended before any later run of its chain
+  started: its `endedAt` must be present and at or before every later run's
+  `startedAt`. A run that failed or stopped only after its replacement started
+  overlapped it, so the chain fails with `TASK_DUPLICATED`. A missing
+  `endedAt` on the lower run or `startedAt` on a later run cannot prove the
+  sequence and fails closed the same way. Chains without replacements never
+  consult the marks.
 - A completed run cannot be replaced in v1, even when its returned evidence is
   unusable: that result fails the step instead. A completed lower run fails
   with `TASK_DUPLICATED`.
@@ -118,6 +125,18 @@ prove the plan's digest and task ID:
 - A worker with a missing or foreign digest, another task ID, or another parent
   joins no chain; it never fills a gap or supersedes anything.
 
+The marks come from the collectors. Claude: `startedAt` is the position of the
+worker's PreToolUse record in the attempt's append-only hook log, and `endedAt`
+the position of its last PostToolUse, PostToolUseFailure, or SubagentStop
+record. The PreToolUse hook finishes before the worker starts and each end hook
+runs after it returned, so "end record before start record" proves the runs did
+not overlap without trusting any clock. A background launch counts as ended
+only once its SubagentStop arrives. Codex: `startedAt` is the earliest turn
+`startedAt` and `endedAt` the latest turn `completedAt` reported by App Server
+`thread/read`, in epoch seconds, and only once every turn is terminal. Seconds
+are coarse: a replacement that starts in the same second its predecessor ended
+counts as sequential. Any missing turn timestamp leaves the mark null.
+
 Replacements stay inside one provider invocation. An internal CLI retry, manual
 retry, or HITL restart is a new attempt with a fresh plan, so its workers start
 again at run 1 and can never supersede an old session's workers.
@@ -126,6 +145,8 @@ again at run 1 and can never supersede an old session's workers.
 | --- | --- |
 | run 1 failed or stopped; run 2 completed | pass; run 1 `superseded` |
 | run 1 incomplete (no end evidence); run 2 completed | `TASK_DUPLICATED` |
+| run 1 failed or stopped after run 2 started (overlap) | `TASK_DUPLICATED` |
+| run 1 without `endedAt`, or run 2 without `startedAt` | `TASK_DUPLICATED` |
 | run 1 completed; any run 2 | `TASK_DUPLICATED` |
 | two workers with the same run | `TASK_DUPLICATED` |
 | runs 1 and 3, or only run 2 | `TASK_UNEXPECTED` |
@@ -153,7 +174,7 @@ never compared.
 | `CHECKLIST_INVALID` | The refetched comment is malformed, unmarked, or has duplicate IDs. |
 | `CHECKLIST_CHANGED` | Instruction digest or ID set differs from the snapshot. |
 | `TASK_MISSING` | An assignment has no bound direct worker. |
-| `TASK_DUPLICATED` | Two workers share a run, or a completed lower run was replaced. |
+| `TASK_DUPLICATED` | Two workers share a run, a completed or unfinished lower run was replaced, or a lower run did not provably end before a later run started. |
 | `TASK_UNEXPECTED` | An assignment's runs are not exactly `1..N` (a gap, or no run 1). |
 
 Lifecycle, nesting, parent, attempt, and model/effort codes apply exactly as in

@@ -226,10 +226,13 @@ pr_workers() {
 }
 
 # Hand-authored manifest child from the #37 child record plus disposition.
+# Lifecycle marks default to the fake Codex turn (startedAt 1, completedAt 2);
+# Claude marks are the worker's PreToolUse and last end-hook log positions.
 expected_child() {
   jq -nc --arg id "$1" --arg parent "$2" --arg task "$3" --argjson digest "$4" --argjson effective "$5" \
+    --argjson startedAt "${6:-1}" --argjson endedAt "${7:-2}" \
     '{childId:$id,parentId:$parent,taskId:$task,run:1,assignmentDigest:$digest,started:true,completed:true,
-      outcome:"completed",effective:$effective,nested:false,disposition:"selected"}'
+      outcome:"completed",startedAt:$startedAt,endedAt:$endedAt,effective:$effective,nested:false,disposition:"selected"}'
 }
 
 state_step() {
@@ -336,7 +339,8 @@ test_claude_fixture_passes_pr_review_and_qa_with_session_local_worker() {
   attempt="$(state_step "$issue" multi-axis-pr-review | jq -r '.delegationAttempt.id')"
   manifest="$(manifest_file "$issue" multi-axis-pr-review)"
   children="$(for task in isolated_codex matt_spec matt_standards ponytail supe; do
-    expected_child "child-$task-1" "$session" "$task" null '{"model":"claude-sonnet-5","reasoningEffort":"high"}'; done | jq -sc .)"
+    i="$(jq -n --argjson tasks "$PR_TASKS" --arg task "$task" '$tasks | index($task)')"
+    expected_child "child-$task-1" "$session" "$task" null '{"model":"claude-sonnet-5","reasoningEffort":"high"}' $((4 * i)) $((4 * i + 3)); done | jq -sc .)"
   expected="$(jq -nc --arg attempt "$attempt" --arg session "$session" --argjson children "$children" '{schemaVersion:1,issue:9057,stepId:"multi-axis-pr-review",attemptId:$attempt,
     provider:"claude",evidenceSource:"hooks",parentId:$session,policy:"pr-review-v1",
     requested:{parent:{model:"opus",reasoningEffort:"medium"},worker:{model:"claude-sonnet-5",reasoningEffort:"high"}},
