@@ -15,7 +15,7 @@ edges:
     condition: when understanding run-loop behavior or step state
   - target: patterns/recover-failed-or-stale-step.md
     condition: when a step fails, blocks, or becomes stale
-last_updated: 2026-07-30
+last_updated: 2026-09-25
 ---
 
 # Run And Monitor Pipeline
@@ -38,6 +38,7 @@ Load `context/setup.md` and `context/architecture.md`. Confirm the issue workspa
 
 - Do not pipe `./ralph.sh --issue N` through `head`, `tail`, or similar commands.
 - Avoid `--background` inside Codex tool sessions; the wrapper can die and leave stale state.
+- Gated QA/review steps show `[delegation] child started` and `child completed` lines instead of the log snippet while running, and one `Delegation:` summary line once terminal. A missing line means no current-attempt evidence, not zero workers; see `docs/delegation-gate.md`.
 - `poll` exits non-zero when the recorded wrapper dies with pending work, even
   when no step is currently active.
 - `logs --issue N` follows the active step; use `--step step-id` for a specific log.

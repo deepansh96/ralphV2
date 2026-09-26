@@ -216,24 +216,57 @@ normal work is retried, completed always-run cleanup is automatically rearmed.
 - `review-decisions`: reviews issue decisions against `CONTEXT.md`, `CLAUDE.md`, and ADRs; may block for human input.
 - `create-and-review-prd`: preserves the original issue body, drafts the PRD following the `to-spec` skill (including the testing seams), runs council reviews (controlled by `reviewRounds`, default 0), and updates the parent issue.
 - `create-and-review-slices`: drafts vertical AFK slices following the `to-tickets` skill with explicit blocking edges (native GitHub issue dependencies plus `Blocked by` body lines), runs council reviews (controlled by `reviewRounds`, default 0), creates GitHub sub-issues, and links them under the parent.
-- `preflight`: backfills missing cleanup artifacts for older initialized workspaces, checks the working tree and `baseBranch` contract, creates/pushes the feature branch, appends the dynamic implementation and post-implementation steps, and snapshots parent/worker settings onto delegated QA and review steps.
+- `preflight`: backfills missing cleanup artifacts for older initialized workspaces, checks the working tree and `baseBranch` contract, creates/pushes the feature branch, appends the dynamic implementation and post-implementation steps, snapshots parent/worker settings onto delegated QA and review steps, and writes or backfills their delegation gate metadata on pending steps only.
 - `implement-slice`: reads the assigned sub-issue, verifies blockers are closed, follows TDD at the PRD's pre-agreed seams, commits, pushes, and closes the sub-issue.
 - `final-checks`: reads the complete branch diff, runs project checks, verifies every slice's acceptance criteria, and writes `final-checks.md` without changing product code.
 - `pr-creation`: pushes the feature branch and idempotently creates or updates a PR with a summary and issue-closing links.
-- `prepare-qa-checklist`: posts or updates one PR comment containing local-only manual QA items.
+- `prepare-qa-checklist`: posts or updates one PR comment containing local-only manual QA items in the stable format from `docs/qa-delegation.md`.
 - `runthrough-qa-checklist`: injects the provider-native delegation contract;
-  the main agent safely batches QA checklist work across its own workers, then
-  validates their evidence and updates the same PR comment without executing a
+  the main agent snapshots an immutable assignment plan before its first spawn,
+  safely batches QA checklist work across its own workers (packets open with
+  `RALPH-TASK`, `RALPH-ASSIGNMENT`, and `RALPH-RUN: 1`), then validates their
+  evidence and updates the same PR comment without executing a
   QA item itself.
 - `multi-axis-pr-review`: injects a provider-specific native delegation contract,
-  runs five flat review workers in two capacity-safe batches, verifies and votes
+  runs five flat review workers named `matt_standards`, `matt_spec`,
+  `ponytail`, `isolated_codex`, and `supe` in two capacity-safe batches, each
+  packet opening with `RALPH-TASK` and `RALPH-RUN: 1`, verifies and votes
   on their findings, and posts one consolidated PR comment. Two Matt workers run
   Standards and Spec in parallel; then three workers run Ponytail, isolated
   Codex, and Supe in parallel. By default, Codex workers use Luna with `max`
-  reasoning and Claude workers use Sonnet with `high` effort through Claude
-  Code's native dynamic Workflow tool. Preflight snapshots the configured
+  reasoning and Claude workers use Sonnet with `high` effort through native
+  foreground Agent calls to a session-local `ralph-worker` (ungated legacy
+  steps keep the dynamic Workflow tool). Preflight snapshots the configured
   parent and worker settings into state, and they can be overridden per step.
 - `cleanup-local-resources`: always runs after success or failure and removes pipeline-owned processes, containers, sessions, temporary files, and worktree leftovers.
+
+## Delegation gate
+
+Steps with `delegation` metadata (preflight writes it for
+`runthrough-qa-checklist` and `multi-axis-pr-review`) complete only when the
+[completion gate](docs/delegation-gate.md) verifies provider evidence at
+`OBSERVED` or `VERIFIED`. Before every provider invocation, including internal
+retries and HITL resumes, the runner stamps a fresh `delegationAttempt` and
+rerenders the prompt. It then collects evidence bound to that attempt only:
+[Claude hooks](docs/claude-delegation.md) for a session-local foreground
+`ralph-worker`, or the exec parent's children read through a fresh
+[Codex App Server](docs/codex-delegation.md). The gate writes one private 0600
+[manifest](docs/delegation-manifest.md) to
+`workspaces/<issue>/delegation/<step>.manifest.json`; `qa-v1` also checks the
+[immutable QA plan and stable checklist](docs/qa-delegation.md). Any other
+result, a provider failure (`PROVIDER_FAILED`), an unsupported provider or
+policy, missing worker settings, or a manifest write failure marks the step
+`failed`, and always-run cleanup still runs. A blocked (HITL) run writes no
+manifest until it reaches a terminal result. Steps without metadata behave
+exactly as before. The provider's main agent owns all worker orchestration;
+Ralph only observes and gates. Run
+`./tests/run.sh delegation_gate claude_delegation codex_delegation delegation_manifest delegation_qa`
+for deterministic coverage; the linked guides document prerequisites and the
+separate opt-in live collection probes. The opt-in live smoke tests,
+`tests/probes/claude-gate-smoke.sh` and `tests/probes/codex-gate-smoke.sh`, each
+run one real gated QA step end to end
+([Claude](docs/delegation-gate.md#live-claude-smoke-test),
+[Codex](docs/delegation-gate.md#live-codex-smoke-test)).
 
 ## Bundled Skills
 

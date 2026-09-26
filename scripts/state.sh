@@ -3,6 +3,7 @@
 STATE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=ralph-v2/scripts/config.sh
 source "$STATE_SCRIPT_DIR/config.sh"
+source "$STATE_SCRIPT_DIR/delegation.sh"
 
 state_read() {
   local state_file="$1"
@@ -10,8 +11,10 @@ state_read() {
   jq '.' "$state_file"
 }
 
+# Pass --read-only from status and logs: they display failed steps instead of
+# refusing them; only runs need the failed-step guard.
 state_validate() {
-  local state_file="$1"
+  local state_file="$1" read_only="${2:-}"
   local stale_threshold now_epoch workspace
 
   if [[ ! -f "$state_file" ]]; then
@@ -19,7 +22,8 @@ state_validate() {
     return 1
   fi
 
-  if jq -e '.steps[]? | select(.status == "failed")' "$state_file" >/dev/null \
+  if [[ "$read_only" != "--read-only" ]] \
+    && jq -e '.steps[]? | select(.status == "failed")' "$state_file" >/dev/null \
     && ! jq -e '.steps[]? | select(.alwaysRun == true and (.status == "pending" or .status == "in_progress"))' "$state_file" >/dev/null; then
     echo "Error: state has failed steps; set status to pending or completed before re-running" >&2
     return 1
@@ -243,6 +247,44 @@ state_snapshot_delegated_step_defaults() {
               else .subagentReasoningEffort
               end
             )
+        else
+          .
+        end
+      )
+    ' "$state_file" > "$tmp_file"; then
+    rm -f "$tmp_file"
+    return 1
+  fi
+
+  mv "$tmp_file" "$state_file"
+}
+
+# Gate activation: give one pending step the exact v1 delegation metadata when
+# it has none. Completed, running, blocked, and failed steps and any explicit
+# `delegation` value (even malformed, which later fails closed) stay untouched.
+state_backfill_delegation_metadata() {
+  local state_file="$1"
+  local step_id="$2"
+  local policy="$3"
+  local tmp_file
+
+  if ! jq -nc --arg policy "$policy" '{schemaVersion: 1, policy: $policy}' | delegation_validate metadata; then
+    echo "Error: unknown delegation policy '$policy'" >&2
+    return 1
+  fi
+  if ! jq -e --arg id "$step_id" 'any(.steps[]?; .id == $id)' "$state_file" >/dev/null; then
+    echo "Error: delegated step '$step_id' is missing" >&2
+    return 1
+  fi
+
+  tmp_file="$(mktemp "${state_file}.tmp.XXXXXX")"
+  if ! jq \
+    --arg id "$step_id" \
+    --arg policy "$policy" \
+    '
+      .steps |= map(
+        if .id == $id and .status == "pending" and (has("delegation") | not) then
+          .delegation = {schemaVersion: 1, policy: $policy}
         else
           .
         end

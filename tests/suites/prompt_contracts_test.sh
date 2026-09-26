@@ -243,6 +243,18 @@ test_preflight_prompt_defines_full_preflight_workflow_contract() {
   assert_contains "$prompt" "ralph.config.json"
   assert_contains "$prompt" "ralph_config_delegated_step_defaults"
   assert_contains "$prompt" "state_snapshot_delegated_step_defaults"
+  assert_contains "$prompt" '"delegation": {"schemaVersion": 1, "policy": "pr-review-v1"}'
+  assert_contains "$prompt" '`qa-v1`'
+  assert_contains "$prompt" '"delegation": {"schemaVersion": 1, "policy": "qa-v1"}'
+  assert_contains "$prompt" 'state_backfill_delegation_metadata'
+  assert_contains "$prompt" 'runthrough-qa-checklist \
+  qa-v1'
+  assert_contains "$prompt" 'multi-axis-pr-review \
+  pr-review-v1'
+  assert_contains "$prompt" 'only on existing pending steps'
+  assert_contains "$prompt" 'Never write or edit `delegationAttempt`'
+  [[ "$prompt" != *'Do not write or backfill `delegation`'* ]] || fail "expected preflight to activate delegation metadata"
+
   assert_contains "$prompt" "runthrough-qa-checklist"
   assert_contains "$prompt" "model"
   assert_contains "$prompt" "reasoningEffort"
@@ -360,6 +372,15 @@ test_prepare_qa_checklist_prompt_defines_local_comment_contract() {
   assert_contains "$prompt" "[PENDING]"
   assert_contains "$prompt" "edit it instead of adding another comment"
   assert_contains "$prompt" "Save no checklist"
+
+  # One stable instruction format shared with docs/qa-delegation.md.
+  assert_contains "$prompt" "docs/qa-delegation.md"
+  assert_contains "$prompt" "- [ ] [PENDING] QA-01: <behavior>"
+  assert_contains "$prompt" "two or more digits"
+  assert_contains "$prompt" "unique"
+  assert_contains "$prompt" 'directly under `<!-- ralph:qa-checklist -->`'
+  assert_contains "$prompt" "No other lines"
+  assert_contains "$prompt" "Result"
 }
 
 test_runthrough_qa_checklist_prompt_defines_execution_and_progress_contract() {
@@ -409,6 +430,35 @@ test_runthrough_qa_checklist_prompt_defines_execution_and_progress_contract() {
   assert_contains "$prompt" "orchestration operations"
   assert_contains "$prompt" "original checklist order"
   assert_contains "$prompt" "must not replace the missing work by performing"
+
+  # qa-v1 plan timing, packet markers, Codex task naming, progress format.
+  assert_contains "$prompt" "Before the first spawn"
+  assert_contains "$prompt" "delegation_qa_plan_write {{WORKSPACE}}/state.json {{STEP_ID}} {{REPO}} <comment-id>"
+  assert_contains "$prompt" "./ralph-v2/scripts/delegation-qa.sh"
+  assert_contains "$prompt" "{{WORKSPACE}}/delegation/{{STEP_ID}}.plan.json"
+  assert_contains "$prompt" "Never write, edit, or regenerate the plan"
+  assert_contains "$prompt" "RALPH-TASK: <taskId>"
+  assert_contains "$prompt" "RALPH-ASSIGNMENT: <assignmentDigest>"
+  assert_contains "$prompt" "RALPH-RUN: <run>"
+  assert_contains "$prompt" "first three lines"
+  assert_contains "$prompt" 'qa_r<run>_<assignment-digest-hex>'
+  assert_contains "$prompt" '`spawn_agent` `task_name`'
+  # qa-v1 replacements: parent-owned, sequential, never after a completed run.
+  assert_contains "$prompt" "The first run of every group is 1"
+  assert_contains "$prompt" "failed, stopped, or never finished"
+  assert_contains "$prompt" "Stop a run that never finished before replacing it"
+  assert_contains "$prompt" "the next run number"
+  assert_contains "$prompt" "unchanged taskId and assignmentDigest"
+  assert_contains "$prompt" "A completed run cannot be replaced"
+  assert_contains "$prompt" "unusable evidence fails this step"
+  assert_contains "$prompt" "Ralph never starts a replacement"
+  assert_contains "$prompt" "never run two workers for the same group at once"
+  [[ "$prompt" != *"Do not relaunch, replace"* ]] || fail "expected QA replacements to be allowed"
+  assert_contains "$prompt" "  - Result:"
+  assert_contains "$prompt" "  - Evidence:"
+  assert_contains "$prompt" "<!-- ralph:qa-summary -->"
+  assert_contains "$prompt" "Never change an item's ID, behavior text, or Setup/Action/Expected/Isolation lines"
+  [[ "$prompt" != *"may retry or delegate the item"* ]] || fail "expected the broad QA retry wording to be removed"
 }
 
 test_multi_axis_pr_review_prompt_defines_four_skill_vote_contract() {
@@ -452,6 +502,29 @@ test_multi_axis_pr_review_prompt_defines_four_skill_vote_contract() {
   assert_contains "$prompt" "Deduplicate"
   assert_contains "$prompt" "<!-- ralph:multi-axis-review -->"
   assert_contains "$prompt" "Do not apply"
+
+  # pr-review-v1 identity: exact snake_case task IDs and packet markers.
+  assert_contains "$prompt" '`matt_standards`'
+  assert_contains "$prompt" '`matt_spec`'
+  assert_contains "$prompt" '`ponytail`'
+  assert_contains "$prompt" '`isolated_codex`'
+  assert_contains "$prompt" '`supe`'
+  assert_contains "$prompt" "RALPH-TASK: <task-id>"
+  assert_contains "$prompt" "RALPH-RUN: 1"
+  assert_contains "$prompt" "first two lines"
+  assert_contains "$prompt" '`task_name`'
+  assert_contains "$prompt" "exactly once"
+  assert_contains "$prompt" "no retries"
+  assert_contains "$prompt" "Do not relaunch"
+}
+
+test_native_delegation_fragments_stay_policy_free() {
+  local fragment
+  for fragment in "$ROOT_DIR"/prompts/native-delegation/*.md; do
+    if grep -q -e matt_standards -e isolated_codex -e pr-review-v1 -e qa-v1 "$fragment"; then
+      fail "expected $fragment to carry no step policy"
+    fi
+  done
 }
 
 test_cleanup_local_resources_prompt_defines_owned_always_run_contract() {
@@ -519,6 +592,7 @@ run_test test_pr_creation_prompt_defines_idempotent_pr_only_contract
 run_test test_prepare_qa_checklist_prompt_defines_local_comment_contract
 run_test test_runthrough_qa_checklist_prompt_defines_execution_and_progress_contract
 run_test test_multi_axis_pr_review_prompt_defines_four_skill_vote_contract
+run_test test_native_delegation_fragments_stay_policy_free
 run_test test_cleanup_local_resources_prompt_defines_owned_always_run_contract
 run_test test_removed_review_prompts_are_absent
 run_test test_grill_with_docs_skill_defines_planning_branch_contract
