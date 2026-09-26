@@ -11,8 +11,10 @@ state_read() {
   jq '.' "$state_file"
 }
 
+# Pass --read-only from status and logs: they display failed steps instead of
+# refusing them; only runs need the failed-step guard.
 state_validate() {
-  local state_file="$1"
+  local state_file="$1" read_only="${2:-}"
   local stale_threshold now_epoch workspace
 
   if [[ ! -f "$state_file" ]]; then
@@ -20,7 +22,8 @@ state_validate() {
     return 1
   fi
 
-  if jq -e '.steps[]? | select(.status == "failed")' "$state_file" >/dev/null \
+  if [[ "$read_only" != "--read-only" ]] \
+    && jq -e '.steps[]? | select(.status == "failed")' "$state_file" >/dev/null \
     && ! jq -e '.steps[]? | select(.alwaysRun == true and (.status == "pending" or .status == "in_progress"))' "$state_file" >/dev/null; then
     echo "Error: state has failed steps; set status to pending or completed before re-running" >&2
     return 1

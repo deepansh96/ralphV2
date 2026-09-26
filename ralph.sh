@@ -395,10 +395,10 @@ case "$COMMAND" in
       [[ -f "$STATE_FILE" ]] || state_validate "$STATE_FILE"
       poll_pipeline "$STATE_FILE" "$SCRIPT_DIR/workspaces/$ISSUE"
     elif [[ "$COMMAND" == "status" ]]; then
-      state_validate "$STATE_FILE"
+      state_validate "$STATE_FILE" --read-only
       status_print "$STATE_FILE" "$SCRIPT_DIR/workspaces/$ISSUE"
     else
-      state_validate "$STATE_FILE"
+      state_validate "$STATE_FILE" --read-only
       logs_tail "$STATE_FILE" "$SCRIPT_DIR/workspaces/$ISSUE" "$STEP_ID"
     fi
     ;;

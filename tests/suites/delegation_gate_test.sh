@@ -386,6 +386,42 @@ test_verifier_failure_writes_unverified_manifest_and_fails_step() {
   assert_no_attempt_inputs "$issue"
 }
 
+# QA-02 (#52): status and logs are read-only, so a gated failure stays visible.
+test_status_shows_failed_gated_step_while_run_still_refuses() {
+  local issue=9075 output status
+
+  write_valid_context
+  install_gate_fakes "$GATE_BIN"
+  write_gate_state "$issue" codex '[{"id":"multi-axis-pr-review","delegation":{"schemaVersion":1,"policy":"pr-review-v1"}}]'
+  jq -n --argjson pr "$(pr_workers | jq -c 'map(select(.task != "supe"))')" \
+    '{"multi-axis-pr-review": [{parent:"parent-s",workers:$pr}]}' > "$GATE_BIN/scenario.json"
+
+  run_ralph "$issue"
+  [[ "$RUN_STATUS" -eq 1 ]] || fail "expected verifier failure to exit 1, got $RUN_STATUS: $RUN_OUTPUT"
+  [[ "$(grep -c "Delegation gate: step 'multi-axis-pr-review' is UNVERIFIED TASK_MISSING" <<< "$RUN_OUTPUT")" -eq 1 ]] \
+    || fail "expected exactly one gate failure line: $RUN_OUTPUT"
+  assert_cleanup_ran "$issue"
+
+  set +e
+  output="$("$RALPH" status --issue "$issue" 2>&1)"
+  status=$?
+  set -e
+  [[ "$status" -eq 0 ]] || fail "expected status to exit 0 with a failed step, got $status: $output"
+  grep -Eq '^[0-9]+[[:space:]]+multi-axis-pr-review[[:space:]]+multi-axis-pr-review[[:space:]]+codex[[:space:]]+failed ' <<< "$output" || fail "expected failed step row: $output"
+  [[ "$(grep -c 'Delegation: UNVERIFIED 4/5' <<< "$output")" -eq 1 ]] || fail "expected one UNVERIFIED 4/5 line: $output"
+
+  set +e
+  output="$("$RALPH" logs --issue "$issue" --step multi-axis-pr-review 2>&1)"
+  status=$?
+  set -e
+  [[ "$status" -eq 0 ]] || fail "expected logs to exit 0 with a failed step, got $status: $output"
+
+  run_ralph "$issue"
+  [[ "$RUN_STATUS" -ne 0 ]] || fail "expected a rerun to refuse failed steps"
+  assert_contains "$RUN_OUTPUT" "state has failed steps"
+  [[ "$(state_step "$issue" multi-axis-pr-review | jq -r .status)" == failed ]] || fail "expected step to stay failed"
+}
+
 test_provider_failure_writes_provider_failed_manifest_before_failing() {
   local issue=9059 manifest
 
@@ -581,6 +617,7 @@ test_steps_without_metadata_keep_legacy_behavior() {
 run_test test_codex_fixture_passes_pr_review_and_qa_and_completes
 run_test test_claude_fixture_passes_pr_review_and_qa_with_session_local_worker
 run_test test_verifier_failure_writes_unverified_manifest_and_fails_step
+run_test test_status_shows_failed_gated_step_while_run_still_refuses
 run_test test_provider_failure_writes_provider_failed_manifest_before_failing
 run_test test_retry_stamps_fresh_attempt_and_only_final_parent_counts
 run_test test_hitl_block_defers_manifest_and_resume_uses_fresh_attempt
