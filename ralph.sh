@@ -19,6 +19,8 @@ source "$SCRIPT_DIR/scripts/prompt.sh"
 source "$SCRIPT_DIR/scripts/metrics.sh"
 # shellcheck source=ralph-v2/scripts/agent.sh
 source "$SCRIPT_DIR/scripts/agent.sh"
+# shellcheck source=ralph-v2/scripts/grill.sh
+source "$SCRIPT_DIR/scripts/grill.sh"
 
 usage() {
   cat >&2 <<'USAGE'
@@ -27,6 +29,8 @@ Usage:
   ralph.sh status --issue N
   ralph.sh logs --issue N [--step step-id]
   ralph.sh poll --issue N
+  ralph.sh grill start (--issue N | --requirement-file PATH) --grilling-agent A --answering-agent A
+  ralph.sh grill resume|status|logs|cleanup --id SESSION_ID
 USAGE
 }
 
@@ -302,6 +306,12 @@ poll_pipeline() {
 if [[ "${1:-}" == "__run_pipeline" ]]; then
   [[ $# -eq 4 ]] || die "__run_pipeline requires state file, workspace, and step limit"
   run_pipeline "$2" "$3" "$4"
+  exit $?
+fi
+
+if [[ "${1:-}" == "grill" ]]; then
+  shift
+  grill_main "$@"
   exit $?
 fi
 

@@ -1,6 +1,7 @@
 # Runtime artifacts (generated during execution)
 workspaces/*/
 archive/
+grilling-sessions/
 
 # Keep workspaces dir structure
 !workspaces/.gitkeep
