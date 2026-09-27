@@ -12,6 +12,9 @@ prompt_native_delegation_contract() {
   local subagent_model subagent_reasoning_effort
 
   contract_file="$(dirname "$template_file")/native-delegation/$agent.md"
+  if [[ "$agent" == claude ]] && jq -e 'has("delegation")' <<< "$step_json" >/dev/null; then
+    contract_file="$(dirname "$template_file")/native-delegation/claude-agent.md"
+  fi
   if [[ ! -f "$contract_file" ]]; then
     echo "Error: native delegation is not configured for agent '$agent'" >&2
     return 1

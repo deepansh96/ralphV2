@@ -256,6 +256,42 @@ test_state_snapshots_delegated_defaults_without_overwriting_explicit_values() {
   ' "$state_file" >/dev/null || fail "expected an existing snapshot to remain stable"
 }
 
+test_state_backfills_delegation_metadata_only_on_pending_steps_without_it() {
+  local issue state_file before
+
+  issue="9030"
+  rm -rf "${WORKSPACES_DIR:?}/$issue"
+  mkdir -p "$WORKSPACES_DIR/$issue"
+  state_file="$WORKSPACES_DIR/$issue/state.json"
+  jq -n '{issue: 9030, steps: [
+    {id: "runthrough-qa-checklist", status: "pending"},
+    {id: "multi-axis-pr-review", status: "completed"},
+    {id: "explicit", status: "pending", delegation: {schemaVersion: 1, policy: "pr-review-v1"}},
+    {id: "malformed", status: "pending", delegation: null},
+    {id: "running", status: "in_progress"},
+    {id: "blocked", status: "blocked"},
+    {id: "failed", status: "failed"}
+  ]}' > "$state_file"
+  before="$(jq -c . "$state_file")"
+
+  for step in runthrough-qa-checklist multi-axis-pr-review running blocked failed; do
+    state_backfill_delegation_metadata "$state_file" "$step" qa-v1 || fail "expected backfill of $step to succeed"
+  done
+  state_backfill_delegation_metadata "$state_file" explicit qa-v1 || fail "expected explicit value to be a no-op"
+  state_backfill_delegation_metadata "$state_file" malformed pr-review-v1 || fail "expected malformed value to be a no-op"
+
+  [[ "$(jq -c '.steps[0].delegation' "$state_file")" == '{"schemaVersion":1,"policy":"qa-v1"}' ]] \
+    || fail "expected the pending step to receive exact metadata"
+  [[ "$(jq -c '.steps[1:]' "$state_file")" == "$(jq -c '.steps[1:]' <<< "$before")" ]] \
+    || fail "expected completed, explicit, malformed, and non-pending steps unchanged"
+  if state_backfill_delegation_metadata "$state_file" runthrough-qa-checklist deploy-v1 2>/dev/null; then
+    fail "expected an unknown policy to be rejected"
+  fi
+  if state_backfill_delegation_metadata "$state_file" missing-step qa-v1 2>/dev/null; then
+    fail "expected a missing step to be rejected"
+  fi
+}
+
 test_state_get_current_step_prioritizes_always_run_cleanup_after_failure() {
   local issue state_file current
 
@@ -625,6 +661,7 @@ test_state_validate_resets_stale_in_progress_step_with_dead_pid_file() {
 run_test test_run_rejects_failed_steps
 run_test test_state_add_steps_appends_dynamic_steps_and_rejects_duplicates
 run_test test_state_snapshots_delegated_defaults_without_overwriting_explicit_values
+run_test test_state_backfills_delegation_metadata_only_on_pending_steps_without_it
 run_test test_state_get_current_step_prioritizes_always_run_cleanup_after_failure
 run_test test_state_get_current_step_defers_always_run_cleanup_until_normal_work_finishes
 run_test test_state_validate_rearms_completed_cleanup_when_normal_work_retries

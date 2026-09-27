@@ -5,10 +5,19 @@ TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 suites=(
   cli_test.sh
+  status_delegation_test.sh
   cleanup_test.sh
   context_test.sh
   agent_test.sh
   state_test.sh
+  delegation_test.sh
+  claude_delegation_test.sh
+  claude_gate_smoke_test.sh
+  codex_gate_smoke_test.sh
+  codex_delegation_test.sh
+  delegation_manifest_test.sh
+  delegation_qa_test.sh
+  delegation_gate_test.sh
   pipeline_test.sh
   background_poll_test.sh
   council_test.sh
