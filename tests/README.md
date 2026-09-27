@@ -37,6 +37,7 @@ Run one or more suites by name:
 - `prompt_contracts_test.sh`: prompt and skill contracts that downstream agents must follow.
 - `skill_docs_test.sh`: bundled skill/link integrity and workflow documentation.
 - `parse_log_test.sh`: log summarization for Claude, Codex, and Pi JSONL output.
+- `grill_test.sh`: `ralph.sh grill` Automated Grilling Sessions against a temporary target repository with a local bare remote and scripted fake `claude`, `codex`, `uuidgen`, and `gh`. The fake `claude` and `codex` share one per-exchange fixture library (`install_grill_fake_common` in `tests/lib/test_helpers.sh`).
 
 Opt-in live checks live in `tests/probes/` and never run from `./tests/run.sh`: the Claude and Codex collection probes (`docs/claude-delegation.md`, `docs/codex-delegation.md`) and the Claude and Codex gate smoke tests (`docs/delegation-gate.md`). Each requires an explicit environment opt-in and real credentials; a missing opt-in, credential, or prerequisite is never a pass.
 
