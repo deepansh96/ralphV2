@@ -10,7 +10,7 @@ ARCHIVE_DIR="$ROOT_DIR/archive"
 CONTEXT_FILE="$PROJECT_ROOT/CONTEXT.md"
 INITIAL_CONTEXT_BACKUP="$(mktemp)"
 INITIAL_CONTEXT_PRESENT="false"
-TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033 9034 9035 9036 9037 9038 9039 9040 9041 9042 9043 9044 9045 9046 9047 9048 9049 9050 9051 9052 9053 9054 9055 9056 9057 9058 9059 9060 9061 9062 9063 9064 9065 9066 9067 9068 9069 9070 9071 9072 9073)
+TEST_ISSUES=(42 9001 9002 9003 9004 9005 9006 9007 9008 9009 9010 9011 9012 9013 9014 9015 9016 9018 9019 9020 9021 9022 9023 9024 9025 9026 9027 9028 9029 9030 9031 9032 9033 9034 9035 9036 9037 9038 9039 9040 9041 9042 9043 9044 9045 9046 9047 9048 9049 9050 9051 9052 9053 9054 9055 9056 9057 9058 9059 9060 9061 9062 9063 9064 9065 9066 9067 9068 9069 9070 9071 9072 9073 9076 9077 9078 9079 9080 9081 9082 9083 9084)
 export RALPH_RETRY_DELAYS="${RALPH_RETRY_DELAYS:-0 0 0}"
 
 if [[ -f "$CONTEXT_FILE" ]]; then
@@ -106,19 +106,21 @@ write_single_step_state() {
   local issue="$1"
   local step_id="$2"
   local status="$3"
+  local agent="${4:-stub}"
 
   mkdir -p "$WORKSPACES_DIR/$issue/logs"
   jq -n \
     --arg issue "$issue" \
     --arg id "$step_id" \
     --arg status "$status" \
+    --arg agent "$agent" \
     '{
       issue: ($issue | tonumber),
       steps: [
         {
           id: $id,
           type: "stub",
-          agent: "stub",
+          agent: $agent,
           status: $status,
           metrics: { duration: null },
           notes: ""
@@ -829,6 +831,9 @@ if [[ -n "$last_message_file" ]]; then
   printf 'codex saw: %s\n' "$prompt" > "$last_message_file"
 fi
 
+if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
+  printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format."}}'
+fi
 printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":13,"output_tokens":8}}'
 FAKE_CODEX
   chmod +x "$fake_bin/codex"
@@ -888,6 +893,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 prompt="$(cat)"
+if [[ "$prompt" == *"CONTEXT_CHECK_REQUIRED"* ]]; then
+  printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"CONTEXT_CHECK: PASS\nCONTEXT.md follows the required format."}}'
+  printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
+  exit 0
+fi
 [[ "$prompt" == *"Issue: 9020"* ]] || exit 101
 [[ "$prompt" == *"Repo: deepansh96/ralph"* ]] || exit 102
 [[ "$prompt" == *"Workspace: "*"/workspaces/9020"* ]] || exit 103

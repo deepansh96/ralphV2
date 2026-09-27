@@ -14,7 +14,7 @@ edges:
     condition: when setting up the repo, running tests, or debugging environment issues
   - target: patterns/INDEX.md
     condition: when starting a concrete task, especially init, run, recovery, or pipeline changes
-last_updated: 2026-09-25
+last_updated: 2026-09-27
 ---
 
 # Session Bootstrap
@@ -26,7 +26,7 @@ Then read this file fully before doing anything else in this session.
 ## Current Project State
 
 **Working:**
-- Core CLI entrypoint `ralph.sh` supports `run`, `status`, `logs`, and `poll` for issue workspaces.
+- Core CLI entrypoint `ralph.sh` supports `run`, `status`, `logs`, and `poll` for issue workspaces. Its pre-run `CONTEXT.md` completeness check inherits the first runnable step's agent, model, and reasoning effort.
 - `ralph.sh grill start|resume|status|logs|cleanup` runs opt-in Automated Grilling Sessions (`scripts/grill.sh`): a Grilling Agent and an Answering Agent in persistent native Claude sessions or Codex threads, relayed by a deterministic coordinator through strict JSON messages to a human confirmation gate, then approve (commit `CONTEXT.md`/`docs/adr/`, push, create or edit the issue) or reject. Verified end to end against real `codex` and `claude`.
 - Pipeline state lives in `workspaces/<issue>/state.json` with fixed steps, dynamic steps, per-step main-agent and subagent model/reasoning snapshots and overrides, metrics, HITL flags, and stale PID recovery. Repo-wide parent and worker defaults live in `ralph.config.json`.
 - Prompt templates in `prompts/` render step-specific instructions and dispatch through `scripts/agent.sh` to Claude, Codex, or DeepSeek through Pi. QA execution and multi-axis review inject the same reusable provider-native worker contract for Claude or Codex, with model and effort resolved from step snapshots then Ralph config, while leaving flat spawning and coordination to the main agent. Init installs always-run local-resource cleanup; preflight appends implementation steps followed by final checks, PR creation, local QA preparation/execution, and five-pass PR review, then snapshots the delegated steps' parent and worker settings.
