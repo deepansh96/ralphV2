@@ -6,6 +6,15 @@ context_project_root() {
   cd "$script_dir/.." && pwd
 }
 
+# Applies a jq filter to the log's JSON lines as one array, skipping any
+# non-JSON lines such as CLI warnings.
+context_log_events() {
+  local log_file="$1"
+  local filter="$2"
+
+  jq -Rrn "[inputs | fromjson? | objects] | $filter" "$log_file" 2>/dev/null || true
+}
+
 context_agent_output() {
   local log_file="$1"
   local agent="$2"
@@ -13,23 +22,23 @@ context_agent_output() {
 
   case "$agent" in
     claude)
-      output="$(jq -rs '
+      output="$(context_log_events "$log_file" '
         [.[] | select(.type == "result") | .result // empty]
         | last // empty
-      ' "$log_file" 2>/dev/null || true)"
+      ')"
       ;;
     codex)
-      output="$(jq -rs '
+      output="$(context_log_events "$log_file" '
         [
           .[]
           | select(.type == "item.completed" and .item.type == "agent_message")
           | .item.text // empty
         ]
         | last // empty
-      ' "$log_file" 2>/dev/null || true)"
+      ')"
       ;;
     deepseek)
-      output="$(jq -rs '
+      output="$(context_log_events "$log_file" '
         [
           .[]
           | select(.type == "message_end" and .message.role == "assistant")
@@ -37,7 +46,7 @@ context_agent_output() {
           | join("\n")
         ]
         | last // empty
-      ' "$log_file" 2>/dev/null || true)"
+      ')"
       ;;
     *)
       output=""
@@ -57,7 +66,10 @@ context_check() {
   local project_root context_file step check_step agent
   local template_file log_file prompt output
 
-  project_root="$(context_project_root "$script_dir")"
+  project_root="$(jq -r '.projectRoot // empty' "$state_file")"
+  if [[ -z "$project_root" ]]; then
+    project_root="$(context_project_root "$script_dir")"
+  fi
   context_file="$project_root/CONTEXT.md"
 
   if [[ ! -f "$context_file" ]]; then

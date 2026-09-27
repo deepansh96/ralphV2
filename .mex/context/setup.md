@@ -17,7 +17,7 @@ edges:
     condition: when starting or observing a real Ralph run
   - target: patterns/recover-failed-or-stale-step.md
     condition: when status, logs, or stale PID checks fail
-last_updated: 2026-08-30
+last_updated: 2026-09-27
 ---
 
 # Setup
