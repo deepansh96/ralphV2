@@ -17,6 +17,8 @@ Each question must use this format:
 ➡️ <your recommended answer>
 ```
 
+Split each round into two groups. **Needs your answer**: real forks where reasonable people would choose differently, so the user must decide. **Proposed defaults (veto any)**: questions whose answer follows from the code, earlier decisions, or clear best practice. Still use the ❓/➡️ format for these so every decision stays visible, and treat a plain approval of the round as confirming them.
+
 Each round reshapes the tree. Settled decisions push the frontier outward and unblock later questions. Recompute the frontier after every answer round. A question whose answer depends on another question still open in this round belongs to a later round.
 
 Finding facts is your job, never the user's. When a frontier question needs a fact from the environment, use a read-only subagent if the harness supports one; otherwise look it up directly. The subagent returns facts only and must not modify files, Git, or the tracker. Do not block the whole round while it runs: only questions downstream of that fact wait. Decisions belong to the user — put each one to them and wait.
